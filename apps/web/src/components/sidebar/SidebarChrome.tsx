@@ -203,8 +203,9 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter({
 }: {
   dock?: boolean;
 }) {
+  const Footer = dock ? "div" : SidebarFooter;
   return (
-    <SidebarFooter>
+    <Footer>
       <div
         className={
           dock ? "absolute right-2 bottom-full z-50 flex w-64 flex-col gap-2 pb-2" : "contents"
@@ -215,6 +216,6 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter({
         <SidebarUpdateArchitectureWarning />
       </div>
       <SidebarUtilityMenu />
-    </SidebarFooter>
+    </Footer>
   );
 });
