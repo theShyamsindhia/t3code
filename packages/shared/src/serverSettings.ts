@@ -269,6 +269,7 @@ export function applyServerSettingsPatch(
   const patch = translateLegacyProjectOverridePatch(current, rawPatch);
   const selectionPatch = patch.textGenerationModelSelection;
   const {
+    externalSessionThreadIds,
     automaticGitFetchInterval,
     providerHealthRefreshInterval,
     backgroundActivityProfile,
@@ -324,6 +325,7 @@ export function applyServerSettingsPatch(
   const next = deepMerge(current, patchForMerge);
   const nextWithReplacementsBase = {
     ...next,
+    ...(externalSessionThreadIds === undefined ? {} : { externalSessionThreadIds }),
     ...(worktreeCleanupPatch === undefined
       ? {}
       : {

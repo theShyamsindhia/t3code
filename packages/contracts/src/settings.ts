@@ -8,6 +8,7 @@ import {
   ForwardCompatibleOptional,
   OmittedWhenNull,
   ProjectId,
+  ThreadId,
   TrimmedNonEmptyString,
   TrimmedString,
 } from "./baseSchemas.ts";
@@ -1085,6 +1086,9 @@ export const StorageCleanupSettings = Schema.Struct({
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
 export const ServerSettings = Schema.Struct({
+  externalSessionThreadIds: Schema.Array(ThreadId).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   worktreeCleanup: WorktreeCleanup.pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   storageCleanup: StorageCleanupSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(Schema.decodeSync(StorageCleanupSettings)({}))),
@@ -1445,6 +1449,7 @@ const OpenCodeSettingsPatch = Schema.Struct({
 });
 
 export const ServerSettingsPatch = Schema.Struct({
+  externalSessionThreadIds: Schema.optionalKey(Schema.Array(ThreadId)),
   worktreeCleanup: Schema.optionalKey(
     Schema.NullOr(
       Schema.Union([

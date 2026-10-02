@@ -1537,6 +1537,18 @@ const ThreadMessageReasoningCompleteCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+export const ThreadExternalHistorySyncedPayload = Schema.Struct({
+  threadId: ThreadId,
+  messages: Schema.Array(OrchestrationMessage).check(Schema.isMaxLength(200)),
+  updatedAt: IsoDateTime,
+});
+
+const ThreadExternalHistorySyncCommand = Schema.Struct({
+  type: Schema.Literal("thread.external-history.sync"),
+  commandId: CommandId,
+  ...ThreadExternalHistorySyncedPayload.fields,
+});
+
 const ThreadHistoryImportCommand = Schema.Struct({
   type: Schema.Literal("thread.history.import"),
   commandId: CommandId,
@@ -1668,6 +1680,7 @@ const InternalOrchestrationCommand = Schema.Union([
   ThreadMessageReasoningDeltaCommand,
   ThreadMessageReasoningCompleteCommand,
   ThreadHistoryImportCommand,
+  ThreadExternalHistorySyncCommand,
   ThreadMessageUserAppendCommand,
   ThreadProposedPlanUpsertCommand,
   ThreadTurnDiffCompleteCommand,
@@ -1710,6 +1723,7 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.runtime-mode-set",
   "thread.interaction-mode-set",
   "thread.message-sent",
+  "thread.external-history-synced",
   "thread.turn-start-requested",
   "thread.turn-interrupt-requested",
   "thread.approval-response-requested",
@@ -2151,6 +2165,11 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.message-sent"),
     payload: ThreadMessageSentPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.external-history-synced"),
+    payload: ThreadExternalHistorySyncedPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

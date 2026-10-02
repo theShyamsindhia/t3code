@@ -1,3 +1,4 @@
+import { ExternalSessionsSheet } from "./ExternalSessionsSheet";
 import { useAndroidControlSizing } from "../../components/useAndroidControlSizing";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { computeThreadMoveAvailability } from "./threadOrder";
@@ -529,8 +530,14 @@ function ThreadNavigationSidebarPane(
     snoozeEnvironmentIds,
     threadListV2Layout,
   ]);
+  const [syncOpen, setSyncOpen] = useState(false);
+  const openSync = useCallback(() => setSyncOpen(true), []);
+  const syncSheet = syncOpen ? (
+    <ExternalSessionsSheet environments={environments} onClose={() => setSyncOpen(false)} />
+  ) : null;
   const listMenuActions = useMemo<MenuAction[]>(
     () => [
+      { id: "sync", title: "Sync conversations" },
       {
         id: "environment",
         title: "Environment",
@@ -578,6 +585,10 @@ function ThreadNavigationSidebarPane(
   const handleListMenuAction = useCallback(
     ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {
       const event = nativeEvent.event;
+      if (event === "sync") {
+        setSyncOpen(true);
+        return;
+      }
       if (event === "environment:all") {
         setSelectedEnvironmentId(null);
         return;
@@ -895,8 +906,9 @@ function ThreadNavigationSidebarPane(
         filterIcon,
         filterMenu,
         onOpenSettings: props.onOpenSettings,
+        onSync: openSync,
       }),
-    [filterIcon, filterMenu, props.onOpenSettings],
+    [filterIcon, filterMenu, props.onOpenSettings, openSync],
   );
   // Snoozed threads need no special case: the shelf header is a list row
   // even while collapsed.
@@ -925,6 +937,7 @@ function ThreadNavigationSidebarPane(
   if (props.nativeChrome) {
     return (
       <>
+        {syncSheet}
         <NativeStackScreenOptions
           optionsVersion={[nativeHeaderItems, props.width]}
           options={{
@@ -1005,6 +1018,7 @@ function ThreadNavigationSidebarPane(
       }
       style={{ width: props.width }}
     >
+      {syncSheet}
       <View
         className="flex-1"
         style={

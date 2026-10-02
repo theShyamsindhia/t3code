@@ -1709,3 +1709,36 @@ describe("applyThreadDetailEvent", () => {
     });
   });
 });
+
+it("replaces an external snapshot instead of duplicating history in connected clients", () => {
+  const messages = [
+    {
+      id: MessageId.make("import:external:new"),
+      role: "user" as const,
+      text: "new history",
+      turnId: null,
+      streaming: false,
+      createdAt: baseThread.createdAt,
+      updatedAt: baseThread.updatedAt,
+    },
+  ];
+  const event = {
+    ...baseEventFields,
+    sequence: 1,
+    occurredAt: baseThread.updatedAt,
+    aggregateKind: "thread" as const,
+    aggregateId: baseThread.id,
+    type: "thread.external-history-synced" as const,
+    payload: { threadId: baseThread.id, messages, updatedAt: baseThread.updatedAt },
+  };
+  const first = applyThreadDetailEvent(baseThread, event);
+  expect(first.kind).toBe("updated");
+  if (first.kind !== "updated") return;
+  const second = applyThreadDetailEvent(first.thread, event);
+  expect(second.kind === "updated" && second.thread.messages).toEqual(messages);
+  const empty = applyThreadDetailEvent(first.thread, {
+    ...event,
+    payload: { ...event.payload, messages: [] },
+  });
+  expect(empty.kind === "updated" && empty.thread.messages).toEqual([]);
+});

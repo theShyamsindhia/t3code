@@ -1,3 +1,4 @@
+import { externalSessionSource } from "@t3tools/contracts";
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
@@ -238,6 +239,7 @@ import {
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import { ExternalSessionsDialog } from "./sidebar/ExternalSessionsDialog";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -1510,6 +1512,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       )}
     >
       {thread.title}
+      {externalSessionSource(thread.id) !== null && (
+        <span className="ml-1.5 text-xs text-muted-foreground">
+          · {externalSessionSource(thread.id)}
+        </span>
+      )}
     </span>
   );
   const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
@@ -4447,6 +4454,7 @@ export default function Sidebar() {
           // header and would otherwise paint across the search row's outline.
           <SidebarGroup className="z-[1]">
             <SidebarThreadHeader
+              syncControl={<ExternalSessionsDialog />}
               searchFieldRef={headerSearchRef}
               hasProjects={projectGroups.length > 0}
               projectScope={

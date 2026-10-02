@@ -1,3 +1,4 @@
+import { externalSessionSource } from "@t3tools/contracts";
 import {
   EventId,
   MAX_SCRIPT_ID_LENGTH,
@@ -221,6 +222,21 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
   OrchestrationCommandRejection | PlatformError.PlatformError,
   Crypto.Crypto
 > {
+  if (
+    "threadId" in command &&
+    externalSessionSource(command.threadId) !== null &&
+    (command.type === "thread.turn.start" ||
+      command.type === "thread.message.user.append" ||
+      command.type === "thread.session.set" ||
+      command.type === "thread.history.import" ||
+      command.type === "thread.checkpoint.revert" ||
+      command.type === "thread.conversation.revert")
+  ) {
+    return yield* new OrchestrationCommandInvariantError({
+      commandType: command.type,
+      detail: "External conversations are read-only. Continue in the original app.",
+    });
+  }
   switch (command.type) {
     case "project.create": {
       yield* requireProjectAbsent({
@@ -376,6 +392,17 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
 
     case "thread.create": {
+      if (
+        externalSessionSource(command.threadId) !== null &&
+        readModel.threads.some(
+          (thread) => thread.id === command.threadId && thread.deletedAt !== null,
+        )
+      ) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: "A deleted external conversation cannot be rediscovered.",
+        });
+      }
       yield* requireProject({
         readModel,
         command,
@@ -1997,6 +2024,43 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           createdAt: command.createdAt,
           updatedAt: command.createdAt,
         },
+      };
+    }
+
+    case "thread.external-history.sync": {
+      const thread = yield* requireThreadNotArchived({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      if (
+        externalSessionSource(thread.id) === null ||
+        thread.session !== null ||
+        thread.latestTurn !== null ||
+        thread.messages.some((message) => !isImportedAgentSessionMessageId(message.id)) ||
+        command.messages.some(
+          (message) =>
+            !message.id.startsWith(`import:${thread.id}:`) ||
+            message.turnId !== null ||
+            message.streaming ||
+            (message.role !== "user" && message.role !== "assistant"),
+        )
+      ) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: "Only read-only external conversations can refresh their history.",
+        });
+      }
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: thread.id,
+          occurredAt: command.updatedAt,
+          commandId: command.commandId,
+          metadata: { historyImport: true },
+        })),
+        type: "thread.external-history-synced",
+        payload: { threadId: thread.id, messages: command.messages, updatedAt: command.updatedAt },
       };
     }
 

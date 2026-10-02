@@ -386,6 +386,16 @@ export function applyThreadDetailEvent(
     }
 
     // ── Messages ────────────────────────────────────────────────────
+    case "thread.external-history-synced":
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          messages: [...event.payload.messages],
+          updatedAt: event.payload.updatedAt,
+        },
+      };
+
     case "thread.message-sent": {
       const message: OrchestrationMessage = {
         id: event.payload.messageId,

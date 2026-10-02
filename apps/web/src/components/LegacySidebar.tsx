@@ -1,3 +1,5 @@
+import { ExternalSessionsDialog } from "./sidebar/ExternalSessionsDialog";
+import { externalSessionSource } from "@t3tools/contracts";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
 import { Spinner } from "~/components/ui/spinner";
@@ -792,6 +794,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     data-testid={`thread-title-${thread.id}`}
                   >
                     {thread.title}
+                    {externalSessionSource(thread.id) !== null && (
+                      <span className="ml-1.5 text-xs text-muted-foreground">
+                        · {externalSessionSource(thread.id)}
+                      </span>
+                    )}
                   </span>
                 }
               />
@@ -3014,6 +3021,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
           <span className="text-xs font-medium text-sidebar-muted-foreground/80">Projects</span>
           <div className="flex items-center gap-1">
+            <ExternalSessionsDialog />
             <ProjectSortMenu
               projectSortOrder={projectSortOrder}
               threadSortOrder={threadSortOrder}

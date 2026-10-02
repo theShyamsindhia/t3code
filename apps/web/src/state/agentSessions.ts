@@ -23,3 +23,8 @@ export const agentSessionImport = createEnvironmentRpcCommand(connectionAtomRunt
   label: "environment-data:agent-sessions:import",
   tag: WS_METHODS.agentSessionsImport,
 });
+
+export const externalSessions = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-data:external-sessions",
+  tag: WS_METHODS.externalSessions,
+});

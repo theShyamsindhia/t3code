@@ -1,3 +1,4 @@
+import { externalSessionSource } from "@t3tools/contracts";
 import {
   THREAD_LIST_V2_MONO_FONT as MONO_FONT,
   THREAD_LIST_V2_ROW_CONTENT_CLASS_NAME,
@@ -943,6 +944,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         numberOfLines={2}
       >
         {thread.title}
+        {externalSessionSource(thread.id) !== null ? ` · ${externalSessionSource(thread.id)}` : ""}
       </Text>
       {props.searchMatch ? (
         <View className="mt-1">

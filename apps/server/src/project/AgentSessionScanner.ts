@@ -192,6 +192,8 @@ export class AgentSessionScanner extends Context.Service<
     readonly recentThreads: (
       workspaceRoot: string,
       completedSources?: ReadonlyArray<AgentSessionImportSource>,
+      background?: boolean | "discover",
+      selectedSessions?: ReadonlyArray<string>,
     ) => Stream.Stream<AgentSessionRecentThread, AgentSessionScanError>;
   }
 >()("t3/project/AgentSessionScanner") {}
@@ -1082,11 +1084,17 @@ export const make = Effect.gen(function* () {
     }));
   });
 
+  const sessionTitles = new Map<string, string>();
+  const decodeSessionIndex = Schema.decodeUnknownOption(
+    Schema.fromJsonString(Schema.Struct({ id: Schema.String, thread_name: Schema.String })),
+  );
+
   const collectCandidates = Effect.fn("AgentSessionScanner.collectCandidates")(function* () {
     const settings = yield* serverSettings.getSettings.pipe(
       Effect.mapError((cause) => new AgentSessionScanError({ operation: "read-settings", cause })),
     );
 
+    sessionTitles.clear();
     const raw: Array<RawCandidate> = [];
     let truncated = false;
 
@@ -1150,6 +1158,20 @@ export const make = Effect.gen(function* () {
           homePath = layout.sharedHomePath;
         }
 
+        if (source === "codex") {
+          const indexPath = path.join(homePath, "session_index.jsonl");
+          const indexStat = yield* statOption(indexPath);
+          if (Option.isSome(indexStat) && Number(indexStat.value.size) <= 4 * 1024 * 1024) {
+            const index = yield* fileSystem
+              .readFileString(indexPath)
+              .pipe(Effect.orElseSucceed(() => ""));
+            for (const line of index.split("\n")) {
+              const entry = decodeSessionIndex(line);
+              if (Option.isSome(entry))
+                sessionTitles.set(`${instanceId}\0${entry.value.id}`, entry.value.thread_name);
+            }
+          }
+        }
         const homeKey = `${source}\0${yield* directoryIdentity(homePath)}`;
         if (seenHomes.has(homeKey)) continue;
         seenHomes.add(homeKey);
@@ -1325,9 +1347,76 @@ export const make = Effect.gen(function* () {
     };
   });
 
+  const readPreview = Effect.fn("AgentSessionScanner.readPreview")(function* (
+    filePath: string,
+    expected: ReturnType<typeof transcriptIdentity>,
+    source: AgentSessionSource,
+    providerInstanceId: ProviderInstanceId,
+    discover: boolean,
+    selectedSessions?: ReadonlyArray<string>,
+  ) {
+    return yield* Effect.scoped(
+      Effect.gen(function* () {
+        const file = yield* fileSystem.open(filePath, { flag: "r" });
+        const readWindow = Effect.fnUntraced(function* (offset: number, limit: number) {
+          yield* file.seek(BigInt(offset), "start");
+          const chunks: Uint8Array[] = [];
+          let length = 0;
+          while (length < limit) {
+            const chunk = yield* file.readAlloc(Math.min(64 * 1024, limit - length));
+            if (Option.isNone(chunk)) break;
+            chunks.push(chunk.value);
+            length += chunk.value.byteLength;
+          }
+          const bytes = new Uint8Array(length);
+          let position = 0;
+          for (const chunk of chunks) {
+            bytes.set(chunk, position);
+            position += chunk.byteLength;
+          }
+          let text = new TextDecoder().decode(bytes);
+          if (offset > 0) text = text.slice(text.indexOf("\n") + 1);
+          // Drop a line cut by the window; at EOF the decoder rejects incomplete JSON.
+          if (offset + length < expected.size) text = text.slice(0, text.lastIndexOf("\n") + 1);
+          return text.split("\n").flatMap((line) => Option.toArray(decodeTranscriptRecord(line)));
+        });
+        const headSize = Math.min(expected.size, 256 * 1024);
+        const records = yield* readWindow(0, headSize);
+        const metadata = records.find((record) => record.type === "session_meta");
+        const sessionId =
+          source === "codex"
+            ? (metadata?.payload?.id ?? metadata?.payload?.session_id)
+            : (records.find((record) => record.sessionId)?.sessionId ??
+              path.basename(filePath, ".jsonl"));
+        if (
+          !sessionId ||
+          (selectedSessions && !selectedSessions.includes(`${providerInstanceId}\0${sessionId}`))
+        )
+          return null;
+        const tailSize = Math.min(
+          expected.size - headSize,
+          discover ? 128 * 1024 : 4 * 1024 * 1024,
+        );
+        if (tailSize > 0) records.push(...(yield* readWindow(expected.size - tailSize, tailSize)));
+        const actual = transcriptIdentity(filePath, yield* file.stat);
+        // An append is safe: the completed prefix is still valid. Replacements and truncation aren't.
+        if (
+          actual.inode !== expected.inode ||
+          actual.device !== expected.device ||
+          actual.birthtimeMs !== expected.birthtimeMs ||
+          actual.size < expected.size
+        )
+          return null;
+        return { records, recordCount: records.length, sessionId };
+      }),
+    ).pipe(Effect.orElseSucceed(() => null));
+  });
+
   const prepareRecentThreads = Effect.fn("AgentSessionScanner.prepareRecentThreads")(function* (
     workspaceRoot: string,
     completedSources: ReadonlyArray<AgentSessionImportSource>,
+    background: boolean | "discover",
+    selectedSessions?: ReadonlyArray<string>,
   ) {
     const root = path.resolve(expandHomePath(workspaceRoot));
     const realRoot = yield* fileSystem.realPath(root).pipe(Effect.orElseSucceed(() => root));
@@ -1376,7 +1465,7 @@ export const make = Effect.gen(function* () {
       (source) => `${source.providerInstanceId}\0${source.filePath}`,
     );
     const importedSessions = new Set<string>();
-    let bytesRemaining = MAX_IMPORT_BYTES;
+    let bytesRemaining = background ? 64 * 1024 * 1024 : MAX_IMPORT_BYTES;
     let transcriptsRemaining = MAX_IMPORT_TRANSCRIPTS;
     let recordsRemaining = MAX_IMPORT_RECORDS;
     return Stream.fromIteratorSucceed(eligibleTranscripts.values(), 1).pipe(
@@ -1412,19 +1501,36 @@ export const make = Effect.gen(function* () {
           if (
             transcriptsRemaining === 0 ||
             recordsRemaining === 0 ||
-            identity.size > MAX_IMPORTED_TRANSCRIPT_BYTES ||
-            identity.size > bytesRemaining
+            (!background && identity.size > MAX_IMPORTED_TRANSCRIPT_BYTES) ||
+            Math.min(identity.size, background ? 256 * 1024 : identity.size) > bytesRemaining
           ) {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
           }
           // Reserve the whole file even if its read or parse fails.
           transcriptsRemaining -= 1;
-          bytesRemaining -= identity.size;
-          const snapshot = yield* readTranscript(
-            transcript.filePath,
-            identity,
-            recordsRemaining,
-            candidate.source,
+          const snapshot = yield* background
+            ? readPreview(
+                transcript.filePath,
+                identity,
+                candidate.source,
+                candidate.providerInstanceId,
+                background === "discover",
+                selectedSessions,
+              )
+            : readTranscript(transcript.filePath, identity, recordsRemaining, candidate.source);
+          bytesRemaining = Math.max(
+            0,
+            bytesRemaining -
+              Math.min(
+                identity.size,
+                background
+                  ? snapshot === null
+                    ? 256 * 1024
+                    : background === "discover"
+                      ? 384 * 1024
+                      : 4352 * 1024
+                  : identity.size,
+              ),
           );
           if (snapshot === null) {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
@@ -1448,7 +1554,7 @@ export const make = Effect.gen(function* () {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
           }
 
-          const parsedThread = parseAgentSessionRecords(
+          let parsedThread = parseAgentSessionRecords(
             {
               source: candidate.source,
               providerInstanceId: candidate.providerInstanceId,
@@ -1457,9 +1563,34 @@ export const make = Effect.gen(function* () {
             },
             snapshot.records,
           );
-          if (parsedThread === null) {
-            return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
+          if (
+            parsedThread === null &&
+            background &&
+            "sessionId" in snapshot &&
+            typeof snapshot.sessionId === "string"
+          ) {
+            const timestamp = DateTime.formatIso(DateTime.makeUnsafe(transcript.mtimeMs));
+            parsedThread = {
+              source: candidate.source,
+              providerInstanceId: candidate.providerInstanceId,
+              providerSessionId: snapshot.sessionId,
+              title: "Conversation",
+              model: null,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+              messages: [],
+            };
           }
+          if (parsedThread === null)
+            return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
+          if (background)
+            parsedThread = {
+              ...parsedThread,
+              title:
+                sessionTitles.get(
+                  `${candidate.providerInstanceId}\0${parsedThread.providerSessionId}`,
+                ) ?? parsedThread.title,
+            };
 
           const source: AgentSessionImportSource = {
             ...identity,
@@ -1487,7 +1618,12 @@ export const make = Effect.gen(function* () {
   const recentThreads: AgentSessionScanner["Service"]["recentThreads"] = (
     workspaceRoot,
     completedSources = [],
-  ) => Stream.unwrap(prepareRecentThreads(workspaceRoot, completedSources));
+    background = false,
+    selectedSessions,
+  ) =>
+    Stream.unwrap(
+      prepareRecentThreads(workspaceRoot, completedSources, background, selectedSessions),
+    );
 
   return AgentSessionScanner.of({ scan, recentThreads });
 });

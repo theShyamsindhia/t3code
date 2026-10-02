@@ -1,3 +1,4 @@
+import { externalSessionIdentity, AgentSessionTakeoverError } from "@t3tools/contracts";
 import {
   CommandId,
   DEFAULT_MODEL,
@@ -124,6 +125,24 @@ export const importRecentAgentThreads = Effect.fn("importRecentAgentThreads")(fu
   ) {
     return yield* new AgentSessionImportProjectChangedError({ projectId: input.projectId });
   }
+  const takeover =
+    input.takeOverThreadId === undefined ? null : externalSessionIdentity(input.takeOverThreadId);
+  if (input.takeOverThreadId !== undefined) {
+    const mirror = yield* snapshots
+      .getThreadDetailById(input.takeOverThreadId)
+      .pipe(
+        Effect.mapError(
+          () => new AgentSessionTakeoverError({ detail: "Could not read this conversation." }),
+        ),
+      );
+    if (takeover === null || Option.isNone(mirror) || mirror.value.projectId !== input.projectId) {
+      return yield* new AgentSessionTakeoverError({
+        detail: "This external conversation is no longer available.",
+      });
+    }
+    // A takeover always reads fresh history after the user stops the original harness.
+    yield* scanner.scan;
+  }
   const completedSources = yield* snapshots
     .getImportedAgentSessionSources(input.projectId)
     .pipe(
@@ -132,6 +151,10 @@ export const importRecentAgentThreads = Effect.fn("importRecentAgentThreads")(fu
   const threads = scanner.recentThreads(
     workspaceRoot,
     completedSources.map((entry) => entry.source),
+    takeover === null ? undefined : true,
+    takeover === null
+      ? undefined
+      : [`${takeover.providerInstanceId}\0${takeover.providerSessionId}`],
   );
   const importedThreadIds = new Set<ThreadId>();
   let importedCount = 0;
@@ -143,6 +166,13 @@ export const importRecentAgentThreads = Effect.fn("importRecentAgentThreads")(fu
         skippedCount += 1;
         return;
       }
+      if (
+        takeover !== null &&
+        (outcome.source.provider !== takeover.provider ||
+          outcome.source.providerInstanceId !== takeover.providerInstanceId ||
+          outcome.source.providerSessionId !== takeover.providerSessionId)
+      )
+        return;
       if (outcome._tag === "AlreadyImported" || outcome._tag === "Duplicate") {
         const threadId = ThreadId.make(
           `import:${outcome.source.providerInstanceId}:${outcome.source.providerSessionId}`,
@@ -294,5 +324,38 @@ export const importRecentAgentThreads = Effect.fn("importRecentAgentThreads")(fu
     }),
   );
 
+  if (takeover !== null && input.takeOverThreadId !== undefined) {
+    const threadId = ThreadId.make(
+      `import:${takeover.providerInstanceId}:${takeover.providerSessionId}`,
+    );
+    if (!importedThreadIds.has(threadId)) {
+      return yield* new AgentSessionTakeoverError({
+        detail:
+          "Could not load the saved session. Keep using the original app and try again after it has saved its history.",
+      });
+    }
+    const mirrorThreadId = input.takeOverThreadId;
+    yield* Effect.gen(function* () {
+      yield* engine.dispatch({
+        type: "thread.unsettle",
+        reason: "user",
+        commandId: CommandId.make(yield* crypto.randomUUIDv4),
+        threadId,
+      });
+      yield* engine.dispatch({
+        type: "thread.archive",
+        commandId: CommandId.make(yield* crypto.randomUUIDv4),
+        threadId: mirrorThreadId,
+      });
+    }).pipe(
+      Effect.mapError(
+        () =>
+          new AgentSessionTakeoverError({
+            detail: "The conversation was imported, but the handoff could not finish. Try again.",
+          }),
+      ),
+    );
+    return { importedCount, skippedCount, threadId } satisfies AgentSessionImportResult;
+  }
   return { importedCount, skippedCount } satisfies AgentSessionImportResult;
 });

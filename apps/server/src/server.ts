@@ -1,3 +1,4 @@
+import * as ExternalSessionSync from "./project/ExternalSessionSync.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeHttp from "node:http";
 
@@ -269,6 +270,7 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(StorageCleanup.layer),
   Layer.provideMerge(ThreadDeletionReactorLive),
   Layer.provideMerge(ThreadSettlementReactor.layer),
+  Layer.provideMerge(ExternalSessionSync.layer),
   Layer.provideMerge(PullRequestSyncReactor.layer),
   Layer.provideMerge(ThreadPullRequestReactor.layer),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),

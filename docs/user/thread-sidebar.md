@@ -150,3 +150,26 @@ Choose **Snooze → Custom…** from a thread's menu to pick a date and time in 
 local time zone, or a duration in minutes, hours, or days. Durations start when
 you confirm; one day means 24 hours. On web and desktop, you can also snooze
 several selected threads together. Choose **Wake thread** to bring a thread back early.
+
+## Conversations from other apps
+
+Choose **Sync conversations** beside sidebar search to see recent Codex and
+Claude Code chats on the connected environment. Select the chats you want and choose
+**Track selected**. Their projects are added if needed. Finding conversations does not add them to your sidebar.
+On mobile, use the sidebar sync button or the sidebar menu.
+
+Only your selected chats appear and refresh every minute, including when you
+view them from another device. Reopen Sync and uncheck a chat to stop tracking it;
+its T3 preview moves to the archive.
+These previews include up to 200 text messages from conversations active in the
+last 30 days. For long histories, previews read a bounded opening and recent window.
+Tool activity and attachments are omitted.
+
+To send messages from T3, stop work in the original app, open the conversation,
+and choose **Continue in T3**. Confirm that the original app has stopped. T3
+imports the saved session, moves the preview to the archive, and resumes the
+session when you send your next message. Continue using T3 for that conversation;
+it no longer refreshes from the original app. T3 does not stop the other app for you.
+
+Archiving or deleting an external preview hides it without changing the original
+conversation. Select it in Sync again to resume tracking.

@@ -1034,6 +1034,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           return;
         }
 
+        case "thread.external-history-synced":
         case "thread.proposed-plan-upserted":
         case "thread.activity-appended":
         case "thread.approval-response-requested":
@@ -1142,6 +1143,25 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             threadId: event.payload.threadId,
           });
           return;
+
+        case "thread.external-history-synced": {
+          yield* projectionThreadMessageRepository.deleteByThreadId({
+            threadId: event.payload.threadId,
+          });
+          for (const message of event.payload.messages) {
+            yield* projectionThreadMessageRepository.upsert({
+              messageId: message.id,
+              threadId: event.payload.threadId,
+              turnId: null,
+              role: message.role,
+              text: message.text,
+              isStreaming: false,
+              createdAt: message.createdAt,
+              updatedAt: message.updatedAt,
+            });
+          }
+          return;
+        }
 
         case "thread.message-sent": {
           if (event.payload.streaming) {

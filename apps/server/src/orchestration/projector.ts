@@ -1,3 +1,4 @@
+import { ThreadExternalHistorySyncedPayload } from "@t3tools/contracts";
 import type {
   OrchestrationEvent,
   OrchestrationProject,
@@ -768,6 +769,22 @@ export function projectEvent(
           ...nextBase,
           threads: updateThread(nextBase.threads, payload.threadId, {
             interactionMode: payload.interactionMode,
+            updatedAt: payload.updatedAt,
+          }),
+        })),
+      );
+
+    case "thread.external-history-synced":
+      return decodeForEvent(
+        ThreadExternalHistorySyncedPayload,
+        event.payload,
+        event.type,
+        "payload",
+      ).pipe(
+        Effect.map((payload) => ({
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            messages: [...payload.messages],
             updatedAt: payload.updatedAt,
           }),
         })),

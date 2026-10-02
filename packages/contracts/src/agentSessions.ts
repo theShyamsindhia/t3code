@@ -1,5 +1,11 @@
 import * as Schema from "effect/Schema";
-import { IsoDateTime, NonNegativeInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  IsoDateTime,
+  NonNegativeInt,
+  ProjectId,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 
 /** Coding agent home directories the scanner knows how to read. */
@@ -76,6 +82,7 @@ export type AgentSessionScanResult = typeof AgentSessionScanResult.Type;
 export const AgentSessionImportInput = Schema.Struct({
   projectId: ProjectId,
   expectedWorkspaceRoot: Schema.optional(TrimmedNonEmptyString),
+  takeOverThreadId: Schema.optional(ThreadId),
 });
 export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
 
@@ -100,6 +107,7 @@ export class AgentSessionImportProjectChangedError extends Schema.TaggedError<Ag
 export const AgentSessionImportResult = Schema.Struct({
   importedCount: NonNegativeInt,
   skippedCount: NonNegativeInt,
+  threadId: Schema.optional(ThreadId),
 });
 export type AgentSessionImportResult = typeof AgentSessionImportResult.Type;
 
@@ -112,5 +120,69 @@ export class AgentSessionScanError extends Schema.TaggedError<AgentSessionScanEr
 ) {
   override get message(): string {
     return `Failed to scan agent sessions during ${this.operation}.`;
+  }
+}
+
+/** External mirrors never own a provider session; their source remains the only writer. */
+export function externalSessionSource(threadId: string): "Codex" | "Claude Code" | null {
+  if (threadId.startsWith("external:codex:")) return "Codex";
+  if (threadId.startsWith("external:claudeAgent:")) return "Claude Code";
+  return null;
+}
+
+export function externalSessionIdentity(threadId: string) {
+  const parts = threadId.split(":");
+  if (
+    parts.length !== 4 ||
+    parts[0] !== "external" ||
+    (parts[1] !== "codex" && parts[1] !== "claudeAgent") ||
+    !parts[2] ||
+    !parts[3]
+  )
+    return null;
+  try {
+    return {
+      provider: parts[1],
+      providerInstanceId: ProviderInstanceId.make(decodeURIComponent(parts[2])),
+      providerSessionId: decodeURIComponent(parts[3]),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export class AgentSessionTakeoverError extends Schema.TaggedError<AgentSessionTakeoverError>()(
+  "AgentSessionTakeoverError",
+  { detail: Schema.String },
+) {
+  override get message(): string {
+    return this.detail;
+  }
+}
+
+export const ExternalSessionCandidate = Schema.Struct({
+  workspaceRoot: Schema.String,
+  threadId: ThreadId,
+  projectId: ProjectId,
+  projectTitle: Schema.String,
+  title: Schema.String,
+  source: AgentSessionSource,
+  updatedAt: IsoDateTime,
+  tracked: Schema.Boolean,
+});
+export type ExternalSessionCandidate = typeof ExternalSessionCandidate.Type;
+
+export const ExternalSessionsInput = Schema.Struct({
+  threadIds: Schema.optional(Schema.Array(ThreadId)),
+});
+export const ExternalSessionsResult = Schema.Struct({
+  candidates: Schema.Array(ExternalSessionCandidate),
+});
+export class ExternalSessionsError extends Schema.TaggedError<ExternalSessionsError>()(
+  "ExternalSessionsError",
+  { detail: Schema.String },
+) {
+  override get message(): string {
+    return this.detail;
   }
 }

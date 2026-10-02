@@ -1,3 +1,4 @@
+import { ExternalSessionSync } from "./project/ExternalSessionSync.ts";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeSocket from "@effect/platform-node/NodeSocket";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -1075,7 +1076,15 @@ const buildAppUnderTest = (options?: {
     );
 
     const appLayer = servedRoutesLayer.pipe(
-      Layer.provide(resourceTelemetryLayer),
+      Layer.provide(
+        Layer.mergeAll(
+          resourceTelemetryLayer,
+          Layer.succeed(ExternalSessionSync, {
+            sweep: Effect.succeed([]),
+            manage: () => Effect.succeed({ candidates: [] }),
+          }),
+        ),
+      ),
       Layer.provide(UsageService.layerTest),
       Layer.provide(
         Layer.mock(AnalyticsService.AnalyticsService)({
