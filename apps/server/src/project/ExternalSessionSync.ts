@@ -12,7 +12,7 @@ import {
   ProviderDriverKind,
   DEFAULT_RUNTIME_MODE,
   DEFAULT_PROVIDER_INTERACTION_MODE,
-  MessageId,
+  EventId,
   ThreadId,
   type AgentSessionImportSource,
 } from "@t3tools/contracts";
@@ -20,7 +20,7 @@ import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import * as Semaphore from "effect/Semaphore";
 import { ServerSettingsService } from "../serverSettings.ts";
-import * as Crypto from "effect/Crypto";
+import { randomUuidV4 } from "../orchestration-v2/RandomUuid.ts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -28,11 +28,14 @@ import * as Schema from "effect/Schema";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 
-import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import * as ProviderSessionDirectory from "../provider/Services/ProviderSessionDirectory.ts";
+import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
+import * as EventSink from "../orchestration-v2/EventSink.ts";
+import * as ProjectService from "./ProjectService.ts";
+import { messageEvents } from "./AgentSessionImporter.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+import * as ProviderSessionRuntime from "../persistence/ProviderSessionRuntime.ts";
 import { forkParked } from "../serverActivation.ts";
-import { ProjectionThreadRepository } from "../persistence/Services/ProjectionThreads.ts";
+
 import * as AgentSessionScanner from "./AgentSessionScanner.ts";
 
 const isExternalSessionsError = Schema.is(ExternalSessionsError);
@@ -49,18 +52,21 @@ export const make = Effect.gen(function* () {
   const settings = yield* ServerSettingsService;
   const lock = yield* Semaphore.make(1);
   const scanner = yield* AgentSessionScanner.AgentSessionScanner;
-  const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
-  const engine = yield* OrchestrationEngine.OrchestrationEngineService;
-  const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
-  const crypto = yield* Crypto.Crypto;
-  const threadRepository = yield* ProjectionThreadRepository;
+  const projectService = yield* ProjectService.ProjectService;
+  const engine = yield* Orchestrator.OrchestratorV2;
+  const store = yield* ProjectionStore.ProjectionStoreV2;
+  const events = yield* EventSink.EventSinkV2;
+  const runtimes = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+  const threadRepository = {
+    getById: ({ threadId }: { threadId: ThreadId }) => Effect.option(store.getThread(threadId)),
+  };
   let completed = new Map<string, AgentSessionImportSource>();
 
   const run = Effect.fnUntraced(function* (discover: boolean) {
     const selected = new Set((yield* settings.getSettings).externalSessionThreadIds);
     const candidates = new Map<ThreadId, ExternalSessionCandidate>();
-    const shell = yield* snapshots.getShellSnapshot();
-    const projects = shell.projects.map(({ id, title, workspaceRoot }) => ({
+    const shell = yield* engine.getShellSnapshot();
+    const projects = (yield* projectService.listShells()).map(({ id, title, workspaceRoot }) => ({
       id,
       title,
       workspaceRoot,
@@ -71,7 +77,7 @@ export const make = Effect.gen(function* () {
         if (externalSessionSource(thread.id) && !selected.has(thread.id)) {
           yield* engine.dispatch({
             type: "thread.archive",
-            commandId: CommandId.make(yield* crypto.randomUUIDv4),
+            commandId: CommandId.make(yield* randomUuidV4),
             threadId: thread.id,
           });
         }
@@ -100,11 +106,11 @@ export const make = Effect.gen(function* () {
       const identity = externalSessionIdentity(id);
       return identity ? [`${identity.providerInstanceId}\0${identity.providerSessionId}`] : [];
     });
-    const bindings = yield* directory.listBindings();
+    const bindings = yield* runtimes.list();
     const ownedSessions = new Set(
       bindings.flatMap((binding) => {
         const cursor = Option.getOrNull(decodeResumeCursor(binding.resumeCursor));
-        const sessionId = binding.provider === "codex" ? cursor?.threadId : cursor?.resume;
+        const sessionId = binding.providerName === "codex" ? cursor?.threadId : cursor?.resume;
         return sessionId && binding.providerInstanceId
           ? [`${binding.providerInstanceId}\0${sessionId}`]
           : [];
@@ -145,7 +151,7 @@ export const make = Effect.gen(function* () {
               ) {
                 yield* engine.dispatch({
                   type: "thread.archive",
-                  commandId: CommandId.make(yield* crypto.randomUUIDv4),
+                  commandId: CommandId.make(yield* randomUuidV4),
                   threadId,
                 });
               }
@@ -174,21 +180,24 @@ export const make = Effect.gen(function* () {
               return;
             }
             if (Option.isSome(row) && row.value.archivedAt !== null) return;
-            const existing = yield* snapshots.getThreadDetailById(threadId);
+            const existing = yield* Effect.option(
+              engine.getThreadRecords(threadId, ["messages", "runs"]),
+            );
             if (
               Option.isSome(existing) &&
-              (existing.value.projectId !== project.id ||
-                existing.value.archivedAt !== null ||
-                existing.value.deletedAt !== null ||
-                existing.value.session !== null ||
-                existing.value.latestTurn !== null)
+              (existing.value.thread.projectId !== project.id ||
+                existing.value.thread.archivedAt !== null ||
+                existing.value.thread.deletedAt !== null ||
+                existing.value.runs.length > 0)
             )
               return;
 
             if (Option.isNone(existing)) {
               yield* engine.dispatch({
                 type: "thread.create",
-                commandId: CommandId.make(yield* crypto.randomUUIDv4),
+                createdBy: "system",
+                creationSource: "server",
+                commandId: CommandId.make(yield* randomUuidV4),
                 threadId,
                 projectId: project.id,
                 title: transcript.title,
@@ -203,36 +212,42 @@ export const make = Effect.gen(function* () {
                 interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
                 branch: null,
                 worktreePath: null,
-                createdAt: transcript.createdAt,
-                historyImport: true,
               });
             }
-            const messages = transcript.messages.map((message, index) => {
-              const digest = NodeCrypto.createHash("sha256")
-                .update(`${message.role}\0${message.createdAt}\0${message.text}`)
-                .digest("hex");
-              return {
-                ...message,
-                id: MessageId.make(
-                  `import:${threadId}:${String(index).padStart(6, "0")}:${digest}`,
-                ),
-                turnId: null,
-                streaming: false,
-                updatedAt: message.createdAt,
-              };
-            });
+            const history = transcript.messages.flatMap((message, index) =>
+              messageEvents({ threadId, index, message }),
+            );
+            const messages = history.flatMap((event) =>
+              event.type === "message.updated" ? [event.payload] : [],
+            );
+            const turnItems = history.flatMap((event) =>
+              event.type === "turn-item.updated" ? [event.payload] : [],
+            );
             // Tool-only changes and restarts should not rebroadcast identical history.
             if (
               Option.isNone(existing) ||
               existing.value.messages.length !== messages.length ||
-              existing.value.messages.some((message, index) => message.id !== messages[index]?.id)
+              existing.value.messages.some((message, index) => {
+                const next = messages[index];
+                return (
+                  !next ||
+                  message.text !== next.text ||
+                  message.role !== next.role ||
+                  DateTime.toEpochMillis(message.createdAt) !==
+                    DateTime.toEpochMillis(next.createdAt)
+                );
+              })
             ) {
-              yield* engine.dispatch({
-                type: "thread.external-history.sync",
-                commandId: CommandId.make(yield* crypto.randomUUIDv4),
-                threadId,
-                messages,
-                updatedAt: transcript.updatedAt,
+              yield* events.write({
+                events: [
+                  {
+                    id: EventId.make(yield* randomUuidV4),
+                    type: "thread.external-history.synced",
+                    threadId,
+                    occurredAt: DateTime.makeUnsafe(transcript.updatedAt),
+                    payload: { messages, turnItems },
+                  },
+                ],
               });
             }
             nextCompleted.set(fileKey, source);
@@ -286,7 +301,7 @@ export const make = Effect.gen(function* () {
           workspaceRoot: projects.find((p) => p.id === row.value.projectId)?.workspaceRoot ?? "",
           title: row.value.title,
           source: identity.provider === "codex" ? "codex" : "claudeAgent",
-          updatedAt: row.value.updatedAt,
+          updatedAt: DateTime.formatIso(row.value.updatedAt),
           tracked: true,
         });
       }
@@ -308,15 +323,13 @@ export const make = Effect.gen(function* () {
           const threadIds = [...new Set(input.threadIds)];
           for (const candidate of candidates) {
             if (!threadIds.includes(candidate.threadId)) continue;
-            if (Option.isNone(yield* snapshots.getProjectShellById(candidate.projectId))) {
-              yield* engine.dispatch({
-                type: "project.create",
-                commandId: CommandId.make(yield* crypto.randomUUIDv4),
+            if (Option.isNone(yield* projectService.getById(candidate.projectId))) {
+              yield* projectService.create({
+                commandId: CommandId.make(yield* randomUuidV4),
                 projectId: candidate.projectId,
                 title: candidate.projectTitle,
                 workspaceRoot: candidate.workspaceRoot,
                 defaultModelSelection: null,
-                createdAt: DateTime.formatIso(yield* DateTime.now),
               });
             }
           }
@@ -330,7 +343,7 @@ export const make = Effect.gen(function* () {
             ) {
               yield* engine.dispatch({
                 type: "thread.unarchive",
-                commandId: CommandId.make(yield* crypto.randomUUIDv4),
+                commandId: CommandId.make(yield* randomUuidV4),
                 threadId,
               });
             }

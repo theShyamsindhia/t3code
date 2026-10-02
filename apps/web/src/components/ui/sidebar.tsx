@@ -1,7 +1,12 @@
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
-import { PanelLeftCloseIcon, PanelLeftIcon } from "lucide-react";
+import {
+  PanelBottomCloseIcon,
+  PanelBottomIcon,
+  PanelLeftCloseIcon,
+  PanelLeftIcon,
+} from "lucide-react";
 import * as React from "react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
@@ -321,9 +326,22 @@ function Sidebar({
   );
 }
 
-function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
+function SidebarTrigger({
+  className,
+  onClick,
+  orientation = "vertical",
+  ...props
+}: React.ComponentProps<typeof Button> & { orientation?: "horizontal" | "vertical" }) {
   const { toggleSidebar } = useSidebar();
   const isOpen = useSidebarVisibility();
+  const Icon =
+    orientation === "horizontal"
+      ? isOpen
+        ? PanelBottomCloseIcon
+        : PanelBottomIcon
+      : isOpen
+        ? PanelLeftCloseIcon
+        : PanelLeftIcon;
 
   return (
     <Button
@@ -342,7 +360,7 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
       variant="ghost"
       {...props}
     >
-      {isOpen ? <PanelLeftCloseIcon className="size-4" /> : <PanelLeftIcon className="size-4" />}
+      <Icon className="size-4" />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   );

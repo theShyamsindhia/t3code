@@ -36,10 +36,8 @@ export function shouldUseRestingComposerLayout(input: {
   // line and overlays its actions; non-image attachment and context
   // rows keep their natural height above it while image previews move inline.
   // Banners and the tasks badge dock above the surface, so they are absent
-  // too. Whether the context strip can host the relocated controls is
-  // deliberately absent here: resting reclaims vertical space at every
-  // desktop width, and where the strip is missing or too narrow the controls
-  // simply return when the composer is focused.
+  // too. The context strip is optional: collapsed controls use it when
+  // present and otherwise occupy a compact row inside the composer.
   //
   // Only a timeline scroll rests the composer: the user asked for it with the
   // gesture, and it lifts on the next composer interaction. Losing focus never
@@ -60,13 +58,12 @@ export function shouldUseRestingComposerLayout(input: {
 }
 
 /**
- * How much taller the empty expanded composer is than its resting row, from
- * the layout classes in ChatComposer and ComposerPromptEditorTiptap: the body
- * loses 4px of top padding, the prompt clamps from min-h-12 (40px in flow
- * after its -m-1) to 32px, and the 40px footer (32px row + pb-2) leaves flow.
- * Update this with those classes, or expanding shifts the timeline.
+ * How much taller the empty expanded composer is than its resting row on
+ * desktop widths, from the layout classes in ChatComposer: the body loses
+ * 8px of top padding, the prompt clamps from min-h-17.5 (70px) to 32px, and
+ * the 48px footer leaves flow.
  */
-export const COMPOSER_RESTING_EXPANSION_MIN_PX = 52;
+export const COMPOSER_RESTING_EXPANSION_MIN_PX = 94;
 
 /**
  * The space the timeline reserves at its end for the composer overlay.
@@ -75,88 +72,38 @@ export const COMPOSER_RESTING_EXPANSION_MIN_PX = 52;
  * an expanded one. Reserving only the resting height lets a scroll to the end
  * land flush against the short composer, and the expansion that follows then
  * covers the last rows because the timeline never moves for footer growth.
- * While resting, the reservation keeps the last expanded height, or at least
- * the resting height plus the empty expansion, so expanding again changes
- * nothing above the composer. An expanded measurement is authoritative and
- * may shrink it.
+ * While resting, keep the measured expanded height. Estimate the empty
+ * expansion only before that measurement exists: strip mounting can otherwise
+ * inflate the estimate mid-transition and move the timeline. An expanded
+ * measurement is authoritative and may shrink the reservation.
  */
 export function resolveComposerTimelineInset(input: {
   currentInset: number;
   overlayHeight: number;
   isResting: boolean;
+  restingOnlyHeight?: number;
 }): number {
   return input.isResting
-    ? Math.max(input.currentInset, input.overlayHeight + COMPOSER_RESTING_EXPANSION_MIN_PX)
+    ? Math.max(
+        input.currentInset,
+        input.overlayHeight +
+          (input.currentInset === 0
+            ? COMPOSER_RESTING_EXPANSION_MIN_PX - (input.restingOnlyHeight ?? 0)
+            : 0),
+      )
     : input.overlayHeight;
 }
 
 /**
- * Timing for a resting-transition height tween that may interrupt one in
- * flight. A retarget toward the same destination (the body re-reporting its
- * size mid-tween) keeps the original start height and clock: restarting would
- * leave each new animation pending on its first keyframe, so the card would
- * freeze and then snap. A genuinely new destination (say, a multiline paste)
- * restarts from the height currently on screen for the remaining time, started
- * immediately rather than pending. A reversed state change gets a fresh tween.
+ * Whether the overlay's composer is resting. Only a mounted composer can be:
+ * a status bar in its place (a native subagent thread) never is, even if the
+ * composer it replaced last reported resting.
  */
-export function resolveComposerRestingTweenTiming(input: {
-  stateChanged: boolean;
-  defaultDurationMs: number;
-  nextHeight: number;
-  /** Height at rest before this change, used when nothing was in flight. */
-  settledHeight: number | null;
-  interrupted: {
-    renderedHeight: number;
-    startTime: number | null;
-    currentTime: number | null;
-    durationMs: number | null;
-    fromHeight: number | null;
-    targetHeight: number | null;
-  } | null;
-}): {
-  fromHeight: number | null;
-  durationMs: number;
-  remainingMs: number;
-  /** A time to start on, "now" to skip the pending frame, or null for the default. */
-  startTime: number | "now" | null;
-} {
-  const { interrupted } = input;
-  if (!interrupted) {
-    return {
-      fromHeight: input.settledHeight,
-      durationMs: input.defaultDurationMs,
-      remainingMs: input.defaultDurationMs,
-      startTime: null,
-    };
-  }
-  const midFlight =
-    !input.stateChanged && interrupted.durationMs !== null && interrupted.currentTime !== null;
-  if (!midFlight || interrupted.durationMs === null || interrupted.currentTime === null) {
-    return {
-      fromHeight: interrupted.renderedHeight,
-      durationMs: input.defaultDurationMs,
-      remainingMs: input.defaultDurationMs,
-      startTime: null,
-    };
-  }
-  const remainingMs = Math.max(1, interrupted.durationMs - interrupted.currentTime);
-  const sameDestination =
-    interrupted.targetHeight !== null &&
-    Math.abs(interrupted.targetHeight - input.nextHeight) < 0.5;
-  if (sameDestination && interrupted.startTime !== null && interrupted.fromHeight !== null) {
-    return {
-      fromHeight: interrupted.fromHeight,
-      durationMs: interrupted.durationMs,
-      remainingMs,
-      startTime: interrupted.startTime,
-    };
-  }
-  return {
-    fromHeight: interrupted.renderedHeight,
-    durationMs: remainingMs,
-    remainingMs,
-    startTime: "now",
-  };
+export function overlayComposerIsResting(input: {
+  composerMounted: boolean;
+  composerReportedResting: boolean;
+}): boolean {
+  return input.composerMounted && input.composerReportedResting;
 }
 
 export function shouldAnimateComposerRestingTransition(input: {

@@ -6,7 +6,7 @@ import {
   COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX,
   COMPOSER_RESTING_EXPANSION_MIN_PX,
   getRestingComposerImagePreviewCounts,
-  resolveComposerRestingTweenTiming,
+  overlayComposerIsResting,
   resolveComposerTimelineInset,
   resolveScrollToEndClearance,
   resolveRestingComposerControlsLayout,
@@ -78,6 +78,24 @@ describe("shouldUseCompactComposerPrimaryActions", () => {
   });
 });
 
+describe("overlayComposerIsResting", () => {
+  it("drops a resting reservation once a status bar replaces the composer", () => {
+    // The composer rested on a scroll, then the thread swapped it for the
+    // subagent bar. The bar's 56px overlay must not keep the resting estimate.
+    const isResting = overlayComposerIsResting({
+      composerMounted: false,
+      composerReportedResting: true,
+    });
+    expect(isResting).toBe(false);
+    expect(resolveComposerTimelineInset({ currentInset: 0, overlayHeight: 56, isResting })).toBe(
+      56,
+    );
+    expect(overlayComposerIsResting({ composerMounted: true, composerReportedResting: true })).toBe(
+      true,
+    );
+  });
+});
+
 describe("resolveComposerTimelineInset", () => {
   it("follows the expanded overlay height", () => {
     expect(
@@ -89,6 +107,34 @@ describe("resolveComposerTimelineInset", () => {
     expect(
       resolveComposerTimelineInset({ currentInset: 200, overlayHeight: 60, isResting: true }),
     ).toBe(200);
+  });
+
+  it("uses the measured expanded height while the resting strip host is mounting", () => {
+    expect(
+      resolveComposerTimelineInset({ currentInset: 172, overlayHeight: 110, isResting: true }),
+    ).toBe(172);
+  });
+
+  it("keeps timeline padding stable when the model-only strip appears on collapse", () => {
+    const expanded = resolveComposerTimelineInset({
+      currentInset: 0,
+      overlayHeight: 172,
+      isResting: false,
+    });
+    const collapsed = resolveComposerTimelineInset({
+      currentInset: expanded,
+      overlayHeight: 110,
+      isResting: true,
+      restingOnlyHeight: 32,
+    });
+    expect(collapsed).toBe(expanded);
+    expect(
+      resolveComposerTimelineInset({
+        currentInset: collapsed,
+        overlayHeight: 172,
+        isResting: false,
+      }),
+    ).toBe(expanded);
   });
 
   it("reserves the empty expansion when no larger height is known", () => {
@@ -524,66 +570,5 @@ describe("progressive composer controls", () => {
         previous = next;
       }
     }
-  });
-});
-
-describe("resolveComposerRestingTweenTiming", () => {
-  const inFlight = {
-    renderedHeight: 80,
-    startTime: 1_000,
-    currentTime: 60,
-    durationMs: 200,
-    fromHeight: 50,
-    targetHeight: 102,
-  };
-
-  it("starts a default-length tween from the settled height when nothing is in flight", () => {
-    expect(
-      resolveComposerRestingTweenTiming({
-        stateChanged: true,
-        defaultDurationMs: 200,
-        nextHeight: 102,
-        settledHeight: 50,
-        interrupted: null,
-      }),
-    ).toEqual({ fromHeight: 50, durationMs: 200, remainingMs: 200, startTime: null });
-  });
-
-  it("keeps the original start and clock when a retarget lands on the same destination", () => {
-    expect(
-      resolveComposerRestingTweenTiming({
-        stateChanged: false,
-        defaultDurationMs: 200,
-        nextHeight: 102.2,
-        settledHeight: 50,
-        interrupted: inFlight,
-      }),
-    ).toEqual({ fromHeight: 50, durationMs: 200, remainingMs: 140, startTime: 1_000 });
-  });
-
-  it("retargets a new destination from the rendered height without restarting the clock", () => {
-    // A multiline paste mid-expansion: reusing the original start height and
-    // progress against the taller target would jump the card immediately.
-    expect(
-      resolveComposerRestingTweenTiming({
-        stateChanged: false,
-        defaultDurationMs: 200,
-        nextHeight: 240,
-        settledHeight: 50,
-        interrupted: inFlight,
-      }),
-    ).toEqual({ fromHeight: 80, durationMs: 140, remainingMs: 140, startTime: "now" });
-  });
-
-  it("gives a reversed state change a fresh tween from the rendered height", () => {
-    expect(
-      resolveComposerRestingTweenTiming({
-        stateChanged: true,
-        defaultDurationMs: 200,
-        nextHeight: 50,
-        settledHeight: 102,
-        interrupted: inFlight,
-      }),
-    ).toEqual({ fromHeight: 80, durationMs: 200, remainingMs: 200, startTime: null });
   });
 });
