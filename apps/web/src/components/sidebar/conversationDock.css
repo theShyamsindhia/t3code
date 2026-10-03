@@ -119,3 +119,26 @@
     flex-basis: calc((100% - 0.25rem) / 2);
   }
 }
+
+/* Thin highlights keep the selected glass distinguishable without an opaque tile. */
+[data-theme-id="liquid-glass"][data-glass-style="clear"]
+  :is([data-conversation-dock-views] > button, [data-testid="conversation-dock-row"]) {
+  border-radius: 0.625rem;
+  color: var(--sidebar-foreground);
+}
+
+[data-theme-id="liquid-glass"][data-glass-style="clear"]
+  :is([data-conversation-dock-views] > button, [data-testid="conversation-dock-row"]):is(
+    :hover,
+    [aria-pressed="true"],
+    [aria-current="page"]
+  ) {
+  background-image: linear-gradient(160deg, rgb(255 255 255 / 12%), transparent 55%);
+  box-shadow: var(--dock-glass-rim);
+}
+
+[data-theme-id="liquid-glass"][data-glass-style="clear"]
+  [data-testid="conversation-dock-row"]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}

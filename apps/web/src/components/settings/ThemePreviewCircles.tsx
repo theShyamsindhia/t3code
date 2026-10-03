@@ -5,6 +5,7 @@ import {
   THEME_PREVIEW_RENDER_SPECS,
 } from "@t3tools/shared/themePreview";
 import { cn } from "../../lib/utils";
+import { ThemeWireframe } from "./ThemeWireframe";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   getThemeColorsForMode,
@@ -25,7 +26,10 @@ const THEME_PREVIEW_ROLES = [
 type ThemePreviewRole = (typeof THEME_PREVIEW_ROLES)[number];
 type ThemeCardPreview = {
   mode: ThemeAppearance;
-  colors: Readonly<Record<ThemePreviewRole, string>>;
+  colors: Readonly<Record<ThemePreviewRole, string>> & {
+    frameTheme?: string;
+    appearance?: ThemeAppearance;
+  };
 };
 export type ThemeCardDefinition = {
   id: string;
@@ -35,11 +39,9 @@ export type ThemeCardDefinition = {
 export type ThemeMode = ThemeAppearance | "system";
 export type ThemeCardPreviewColors = ThemeCardPreview["colors"];
 
-const STANDARD_THEME_PREVIEW_COLORS: Record<
-  ThemeAppearance,
-  Readonly<Record<ThemePreviewRole, string>>
-> = {
+const STANDARD_THEME_PREVIEW_COLORS: Record<ThemeAppearance, ThemeCardPreviewColors> = {
   light: {
+    appearance: "light",
     sidebar: "#fafafa",
     surface: "#ffffff",
     accentSurface: "#f4f4f5",
@@ -47,6 +49,7 @@ const STANDARD_THEME_PREVIEW_COLORS: Record<
     ...SHARED_STANDARD_THEME_PREVIEW_COLORS.light,
   },
   dark: {
+    appearance: "dark",
     sidebar: "#0f0f10",
     surface: "#121212",
     accentSurface: "#27272a",
@@ -82,6 +85,8 @@ export function getThemeCardDefinition(theme: ThemeDefinition): ThemeCardDefinit
       return {
         mode,
         colors: {
+          frameTheme: theme.id,
+          appearance: mode,
           sidebar: colors.sidebar,
           canvas: colors.canvas,
           surface: colors.surface,
@@ -159,8 +164,8 @@ export function ThemePreviewCircle({
 }
 
 /**
- * A theme card's light and dark balls. Clicking a ball assigns that theme to
- * that half of the appearance mix; assigned balls carry a ring and a sun or
+ * A theme card's light and dark previews. Clicking one assigns that theme to
+ * that half of the appearance mix; assigned previews carry a ring and a sun or
  * moon badge.
  */
 export function ThemePreviewCircles({
@@ -187,8 +192,8 @@ export function ThemePreviewCircles({
                   aria-label={`Use ${label} ${mode} mode`}
                   aria-pressed={isPicked}
                   className={cn(
-                    "relative flex size-[68px] shrink-0 transform-gpu cursor-pointer items-center justify-center rounded-full p-1 outline-none transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
-                    isPicked && "hover:scale-100",
+                    "relative flex min-w-0 flex-1 cursor-pointer items-center justify-center rounded-lg p-1 outline-none hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
+                    isPicked && "bg-accent/30",
                   )}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -196,12 +201,12 @@ export function ThemePreviewCircles({
                   }}
                   type="button"
                 >
-                  <ThemePreviewCircle colors={preview.colors} mode={mode} />
+                  <ThemeWireframe className="h-16" panes={[{ colors: preview.colors }]} />
                   {isPicked ? (
                     <>
                       <span
                         aria-hidden
-                        className="pointer-events-none absolute inset-0 rounded-full"
+                        className="pointer-events-none absolute inset-0 rounded-lg"
                         style={{ boxShadow: "inset 0 0 0 2px var(--ring)" }}
                       />
                       <span

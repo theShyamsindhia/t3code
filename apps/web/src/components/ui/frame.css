@@ -1,5 +1,5 @@
 /* The workspace and portalled dialogs share one frame palette. */
-:is([data-conversation-layout="dock"], .dialog-frame) {
+:is([data-conversation-layout="dock"], .dialog-frame, [data-frame-theme]) {
   --conversation-frame: light-dark(
     var(--sidebar),
     color-mix(in srgb, var(--background) 50%, black)
@@ -7,7 +7,10 @@
   --frame-paint: var(--conversation-frame);
 }
 
-[data-theme-id="afterglow"] :is([data-conversation-layout="dock"], .dialog-frame) {
+:is(
+  [data-theme-id="afterglow"] :is([data-conversation-layout="dock"], .dialog-frame),
+  [data-frame-theme="afterglow"]
+) {
   --conversation-frame: light-dark(#e6e2ee, #151528);
   --conversation-frame-violet: light-dark(
     hsl(from #c8b8dc calc(h + var(--conversation-frame-hue, 0)) s l),
@@ -38,7 +41,10 @@
       var(--conversation-frame);
 }
 
-[data-theme-id="cloud"] :is([data-conversation-layout="dock"], .dialog-frame) {
+:is(
+  [data-theme-id="cloud"] :is([data-conversation-layout="dock"], .dialog-frame),
+  [data-frame-theme="cloud"]
+) {
   --conversation-frame: light-dark(#64b9dc, #163b55);
   --conversation-cloud: light-dark(#f5fcff, #426b84);
   --conversation-send-background: linear-gradient(
@@ -79,15 +85,12 @@
     [data-slot="alert-dialog-footer"],
     [data-slot="command-footer"]
   ) {
-  --primary: var(--sidebar-foreground);
-  --primary-foreground: var(--sidebar);
   --contrast-foreground: var(--sidebar-foreground);
   --contrast-muted-foreground: var(--sidebar-muted-foreground);
-  --control-radius: 999px;
   position: relative;
   border-top: 0;
   border-radius: 0 0 calc(var(--radius-2xl) - 4px) calc(var(--radius-2xl) - 4px);
-  padding: 0.875rem 0.75rem 0.375rem;
+  padding: 0.625rem 0.75rem 0.375rem;
   background: var(--frame-paint);
   color: var(--sidebar-foreground);
 }
@@ -108,38 +111,89 @@
   pointer-events: none;
 }
 
-.dialog-frame
-  :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"], [data-slot="command-footer"])
-  [data-slot="button"][data-variant="outline"] {
-  --control-icon-color: currentColor;
-  border-color: transparent;
-  background: transparent;
-  color: var(--sidebar-foreground);
-  box-shadow: none;
-}
-
-.dialog-frame
-  :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"], [data-slot="command-footer"])
-  [data-slot="button"][data-variant="outline"]::before {
-  box-shadow: none;
-}
-
-.dialog-frame
-  :is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"], [data-slot="command-footer"])
-  [data-slot="button"][data-variant="outline"]:hover {
-  background: color-mix(in srgb, var(--sidebar-foreground) 10%, transparent);
-}
-
-@media (min-width: 640px) {
-  .dialog-frame
-    :is(
-      [data-slot="dialog-footer"],
-      [data-slot="alert-dialog-footer"],
-      [data-slot="command-footer"]
+/* Only the frame is glass. Keeping the reading surface solid prevents text bleed. */
+:is(
+  [data-theme-id="liquid-glass"] :is([data-conversation-layout="dock"], .dialog-frame),
+  [data-frame-theme="liquid-glass"]
+) {
+  --conversation-frame: light-dark(#e8eaef, #2c2d32);
+  --frame-paint: linear-gradient(
+      135deg,
+      light-dark(rgb(255 255 255 / 58%), rgb(255 255 255 / 9%)),
+      transparent 45%,
+      light-dark(rgb(209 220 235 / 30%), rgb(154 172 202 / 8%))
     )
-    [data-slot="button"][data-size="default"] {
-    height: 1.75rem;
-    padding-inline: 0.75rem;
-    font-size: 0.75rem;
+    color-mix(in srgb, var(--conversation-frame) var(--glass-opacity, 80%), transparent);
+}
+
+[data-theme-id="liquid-glass"] [data-conversation-layout="dock"] {
+  box-shadow: inset 0 0 0 1px light-dark(rgb(255 255 255 / 75%), rgb(255 255 255 / 18%));
+}
+
+[data-theme-id="liquid-glass"] .dialog-frame {
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+}
+
+/* A translucent scrim keeps dock text legible over AppKit's changing backdrop. */
+[data-native-glass] [data-conversation-layout="dock"] {
+  --frame-paint: light-dark(rgb(255 255 255 / 50%), rgb(15 15 19 / 68%));
+  box-shadow: none;
+}
+
+/* Clear leaves AppKit's material visible instead of adding the Regular scrim. */
+[data-theme-id="liquid-glass"][data-glass-style="clear"] [data-conversation-layout="dock"] {
+  --frame-paint: light-dark(rgb(237 244 255 / 35%), rgb(25 29 39 / 35%));
+}
+
+[data-native-glass][data-glass-style="clear"] [data-conversation-layout="dock"] {
+  --frame-paint: light-dark(rgb(255 255 255 / 8%), rgb(0 0 0 / 10%));
+}
+
+/* Page-muted colors cannot guarantee legibility over the changing desktop. */
+[data-theme-id="liquid-glass"] [data-conversation-dock] {
+  --sidebar-foreground: light-dark(#101820, #ffffff);
+  --sidebar-muted-foreground: var(--sidebar-foreground);
+  --contrast-foreground: var(--sidebar-foreground);
+  --contrast-muted-foreground: var(--sidebar-foreground);
+  --contrast-secondary-label: var(--sidebar-foreground);
+  --contrast-icon-muted: var(--sidebar-foreground);
+  --contrast-sidebar-foreground: var(--sidebar-foreground);
+  --contrast-sidebar-muted-foreground: var(--sidebar-foreground);
+  --sidebar-icon-color: var(--sidebar-foreground);
+  /* Keep a contrast floor even when the wallpaper is opposite the app's appearance. */
+  background: light-dark(rgb(255 255 255 / 65%), rgb(0 0 0 / 66%));
+}
+
+[data-theme-id="liquid-glass"][data-glass-style="clear"] [data-conversation-dock] {
+  --sidebar-row-active: light-dark(rgb(255 255 255 / 38%), rgb(255 255 255 / 16%));
+  --sidebar-row-selected: var(--sidebar-row-active);
+  --sidebar-row-hover: light-dark(rgb(255 255 255 / 26%), rgb(255 255 255 / 10%));
+  --dock-glass-rim:
+    inset 0 1px 0 rgb(255 255 255 / 45%),
+    inset 0 0 0 1px light-dark(rgb(255 255 255 / 28%), rgb(255 255 255 / 18%)),
+    0 1px 3px rgb(0 0 0 / 8%);
+}
+
+/* Sidebar controls own their glass state; focus rings and hit areas stay intact. */
+[data-theme-id="liquid-glass"][data-glass-style="clear"]
+  [data-conversation-dock]
+  [data-slot="sidebar-menu-button"]:is(:hover, [data-active="true"], [aria-expanded="true"]) {
+  background: var(--sidebar-row-hover);
+  box-shadow: var(--dock-glass-rim);
+}
+
+[data-theme-id="liquid-glass"][data-glass-style="clear"]
+  [data-conversation-dock]
+  [data-slot="sidebar-menu-button"]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-theme-id="liquid-glass"] :is([data-conversation-layout="dock"], .dialog-frame) {
+    --frame-paint: var(--conversation-frame);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }

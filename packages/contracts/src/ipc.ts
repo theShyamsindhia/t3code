@@ -89,6 +89,8 @@ export type DesktopUpdateStatus =
 
 export type DesktopRuntimeArch = "arm64" | "x64" | "other";
 export type DesktopTheme = "light" | "dark" | "system";
+export const DesktopGlassStyleSchema = Schema.Literals(["regular", "clear"]);
+export type DesktopGlassStyle = typeof DesktopGlassStyleSchema.Type;
 export type DesktopUpdateChannel = "latest" | "nightly";
 export type DesktopAppStageLabel = "Alpha" | "Dev" | "Nightly";
 
@@ -1207,7 +1209,14 @@ export interface DesktopBridge {
    * web callers fall back to a plain file input.
    */
   pickThemeFiles?: () => Promise<readonly PickedThemeFile[] | null>;
-  setTheme: (theme: DesktopTheme) => Promise<void>;
+  /** Native translucent window material, available in newer macOS shells. */
+  supportsVibrancy?: boolean;
+  /** This window can render Apple's NSGlassEffectView (macOS 26 or newer). */
+  supportsLiquidGlass?: boolean;
+  setTheme: (
+    theme: DesktopTheme,
+    options?: { vibrancy: boolean; glassStyle?: DesktopGlassStyle },
+  ) => Promise<void>;
   showContextMenu: <T extends string>(
     items: readonly ContextMenuItem<T>[],
     position?: { x: number; y: number },

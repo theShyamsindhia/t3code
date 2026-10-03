@@ -201,6 +201,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["colors borders interface"],
   },
   {
+    id: "setting-liquid-glass-style",
+    title: "Liquid Glass style",
+    to: "/settings/appearance",
+    searchTerms: ["clear regular native transparency frame dock"],
+  },
+  {
     // Prefixed because the slider control already owns the `glass-opacity` id.
     id: "setting-glass-opacity",
     title: "Glass opacity",

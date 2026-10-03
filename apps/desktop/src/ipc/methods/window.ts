@@ -3,6 +3,7 @@ import {
   DesktopAppBrandingSchema,
   DesktopEnvironmentBootstrapSchema,
   DesktopThemeSchema,
+  DesktopGlassStyleSchema,
   EDITORS,
   EditorId,
   PickedThemeFileSchema,
@@ -35,6 +36,7 @@ import * as ElectronMenu from "../../electron/ElectronMenu.ts";
 import * as ElectronShell from "../../electron/ElectronShell.ts";
 import * as ElectronTheme from "../../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
+import * as DesktopWindow from "../../window/DesktopWindow.ts";
 import * as Electron from "electron";
 import * as MacPermissions from "../../permissions/MacPermissions.ts";
 import { safariPermissionCheck } from "../../preview/BrowserImport/SafariPermission.ts";
@@ -272,11 +274,25 @@ export const pickProjectFavicon = DesktopIpc.makeIpcMethod({
 
 export const setTheme = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.SET_THEME_CHANNEL,
-  payload: DesktopThemeSchema,
+  payload: Schema.Union([
+    DesktopThemeSchema,
+    Schema.Struct({
+      theme: DesktopThemeSchema,
+      vibrancy: Schema.Boolean,
+      glassStyle: Schema.optional(DesktopGlassStyleSchema),
+    }),
+  ]),
   result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.window.setTheme")(function* (theme) {
+  handler: Effect.fn("desktop.ipc.window.setTheme")(function* (input) {
     const electronTheme = yield* ElectronTheme.ElectronTheme;
-    yield* electronTheme.setSource(theme);
+    const desktopWindow = yield* DesktopWindow.DesktopWindow;
+    const theme = typeof input === "string" ? input : input.theme;
+    yield* electronTheme.setSource(
+      theme,
+      typeof input === "string" ? false : input.vibrancy,
+      typeof input === "string" ? "regular" : input.glassStyle,
+    );
+    yield* desktopWindow.syncAppearance;
   }),
 });
 

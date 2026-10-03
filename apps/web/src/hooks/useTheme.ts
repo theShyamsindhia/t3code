@@ -1,4 +1,4 @@
-import type { DesktopBridge } from "@t3tools/contracts";
+import type { DesktopBridge, DesktopGlassStyle } from "@t3tools/contracts";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import * as Schema from "effect/Schema";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
@@ -31,11 +31,16 @@ type ThemeSnapshot = {
   followSystem: boolean;
   appearanceMode: ThemePreferenceMode;
   themeHalves: ThemeHalves | null;
+  glassStyle: DesktopGlassStyle;
 };
 
-type DesktopThemeBridge = Pick<DesktopBridge, "setTheme">;
+type DesktopThemeBridge = Pick<
+  DesktopBridge,
+  "setTheme" | "supportsVibrancy" | "supportsLiquidGlass"
+>;
 
 const STORAGE_KEY = "t3code:theme";
+const GLASS_STYLE_STORAGE_KEY = "t3code:liquid-glass-style";
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
 const DEFAULT_THEME_SNAPSHOT: ThemeSnapshot = {
   theme: "system",
@@ -44,6 +49,7 @@ const DEFAULT_THEME_SNAPSHOT: ThemeSnapshot = {
   followSystem: true,
   appearanceMode: "system",
   themeHalves: null,
+  glassStyle: "regular",
 };
 
 /** Live read of the stored appearance mix, for callers that must not rely on
@@ -95,6 +101,15 @@ function readStoredThemeHalvesRaw(): { light?: string; dark?: string } {
   }
 }
 
+function readGlassStyle(): DesktopGlassStyle {
+  if (typeof window === "undefined") return "regular";
+  try {
+    return window.localStorage.getItem(GLASS_STYLE_STORAGE_KEY) === "clear" ? "clear" : "regular";
+  } catch {
+    return "regular";
+  }
+}
+
 function themeHalvesSignature(halves: ThemeHalves | null): string {
   return `${halves?.light ?? ""}|${halves?.dark ?? ""}`;
 }
@@ -135,7 +150,7 @@ export const isDesktopThemeSyncError = Schema.is(DesktopThemeSyncError);
 let listeners: Array<() => void> = [];
 let lastSnapshot: ThemeSnapshot | null = null;
 let snapshotStale = true;
-let lastDesktopTheme: "light" | "dark" | "system" | null = null;
+let lastDesktopTheme: string | null = null;
 let lastAppliedTheme: Omit<ThemeSnapshot, "resolvedTheme"> | null = null;
 let themeStorageReadFailure: ThemeStorageError | null = null;
 
@@ -304,8 +319,16 @@ export function syncBrowserChromeTheme() {
   const backgroundColor = themeChromeColor ?? surfaceColor ?? fallbackColor;
   if (!backgroundColor) return;
 
-  document.documentElement.style.backgroundColor = backgroundColor;
-  document.body.style.backgroundColor = backgroundColor;
+  const nativeGlass =
+    window.desktopBridge?.supportsVibrancy &&
+    document.documentElement.dataset.themeId === "liquid-glass";
+  document.documentElement.dataset.glassStyle = readGlassStyle();
+  document.documentElement.toggleAttribute(
+    "data-native-glass",
+    Boolean(nativeGlass && window.desktopBridge?.supportsLiquidGlass),
+  );
+  document.documentElement.style.backgroundColor = nativeGlass ? "transparent" : backgroundColor;
+  document.body.style.backgroundColor = nativeGlass ? "transparent" : backgroundColor;
   // Update every theme-color meta so any element another layer added (for
   // example a media-scoped one) carries the resolved color too.
   const themeColorMetas = document.querySelectorAll<HTMLMetaElement>(
@@ -330,11 +353,13 @@ function applyTheme(theme: Theme, { suppressTransitions = false, preservePreview
   const followSystem = appearanceMode === "system";
   const systemDark = followSystem ? getSystemDark() : false;
   const themeHalves = readStoredThemeHalves();
+  const glassStyle = readGlassStyle();
   if (
     lastAppliedTheme?.theme === theme &&
     lastAppliedTheme.systemDark === systemDark &&
     lastAppliedTheme.followSystem === followSystem &&
     lastAppliedTheme.appearanceMode === appearanceMode &&
+    lastAppliedTheme.glassStyle === glassStyle &&
     themeHalvesSignature(lastAppliedTheme.themeHalves) === themeHalvesSignature(themeHalves)
   ) {
     syncDesktopTheme(theme, followSystem, appearanceMode);
@@ -353,7 +378,7 @@ function applyTheme(theme: Theme, { suppressTransitions = false, preservePreview
   );
   applyThemePalette(resolveThemeHalf(theme, themeHalves, resolvedAppearance), resolvedAppearance);
   document.documentElement.classList.toggle("dark", resolvedAppearance === "dark");
-  lastAppliedTheme = { theme, systemDark, followSystem, appearanceMode, themeHalves };
+  lastAppliedTheme = { theme, systemDark, followSystem, appearanceMode, themeHalves, glassStyle };
   syncBrowserChromeTheme();
   syncDesktopTheme(theme, followSystem, appearanceMode);
   if (suppressTransitions) {
@@ -365,6 +390,22 @@ function applyTheme(theme: Theme, { suppressTransitions = false, preservePreview
   }
 }
 
+function usesGlassTheme(
+  theme: Theme,
+  followSystem?: boolean,
+  appearanceMode?: ThemePreferenceMode,
+  halves: ThemeHalves | null = readStoredThemeHalves(),
+) {
+  const appearance = resolveThemeAppearance(
+    theme,
+    getSystemDark(),
+    followSystem,
+    appearanceMode,
+    halves,
+  );
+  return resolveThemeHalf(theme, halves, appearance) === "liquid-glass";
+}
+
 export async function syncDesktopThemePreference(
   bridge: DesktopThemeBridge,
   theme: Theme,
@@ -373,7 +414,15 @@ export async function syncDesktopThemePreference(
   halves: ThemeHalves | null = readStoredThemeHalves(),
 ): Promise<void> {
   try {
-    await bridge.setTheme(resolveDesktopTheme(theme, followSystem, appearanceMode, halves));
+    const desktopTheme = resolveDesktopTheme(theme, followSystem, appearanceMode, halves);
+    if (bridge.supportsVibrancy) {
+      await bridge.setTheme(desktopTheme, {
+        vibrancy: usesGlassTheme(theme, followSystem, appearanceMode, halves),
+        ...(bridge.supportsLiquidGlass ? { glassStyle: readGlassStyle() } : {}),
+      });
+    } else {
+      await bridge.setTheme(desktopTheme);
+    }
   } catch (cause) {
     throw new DesktopThemeSyncError({ theme, cause });
   }
@@ -387,7 +436,7 @@ export function syncDesktopTheme(
   if (typeof window === "undefined") return;
   const bridge = window.desktopBridge;
   const halves = readStoredThemeHalves();
-  const desktopTheme = resolveDesktopTheme(theme, followSystem, appearanceMode, halves);
+  const desktopTheme = `${resolveDesktopTheme(theme, followSystem, appearanceMode, halves)}:${usesGlassTheme(theme, followSystem, appearanceMode, halves)}:${readGlassStyle()}`;
   if (!bridge || typeof bridge.setTheme !== "function" || lastDesktopTheme === desktopTheme) {
     return;
   }
@@ -425,6 +474,7 @@ function getSnapshot(): ThemeSnapshot {
   const followSystem = appearanceMode === "system";
   const systemDark = followSystem ? getSystemDark() : false;
   const themeHalves = readStoredThemeHalves();
+  const glassStyle = readGlassStyle();
 
   const resolvedTheme = resolveThemeAppearance(
     theme,
@@ -440,12 +490,21 @@ function getSnapshot(): ThemeSnapshot {
     lastSnapshot.systemDark === systemDark &&
     lastSnapshot.followSystem === followSystem &&
     lastSnapshot.appearanceMode === appearanceMode &&
+    lastSnapshot.glassStyle === glassStyle &&
     themeHalvesSignature(lastSnapshot.themeHalves) === themeHalvesSignature(themeHalves)
   ) {
     return lastSnapshot;
   }
 
-  lastSnapshot = { theme, resolvedTheme, systemDark, followSystem, appearanceMode, themeHalves };
+  lastSnapshot = {
+    theme,
+    resolvedTheme,
+    systemDark,
+    followSystem,
+    appearanceMode,
+    themeHalves,
+    glassStyle,
+  };
   return lastSnapshot;
 }
 
@@ -469,7 +528,11 @@ function handleStorageChange(e: StorageEvent) {
   } else if (e.key === THEME_FOLLOW_SYSTEM_STORAGE_KEY) {
     applyTheme(getStored(), { suppressTransitions: true });
     emitChange();
-  } else if (e.key === THEME_APPEARANCE_MODE_STORAGE_KEY || e.key === THEME_HALVES_STORAGE_KEY) {
+  } else if (
+    e.key === THEME_APPEARANCE_MODE_STORAGE_KEY ||
+    e.key === THEME_HALVES_STORAGE_KEY ||
+    e.key === GLASS_STYLE_STORAGE_KEY
+  ) {
     applyTheme(getStored(), { suppressTransitions: true });
     emitChange();
   } else if (e.key === CUSTOM_THEMES_STORAGE_KEY || e.key === null) {
@@ -583,6 +646,24 @@ export function useTheme() {
     return true;
   }, []);
 
+  const setGlassStyle = useCallback((style: DesktopGlassStyle): boolean => {
+    if (typeof window === "undefined") return false;
+    try {
+      window.localStorage.setItem(GLASS_STYLE_STORAGE_KEY, style);
+    } catch (cause) {
+      const error = new ThemeStorageError({
+        operation: "write",
+        storageKey: GLASS_STYLE_STORAGE_KEY,
+        cause,
+      });
+      console.error(error.message, safeErrorLogAttributes(error));
+      return false;
+    }
+    applyTheme(getStored(), { suppressTransitions: true });
+    emitChange();
+    return true;
+  }, []);
+
   const setFollowSystem = useCallback(
     (nextFollowSystem: boolean): boolean => {
       const currentMode = readAppearanceModePreference(theme);
@@ -667,6 +748,8 @@ export function useTheme() {
     theme,
     setTheme,
     setAppearanceMode,
+    setGlassStyle,
+    glassStyle: snapshot.glassStyle,
     setFollowSystem,
     setThemeHalf,
     clearThemeHalves,

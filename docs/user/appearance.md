@@ -5,6 +5,13 @@ appearance or stay in light or dark mode. To use different themes for light and 
 the corresponding preview within each theme. Appearance preferences are saved separately on each
 device or browser.
 
+**Liquid Glass** uses Apple's native glass for the window frame and chat dock on macOS 26
+or newer. Older Macs use native translucency; other clients retain the same light and dark
+palette. Choose **Regular** or **Clear** under **Liquid Glass style** in Appearance; Clear
+reveals more of the backdrop. The reading area stays solid. macOS **Reduce transparency** makes the frame solid;
+**Glass opacity** adjusts the app's translucent menus and dialogs. Switching themes takes
+effect immediately.
+
 On web and desktop, use **Change theme** in the command palette to select a theme without leaving chat.
 Press **Cmd+Option+A** on macOS or **Ctrl+Alt+A** on Windows/Linux to open the theme picker directly.
 Use **Change appearance** in the command palette to choose System, Light, or Dark independently of

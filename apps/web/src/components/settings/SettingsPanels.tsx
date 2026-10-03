@@ -1124,6 +1124,8 @@ function BackgroundActivityAdvancedDialog({
 export function AppearanceSettingsPanel() {
   const {
     appearanceMode,
+    glassStyle,
+    setGlassStyle,
     refreshTheme,
     resolvedTheme,
     setAppearanceMode,
@@ -1230,8 +1232,31 @@ export function AppearanceSettingsPanel() {
         />
 
         <SettingsRow
+          {...searchableSetting("setting-liquid-glass-style")}
+          description="For the Liquid Glass theme. Clear reveals more of the backdrop through the frame and chat dock."
+          control={
+            <div className="w-full sm:w-40">
+              <Select
+                value={glassStyle}
+                onValueChange={(value) => {
+                  if (value === "regular" || value === "clear") setGlassStyle(value);
+                }}
+              >
+                <SelectTrigger size="sm" className="w-full" aria-label="Liquid Glass style">
+                  <SelectValue>{glassStyle === "clear" ? "Clear" : "Regular"}</SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end">
+                  <SelectItem value="regular">Regular</SelectItem>
+                  <SelectItem value="clear">Clear</SelectItem>
+                </SelectPopup>
+              </Select>
+            </div>
+          }
+        />
+
+        <SettingsRow
           {...searchableSetting("setting-glass-opacity")}
-          description="Higher values make menus, dialogs, and the composer more solid."
+          description="Controls translucency in menus, dialogs, and the composer. Reading areas stay solid."
           resetAction={
             settings.glassOpacity !== DEFAULT_UNIFIED_SETTINGS.glassOpacity ? (
               <SettingResetButton

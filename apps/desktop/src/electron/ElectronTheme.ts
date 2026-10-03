@@ -1,4 +1,4 @@
-import { DesktopThemeSchema, type DesktopTheme } from "@t3tools/contracts";
+import { DesktopThemeSchema, type DesktopTheme, type DesktopGlassStyle } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -23,18 +23,33 @@ export class ElectronTheme extends Context.Service<
   ElectronTheme,
   {
     readonly shouldUseDarkColors: Effect.Effect<boolean>;
-    readonly setSource: (theme: DesktopTheme) => Effect.Effect<void, ElectronThemeSetSourceError>;
+    readonly glassStyle: Effect.Effect<DesktopGlassStyle>;
+    readonly shouldUseVibrancy: Effect.Effect<boolean>;
+    readonly setSource: (
+      theme: DesktopTheme,
+      vibrancy?: boolean,
+      glassStyle?: DesktopGlassStyle,
+    ) => Effect.Effect<void, ElectronThemeSetSourceError>;
     readonly onUpdated: (listener: () => void) => Effect.Effect<void, never, Scope.Scope>;
   }
 >()("@t3tools/desktop/electron/ElectronTheme") {}
 
+let requestedVibrancy = false;
+let requestedGlassStyle: DesktopGlassStyle = "regular";
+
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = ElectronTheme.of({
+  glassStyle: Effect.sync(() => requestedGlassStyle),
   shouldUseDarkColors: Effect.sync(() => Electron.nativeTheme.shouldUseDarkColors),
-  setSource: (theme) =>
+  shouldUseVibrancy: Effect.sync(
+    () => requestedVibrancy && !Electron.nativeTheme.prefersReducedTransparency,
+  ),
+  setSource: (theme, vibrancy = false, glassStyle = "regular") =>
     Effect.try({
       try: () => {
         Electron.nativeTheme.themeSource = theme;
+        requestedVibrancy = vibrancy;
+        requestedGlassStyle = glassStyle;
       },
       catch: (cause) => new ElectronThemeSetSourceError({ source: theme, cause }),
     }),

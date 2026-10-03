@@ -37,6 +37,12 @@ describe("generate mobile Uniwind themes", () => {
       "ember-dark",
       "iris-light",
       "iris-dark",
+      "afterglow-light",
+      "afterglow-dark",
+      "cloud-light",
+      "cloud-dark",
+      "liquid-glass-light",
+      "liquid-glass-dark",
     ]);
 
     const stylesheet = renderUniwindThemesCSS();

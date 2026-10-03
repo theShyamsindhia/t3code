@@ -23,6 +23,8 @@ import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
+import * as ElectronTheme from "../../electron/ElectronTheme.ts";
+import * as DesktopWindow from "../../window/DesktopWindow.ts";
 import * as DesktopAppSettings from "../../settings/DesktopAppSettings.ts";
 import {
   getLocalEnvironmentBootstraps,
@@ -30,6 +32,7 @@ import {
   pasteAsText,
   pickProjectFavicon,
   probeRemoteEditors,
+  setTheme,
 } from "./window.ts";
 
 const readyWslConfig: DesktopBackendManager.DesktopBackendStartConfig = {
@@ -298,3 +301,39 @@ it.effect.skipIf(HostProcessPlatform.defaultValue() === "win32")(
       assert.notInclude(editors, "webstorm");
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+
+describe("setTheme payload", () => {
+  it.effect("accepts legacy themes and glass styles without accepting a style as the theme", () => {
+    const setSource = vi.fn(() => Effect.void);
+    return Effect.gen(function* () {
+      yield* setTheme.handler("dark");
+      yield* setTheme.handler({ theme: "system", vibrancy: true });
+      yield* setTheme.handler({ theme: "light", vibrancy: true, glassStyle: "clear" });
+      assert.deepEqual(setSource.mock.calls, [
+        ["dark", false, "regular"],
+        ["system", true, undefined],
+        ["light", true, "clear"],
+      ]);
+      const invalidTheme = yield* Effect.flip(setTheme.handler("clear").pipe(Effect.asVoid));
+      const invalidStyle = yield* Effect.flip(
+        setTheme
+          .handler({
+            theme: "dark",
+            vibrancy: true,
+            glassStyle: "unknown",
+          })
+          .pipe(Effect.asVoid),
+      );
+      assert.strictEqual(invalidTheme._tag, "SchemaError");
+      assert.strictEqual(invalidStyle._tag, "SchemaError");
+      assert.lengthOf(setSource.mock.calls, 3);
+    }).pipe(
+      Effect.provide(
+        Layer.merge(
+          Layer.mock(ElectronTheme.ElectronTheme, { setSource }),
+          Layer.mock(DesktopWindow.DesktopWindow, { syncAppearance: Effect.void }),
+        ),
+      ),
+    );
+  });
+});
