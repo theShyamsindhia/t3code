@@ -20,7 +20,7 @@
   margin-inline: 0.375rem;
   overflow: clip;
   /* Reveal the top edge without shifting the native titlebar alignment. */
-  clip-path: inset(0.375rem 0 0 round 1.5rem);
+  clip-path: inset(0.375rem 0 0 round var(--conversation-workspace-radius, 1.5rem));
   background: var(--background);
 }
 
