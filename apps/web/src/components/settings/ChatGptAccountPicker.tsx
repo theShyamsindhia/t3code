@@ -8,6 +8,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogPanel,
 } from "../ui/dialog";
 import { ChatGptConnectionButton } from "./ChatGptConnectionButton";
 
@@ -44,7 +45,7 @@ export function ChatGptAccountPicker({
             On OpenAI, sign in with the account you choose here.
           </DialogDescription>
         </DialogHeader>
-        <div className="px-6 pb-6">
+        <DialogPanel>
           <RadioGroup
             aria-label="ChatGPT account to connect"
             value={selectedMethodId}
@@ -64,7 +65,7 @@ export function ChatGptAccountPicker({
               <span className="font-medium">Use a different account</span>
             </label>
           </RadioGroup>
-        </div>
+        </DialogPanel>
         <DialogFooter>
           <ChatGptConnectionButton onClick={() => onSelect(selectedMethodId)} />
         </DialogFooter>

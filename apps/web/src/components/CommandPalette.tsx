@@ -1,5 +1,6 @@
 "use client";
 
+import { openUsagePopover } from "../usagePopoverBus";
 import { threadPullRequestLinkMode } from "@t3tools/client-runtime/thread-pull-request-compatibility";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 
@@ -556,7 +557,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         event.preventDefault();
         event.stopPropagation();
         setOpen(false);
-        void navigate({ to: "/usage" });
+        if (!openUsagePopover()) void navigate({ to: "/usage" });
         return;
       }
       const mode = overlayModeForCommand(command);
@@ -2223,7 +2224,7 @@ function OpenCommandPaletteDialog(props: {
     icon: <ChartNoAxesColumnIcon className={ITEM_ICON_CLASS} />,
     shortcutCommand: "usage.open",
     run: async () => {
-      await navigate({ to: "/usage" });
+      if (!openUsagePopover()) await navigate({ to: "/usage" });
     },
   });
 

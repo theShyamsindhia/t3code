@@ -6,6 +6,7 @@ import {
   collectLimitPools,
   cursorUsageWindowDetails,
   displayLimitWindows,
+  formatDuration,
   formatResetsIn,
   type LimitAccount,
   type LimitPool,
@@ -494,15 +495,47 @@ function PoolWindowCard({
   now,
   label,
   description,
+  compact = false,
 }: {
   readonly pool: LimitPoolWindow;
   readonly color: string;
   readonly now: number;
   readonly label?: string | undefined;
   readonly description?: string | undefined;
+  readonly compact?: boolean;
 }) {
   // The soonest reset that hands anything back; an untouched account resets to no effect.
   const nextRefill = pool.resets.find((reset) => reset.restoresPercent > 0);
+  if (compact) {
+    const nextReset = nextRefill ?? pool.resets[0];
+    return (
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-baseline justify-between gap-3 text-xs">
+          <span className="text-muted-foreground">{label ?? pool.label}</span>
+          <span className="font-medium tabular-nums">{pool.remainingPercent}% left</span>
+        </div>
+        <div
+          role="progressbar"
+          aria-label={`${label ?? pool.label} remaining`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pool.remainingPercent}
+          className="h-1.5 overflow-hidden rounded-full bg-muted"
+        >
+          <div
+            className="h-full rounded-full opacity-60"
+            style={{ width: `${pool.remainingPercent}%`, backgroundColor: color }}
+          />
+        </div>
+        {nextReset ? (
+          <span className="text-2xs text-muted-foreground tabular-nums">
+            {pool.members.length > 1 ? "Next reset" : "Resets"} in{" "}
+            {formatDuration(nextReset.at - now)}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div className="grid items-center gap-x-6 gap-y-3 rounded-lg border border-border/60 p-4 md:grid-cols-[11rem_minmax(0,1fr)]">
       <div className="flex flex-col gap-1">
@@ -528,7 +561,15 @@ function PoolWindowCard({
   );
 }
 
-function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: number }) {
+function PoolSection({
+  pool,
+  now,
+  compact,
+}: {
+  readonly pool: LimitPool;
+  readonly now: number;
+  readonly compact: boolean;
+}) {
   const color = barColor(pool.driver);
   const label = getDriverOption(pool.driver)?.label ?? String(pool.driver);
   const windows = displayLimitWindows(pool);
@@ -554,6 +595,7 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
             now={now}
             label={details?.label}
             description={details?.description}
+            compact={compact}
           />
         );
       })}
@@ -570,10 +612,12 @@ export function UsageLimitsPooled({
   presentations,
   now,
   cursorPrompt,
+  compact = false,
 }: {
   readonly presentations: Parameters<typeof collectLimitAccounts>[0];
   readonly now: number;
   readonly cursorPrompt?: ReactNode;
+  readonly compact?: boolean;
 }) {
   const pools = collectLimitPools(collectLimitAccounts(presentations), now);
   const notices = collectLimitNotices(presentations);
@@ -584,7 +628,7 @@ export function UsageLimitsPooled({
       pools.findIndex((pool) => pool.driver === "claudeAgent"),
     ) + 1;
   return (
-    <div className="flex flex-col gap-8">
+    <div className={cn("flex flex-col", compact ? "gap-5" : "gap-8")}>
       {pools.length === 0 && notices.length === 0 && !cursorPrompt && externalLinks.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No provider on the selected environments reports subscription limits.
@@ -593,7 +637,7 @@ export function UsageLimitsPooled({
       {pools.map((pool, index) => (
         <Fragment key={pool.driver}>
           {index === cursorPromptAt ? cursorPrompt : null}
-          <PoolSection pool={pool} now={now} />
+          <PoolSection pool={pool} now={now} compact={compact} />
         </Fragment>
       ))}
       {cursorPromptAt === pools.length ? cursorPrompt : null}

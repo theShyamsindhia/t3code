@@ -17,6 +17,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogPanel,
 } from "../ui/dialog";
 import { SidebarHeaderIconButton } from "./SidebarThreadHeader";
 
@@ -97,15 +98,15 @@ export function ExternalSessionsDialog() {
           if (!value) generation.current++;
         }}
       >
-        <DialogPopup>
+        <DialogPopup className="max-h-[min(40rem,calc(100dvh-3rem))]">
           <DialogHeader>
             <DialogTitle>Sync conversations</DialogTitle>
             <DialogDescription>
-              Choose which Codex and Claude Code chats to show in T3. Only selected chats refresh
-              automatically. Uncheck a chat to archive its preview.
+              Choose chats to show in T3. Selected chats refresh automatically. Uncheck a chat to
+              archive its preview.
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-[55vh] overflow-y-auto space-y-4">
+          <DialogPanel>
             {busy && scans.length === 0 ? (
               <p role="status" className="text-sm text-muted-foreground">
                 Looking for conversations…
@@ -117,7 +118,7 @@ export function ExternalSessionsDialog() {
               </p>
             ) : null}
             {scans.map((scan) => (
-              <section key={scan.environmentId} className="space-y-2">
+              <section key={scan.environmentId} className="space-y-1">
                 {scans.length > 1 ? <h3 className="text-sm font-medium">{scan.label}</h3> : null}
                 {scan.error ? (
                   <p role="alert" className="text-sm text-destructive">
@@ -132,7 +133,7 @@ export function ExternalSessionsDialog() {
                 {scan.candidates.map((candidate) => (
                   <label
                     key={candidate.threadId}
-                    className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-muted"
+                    className="-mx-2 flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-muted"
                   >
                     <Checkbox
                       checked={scan.selected.includes(candidate.threadId)}
@@ -154,7 +155,7 @@ export function ExternalSessionsDialog() {
                     />
                     <span className="min-w-0 flex-1 text-sm">
                       <span className="block truncate">{candidate.title}</span>
-                      <span className="block text-xs text-muted-foreground">
+                      <span className="block truncate text-xs text-muted-foreground">
                         {candidate.projectTitle} ·{" "}
                         {candidate.source === "codex" ? "Codex" : "Claude Code"} ·{" "}
                         {new Date(candidate.updatedAt).toLocaleDateString()}
@@ -164,7 +165,7 @@ export function ExternalSessionsDialog() {
                 ))}
               </section>
             ))}
-          </div>
+          </DialogPanel>
           <DialogFooter>
             <Button variant="outline" disabled={busy} onClick={() => setOpen(false)}>
               Cancel

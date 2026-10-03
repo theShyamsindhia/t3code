@@ -106,7 +106,13 @@ function SettingsSectionIcon({ to }: { to: SettingsPath }) {
   return <Icon className="mt-0.5 size-3.5 shrink-0 text-sidebar-muted-foreground/60" />;
 }
 
-export function SettingsSidebarNav({ pathname }: { pathname: string }) {
+export function SettingsSidebarNav({
+  pathname,
+  embedded = false,
+}: {
+  pathname: string;
+  embedded?: boolean;
+}) {
   const navigate = useNavigate();
   const currentHash = useLocation({ select: (location) => location.hash });
   const currentSearch = useLocation({ select: (location) => location.search });
@@ -155,7 +161,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
       event.preventDefault();
       if (isMobile) {
         setOpenMobile(true);
-      } else if (!open) {
+      } else if (!embedded && !open) {
         setOpen(true);
       }
       requestAnimationFrame(() => {
@@ -165,7 +171,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isMobile, open, setOpen, setOpenMobile]);
+  }, [embedded, isMobile, open, setOpen, setOpenMobile]);
 
   const handleSectionClick = useCallback(
     (to: SettingsPath) => {
@@ -354,9 +360,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
           <T3ConnectSidebarSignIn />
         </Suspense>
         <div className="flex items-center gap-1">
-          <div className="min-w-0 flex-1">
-            <SidebarUtilityMenu />
-          </div>
+          <div className="min-w-0 flex-1">{embedded ? null : <SidebarUtilityMenu />}</div>
           <Suspense fallback={null}>
             <T3ConnectSidebarAvatar />
           </Suspense>

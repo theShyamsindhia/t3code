@@ -206,7 +206,7 @@ function NavigationHistoryShortcuts() {
   return null;
 }
 
-// Settings swaps the thread sidebar out of the tree. Keep the lightweight
+// Mobile settings swaps the thread sidebar out of the tree. Keep the lightweight
 // project projection subscribed so returning to a draft never renders the
 // zero-project state while the environment snapshot reconnects.
 function ProjectProjectionRetention() {
@@ -229,18 +229,30 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const isMobile = useIsMobile();
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
-  // Settings routes show the settings nav in place of whichever thread
-  // sidebar is active.
-  // Seeds server-side visited tracking from this browser's localStorage the
+  // Seeds server-side visited tracking from this browser's localStorage.
   useThreadVisitedMigration();
   const pathname = useLocation({ select: (location) => location.pathname });
   const panelAnimationsSuppressed = usePanelNavigationSuppression(pathname);
   const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
-  const useDock = !isOnSettings && !isMobile;
+  const useDock = !isMobile;
   const { theme, themeHalves, resolvedTheme } = useTheme();
   const isAfterglow = resolveThemeHalf(theme, themeHalves, resolvedTheme) === "afterglow";
-  const frameHour = useFrameHour(useDock && isAfterglow);
+  const frameHour = useFrameHour(isAfterglow);
+  useEffect(() => {
+    if (!isAfterglow) return;
+    // Portalled dialogs need the same hourly palette as the workspace frame.
+    const style = document.documentElement.style;
+    style.setProperty(
+      "--conversation-frame-hue",
+      String(Math.round(Math.sin((frameHour * Math.PI) / 12) * 18)),
+    );
+    style.setProperty("--conversation-frame-angle", `${115 + frameHour * 15}deg`);
+    return () => {
+      style.removeProperty("--conversation-frame-hue");
+      style.removeProperty("--conversation-frame-angle");
+    };
+  }, [frameHour, isAfterglow]);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
   // Subscribed rather than read once: the clamp must track live window size,
@@ -263,12 +275,6 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       : false;
   });
   const sidebarProviderStyle = {
-    ...(isAfterglow
-      ? {
-          "--conversation-frame-hue": Math.round(Math.sin((frameHour * Math.PI) / 12) * 18),
-          "--conversation-frame-angle": `${115 + frameHour * 15}deg`,
-        }
-      : {}),
     "--sidebar-width": `${sidebarWidth}px`,
     "--panel-animation-duration": `${panelAnimationDurationMs}ms`,
     ...(isMacosDesktop && !isWindowFullscreen
