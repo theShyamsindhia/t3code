@@ -214,6 +214,7 @@ interface RawCandidate {
 }
 
 interface TranscriptCandidate {
+  readonly identity: ReturnType<typeof transcriptIdentity>;
   readonly filePath: string;
   readonly mtimeMs: number;
   readonly providerInstanceId: ProviderInstanceId;
@@ -968,6 +969,7 @@ export const make = Effect.gen(function* () {
             continue;
           }
           transcripts.push({
+            identity: transcriptIdentity(filePath, stats.value),
             filePath,
             mtimeMs: stats.value.mtime.value.getTime(),
             providerInstanceId,
@@ -1031,6 +1033,7 @@ export const make = Effect.gen(function* () {
                 Option.isSome(stats.value.mtime)
               ) {
                 transcripts.push({
+                  identity: transcriptIdentity(filePath, stats.value),
                   filePath,
                   mtimeMs: stats.value.mtime.value.getTime(),
                   providerInstanceId,
@@ -1044,6 +1047,13 @@ export const make = Effect.gen(function* () {
       return { transcripts, truncated };
     },
   );
+
+  // Background refresh revisits the same histories. Reuse only unchanged file
+  // identities, and bound the cache to one discovery window across both providers.
+  const cwdCache = new Map<
+    string,
+    { identity: ReturnType<typeof transcriptIdentity>; cwd: string }
+  >();
 
   const groupTranscriptsByCwd = Effect.fn("AgentSessionScanner.groupTranscriptsByCwd")(function* (
     source: AgentSessionSource,
@@ -1061,8 +1071,19 @@ export const make = Effect.gen(function* () {
     >();
 
     for (const transcript of transcripts) {
-      const cwd = yield* readCwd(transcript, budget);
+      const cacheKey = `${transcript.providerInstanceId}\0${transcript.filePath}`;
+      const cached = cwdCache.get(cacheKey);
+      const cwd =
+        cached && sameTranscriptIdentity(cached.identity, transcript.identity)
+          ? cached.cwd
+          : yield* readCwd(transcript, budget);
       if (cwd === null) continue;
+      cwdCache.delete(cacheKey);
+      cwdCache.set(cacheKey, { identity: transcript.identity, cwd });
+      if (cwdCache.size > MAX_TRANSCRIPTS_PER_SOURCE * 2) {
+        const oldestKey = cwdCache.keys().next().value;
+        if (oldestKey !== undefined) cwdCache.delete(oldestKey);
+      }
       const key = `${transcript.providerInstanceId}\0${cwd}`;
       const existing = byOwnerAndCwd.get(key);
       if (existing) {

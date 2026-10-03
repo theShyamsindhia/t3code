@@ -3340,3 +3340,59 @@ it.effect("external previews discover large Codex histories and retain the recen
     }).pipe(Effect.provide(makeScannerTestLayer({ codexHomePath, claudeHomePath })));
   }).pipe(Effect.provide(NodeServices.layer)),
 );
+
+it.effect.each(["codex", "claudeAgent"] as const)(
+  "reuses unchanged %s discovery metadata and invalidates edited or replaced files",
+  (provider) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const claudeHomePath = yield* makeTempDir("t3-cache-claude-");
+      const codexHomePath = yield* makeTempDir("t3-cache-codex-");
+      const firstRoot = yield* makeTempDir("t3-cache-one-");
+      const secondRoot = yield* makeTempDir("t3-cache-two-");
+      const filePath =
+        provider === "codex"
+          ? path.join(codexHomePath, "sessions", "2026", "09", "30", "rollout-cache.jsonl")
+          : path.join(claudeHomePath, "projects", "project", "cache.jsonl");
+      const content = provider === "codex" ? codexRolloutLine : claudeSessionLine;
+      const mtimeMs = Date.parse("2026-09-30T12:00:00.000Z");
+      yield* writeTranscript({ filePath, contents: content(firstRoot), mtimeMs });
+      let reads = 0;
+      const measuredFs = FileSystem.FileSystem.of({
+        ...fs,
+        open: (target, options) => {
+          if (target === filePath) reads++;
+          return fs.open(target, options);
+        },
+      });
+      yield* Effect.gen(function* () {
+        const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+        expect((yield* scanner.scan).candidates.map((c) => c.path)).toEqual([firstRoot]);
+        expect(reads).toBe(1);
+        expect((yield* scanner.scan).candidates.map((c) => c.path)).toEqual([firstRoot]);
+        expect(reads).toBe(1);
+        yield* writeTranscript({
+          filePath,
+          contents: content(secondRoot),
+          mtimeMs: mtimeMs + 1000,
+        });
+        expect((yield* scanner.scan).candidates.map((c) => c.path)).toEqual([secondRoot]);
+        expect(reads).toBe(2);
+        // A replacement with matching size and mtime still needs its own metadata.
+        yield* writeTranscript({
+          filePath: `${filePath}.replacement`,
+          contents: content(firstRoot),
+          mtimeMs: mtimeMs + 1000,
+        });
+        yield* fs.rename(`${filePath}.replacement`, filePath);
+        expect((yield* scanner.scan).candidates.map((c) => c.path)).toEqual([firstRoot]);
+        expect(reads).toBe(3);
+        yield* fs.remove(filePath);
+        expect((yield* scanner.scan).candidates).toEqual([]);
+      }).pipe(
+        Effect.provide(makeScannerTestLayer({ claudeHomePath, codexHomePath })),
+        Effect.provideService(FileSystem.FileSystem, measuredFs),
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
+);
