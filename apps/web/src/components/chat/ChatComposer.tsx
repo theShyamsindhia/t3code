@@ -1,4 +1,4 @@
-import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
+import { trackPasteAsTextIntent } from "../../lib/desktopPasteAsText";
 import { runtimeModeConfig, runtimeModeOptions as runtimeModes } from "./runtimeModeConfig";
 import { isLocalEnvironmentDisabled } from "../../localEnvironment";
 import { usePrimaryEnvironmentId } from "../../state/environments";
@@ -46,7 +46,6 @@ import {
 } from "@t3tools/contracts";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import {
-  isPasteAsTextShortcut,
   nextPastedTextFileName,
   pastedTextDisposition,
   wouldTextPasteExceedLimit,
@@ -1440,7 +1439,7 @@ export interface ChatComposerHandle {
     options?: { ensureLeadingBoundary?: boolean; clipboardData?: DataTransfer },
   ) => boolean;
   /** Apply large-paste folding for text redirected from a blurred composer. */
-  pasteTextAtEnd: (text: string, options?: { bypassAutoAttachment?: boolean }) => boolean;
+  pasteTextAtEnd: (text: string) => boolean;
   citeAssistantText: (
     citation: AssistantCitation,
     sourceAnchor: AssistantCitationSourceAnchor,
@@ -2369,7 +2368,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // Refs
   // ------------------------------------------------------------------
   const composerEditorRef = useRef<ComposerPromptEditorHandle>(null);
-  const pasteAsTextShortcutUntilRef = useRef(0);
+  const pasteAsTextIntentRef = useRef<ReturnType<typeof trackPasteAsTextIntent> | null>(null);
   const pastedTextFileNamesRef = useRef<{ targetKey: string; names: Set<string> }>({
     targetKey: "",
     names: new Set(),
@@ -2409,45 +2408,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   isRevertingCheckpointRef.current = isRevertingCheckpoint;
 
   useEffect(() => {
-    const armPasteAsTextShortcut = () => {
-      // Electron can deliver its native menu action just before the paste
-      // event, while browsers normally deliver keydown first. A short deadline
-      // bridges both event paths without leaving later pastes in bypass mode.
-      pasteAsTextShortcutUntilRef.current = Date.now() + 1_000;
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.target instanceof Node &&
-        composerFormRef.current?.contains(event.target) &&
-        isPasteAsTextShortcut(event, isMacPlatform(navigator.platform))
-      ) {
-        armPasteAsTextShortcut();
-      }
-    };
-    const onBlur = () => {
-      pasteAsTextShortcutUntilRef.current = 0;
-    };
-    const onDesktopPasteAsText = () => {
-      const activeElement = document.activeElement;
-      const blocksPasteToFocus =
-        activeElement instanceof Element &&
-        activeElement.closest(
-          'input, textarea, select, button, a[href], summary, [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"], [role="button"], [role="menuitem"], [role="option"]',
-        ) !== null;
-      if (
-        (activeElement instanceof Node && composerFormRef.current?.contains(activeElement)) ||
-        !blocksPasteToFocus
-      ) {
-        armPasteAsTextShortcut();
-      }
-    };
-    window.addEventListener(DESKTOP_PASTE_AS_TEXT_EVENT, onDesktopPasteAsText);
-    window.addEventListener("keydown", onKeyDown, true);
-    window.addEventListener("blur", onBlur);
+    const intent = trackPasteAsTextIntent(window, isMacPlatform(navigator.platform));
+    pasteAsTextIntentRef.current = intent;
     return () => {
-      window.removeEventListener(DESKTOP_PASTE_AS_TEXT_EVENT, onDesktopPasteAsText);
-      window.removeEventListener("keydown", onKeyDown, true);
-      window.removeEventListener("blur", onBlur);
+      intent.dispose();
+      pasteAsTextIntentRef.current = null;
     };
   }, []);
 
@@ -5973,8 +5938,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {
     const files = Array.from(event.clipboardData.files);
     const plainText = event.clipboardData.getData("text/plain");
-    const bypassAutoAttachment = Date.now() <= pasteAsTextShortcutUntilRef.current;
-    pasteAsTextShortcutUntilRef.current = 0;
+    const bypassAutoAttachment = pasteAsTextIntentRef.current?.consume() ?? false;
     // Claimable pastes go through even when agent questions are pending or the
     // composer is at its attachment limit: `addComposerAttachments` surfaces
     // those as a toast and a thread error. An early return here would swallow
@@ -6275,11 +6239,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       hasPendingAttachments: () =>
         (pendingImageCompressionsRef.current.get(attachmentTargetKey) ?? 0) > 0,
       insertTextAtEnd: insertComposerTextAtEnd,
-      pasteTextAtEnd: (text: string, options) => {
-        const bypassAutoAttachment =
-          options?.bypassAutoAttachment === true ||
-          Date.now() <= pasteAsTextShortcutUntilRef.current;
-        pasteAsTextShortcutUntilRef.current = 0;
+      pasteTextAtEnd: (text: string) => {
+        const bypassAutoAttachment = pasteAsTextIntentRef.current?.consume() ?? false;
         const promptLength = promptRef.current.length;
         if (
           !foldPastedText(text, bypassAutoAttachment, {
