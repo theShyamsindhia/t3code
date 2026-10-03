@@ -1,3 +1,6 @@
+import { useFrameHour } from "./sidebar/useFrameHour";
+import { useTheme } from "../hooks/useTheme";
+import { resolveThemeHalf } from "../themePalette";
 import { useIsMobile } from "../hooks/useMediaQuery";
 import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
@@ -235,6 +238,9 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const useDock = !isOnSettings && !isMobile;
+  const { theme, themeHalves, resolvedTheme } = useTheme();
+  const isAfterglow = resolveThemeHalf(theme, themeHalves, resolvedTheme) === "afterglow";
+  const frameHour = useFrameHour(useDock && isAfterglow);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
   // Subscribed rather than read once: the clamp must track live window size,
@@ -257,6 +263,12 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       : false;
   });
   const sidebarProviderStyle = {
+    ...(isAfterglow
+      ? {
+          "--conversation-frame-hue": Math.round(Math.sin((frameHour * Math.PI) / 12) * 18),
+          "--conversation-frame-angle": `${115 + frameHour * 15}deg`,
+        }
+      : {}),
     "--sidebar-width": `${sidebarWidth}px`,
     "--panel-animation-duration": `${panelAnimationDurationMs}ms`,
     ...(isMacosDesktop && !isWindowFullscreen
