@@ -634,6 +634,45 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
   );
 
   it.effect.each([
+    { name: "volta", binary: "volta-shim" },
+    { name: "mise", binary: "mise" },
+  ])(
+    "does not mistake a Homebrew-installed $name shim for the provider",
+    (fixture) =>
+      Effect.gen(function* () {
+        const tempDir = yield* makeTempDir("t3-version-manager-capabilities");
+        const brewBinDir = NodePath.join(tempDir, "brew-bin");
+        writeExecutable(NodePath.join(brewBinDir, "brew"));
+        const shim = NodePath.join(tempDir, "Cellar", fixture.name, "2.0.2", "bin", fixture.binary);
+        writeExecutable(shim);
+        const link = NodePath.join(tempDir, "bin", "package-tool");
+        NodeFS.mkdirSync(NodePath.dirname(link), { recursive: true });
+        NodeFS.symlinkSync(shim, link);
+        const spawned: Array<ReadonlyArray<string>> = [];
+
+        const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
+          packageToolUpdate,
+          { binaryPath: link, env: { PATH: brewBinDir } },
+        ).pipe(
+          Effect.provideService(HostProcessPlatform, "darwin"),
+          Effect.provideService(
+            ChildProcessSpawner.ChildProcessSpawner,
+            stdoutSpawner((command, args) => {
+              spawned.push([command, ...args]);
+              return args[0] === "--prefix"
+                ? `${tempDir}\n`
+                : JSON.stringify({ formulae: [{ versions: { stable: "2.0.2" } }] });
+            }),
+          ),
+        );
+
+        expect(capabilities).toEqual(manualPackageTool);
+        expect(spawned).toEqual([]);
+      }),
+    { skip: !symlinksSupported },
+  );
+
+  it.effect.each([
     { directory: "Caskroom", name: "package-tool", kind: "cask" },
     { directory: "Cellar", name: "package-tool", kind: "formula" },
     { directory: "Cellar", name: "package-tool@latest", kind: "formula" },
