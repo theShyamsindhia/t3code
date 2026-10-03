@@ -341,7 +341,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
             <SidebarRail onDoubleClick={resetSidebarWidth} />
           </Sidebar>
         )}
-        {children}
+        {useDock ? <div data-conversation-workspace="">{children}</div> : children}
         {useDock ? <ConversationDock /> : null}
         <SidebarControl dock={useDock} />
         <NavigationHistoryShortcuts />
