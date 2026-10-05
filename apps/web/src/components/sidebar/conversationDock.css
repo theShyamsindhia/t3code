@@ -137,8 +137,8 @@
 }
 
 [data-interface-style="sculpted"] [data-conversation-dock] {
-  --conversation-dock-row-height: 2.25rem;
-  --conversation-dock-inset: 0.25rem;
+  --conversation-dock-row-height: 1.75rem;
+  --conversation-dock-inset: 0.1875rem;
   --conversation-dock-curve-radius: calc(
     var(--conversation-dock-row-height) / 2 + var(--conversation-dock-inset)
   );
