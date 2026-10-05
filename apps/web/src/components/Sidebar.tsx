@@ -886,7 +886,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
     [draftId, onDiscard],
   );
   return (
-    <li data-thread-item className="list-none py-0.5">
+    <li data-thread-item className={cn("list-none", !props.dock && "py-0.5")}>
       <div
         role="button"
         tabIndex={0}
@@ -910,15 +910,30 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
               : "h-[4.875rem] py-(--sidebar-content-inset)",
           )}
         >
-          <div className="flex h-5 min-w-0 flex-1 items-center gap-1.5">
+          <div
+            className={cn(
+              "flex min-w-0 flex-1 items-center",
+              props.dock ? "h-6 gap-2.5" : "h-5 gap-1.5",
+            )}
+          >
             <SquarePenIcon aria-hidden className={draftPenClassName} />
             {props.project ? (
               <ProjectFavicon project={props.project} className="size-4 shrink-0" />
             ) : null}
-            <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate font-medium text-secondary-label",
+                props.dock ? "text-sm" : "text-xs",
+              )}
+            >
               {props.dock ? preview : props.projectDisplayName}
             </span>
-            <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end">
+            <span
+              className={cn(
+                "ml-auto flex shrink-0 items-center justify-end",
+                props.dock ? "h-6 min-w-6" : "h-5 min-w-5",
+              )}
+            >
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -926,9 +941,12 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
                       type="button"
                       aria-label="Discard draft"
                       onClick={handleDiscard}
-                      className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100"
+                      className={cn(
+                        "pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100",
+                        props.dock ? "size-6 justify-center p-0" : "px-1",
+                      )}
                     >
-                      <XIcon className="size-3" />
+                      <XIcon className={props.dock ? "size-3.5" : "size-3"} />
                     </button>
                   }
                 />

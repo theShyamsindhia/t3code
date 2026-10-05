@@ -240,11 +240,11 @@ export function SidebarHeaderIconButton({
       <TooltipTrigger
         render={
           <SidebarMenuButton
-            size="icon"
+            size="icon-sm"
             type="button"
             aria-label={label}
             {...rest}
-            className={cn("relative size-7 shrink-0", className)}
+            className={cn("relative shrink-0", className)}
           />
         }
       >
