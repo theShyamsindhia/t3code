@@ -123,20 +123,20 @@
   }
 }
 
-[data-theme-id="sculpted"] [data-conversation-dock] {
+[data-interface-style="sculpted"] [data-conversation-dock] {
   padding-top: 0;
 }
 
-[data-theme-id="sculpted"] [data-conversation-dock-views] {
+[data-interface-style="sculpted"] [data-conversation-dock-views] {
   border-right: 0;
 }
 
-[data-theme-id="sculpted"] [data-conversation-dock-views] > button {
+[data-interface-style="sculpted"] [data-conversation-dock-views] > button {
   border-radius: var(--control-radius);
 }
 
 /* The tray joins the workspace; only the chats inside it scroll. */
-[data-theme-id="sculpted"] [data-conversation-dock-tray] {
+[data-interface-style="sculpted"] [data-conversation-dock-tray] {
   position: relative;
   display: flex;
   flex: 1;
@@ -147,8 +147,8 @@
   background: var(--background);
 }
 
-[data-theme-id="sculpted"] [data-conversation-dock-tray]::before,
-[data-theme-id="sculpted"] [data-conversation-dock-tray]::after {
+[data-interface-style="sculpted"] [data-conversation-dock-tray]::before,
+[data-interface-style="sculpted"] [data-conversation-dock-tray]::after {
   content: "";
   position: absolute;
   top: 0;
@@ -162,41 +162,41 @@
   );
 }
 
-[data-theme-id="sculpted"] [data-conversation-dock-tray]::before {
+[data-interface-style="sculpted"] [data-conversation-dock-tray]::before {
   --tray-curve-origin: 0%;
   left: -0.75rem;
 }
 
-[data-theme-id="sculpted"] [data-conversation-dock-tray]::after {
+[data-interface-style="sculpted"] [data-conversation-dock-tray]::after {
   --tray-curve-origin: 100%;
   right: -0.75rem;
 }
 
-[data-theme-id="sculpted"] [data-conversation-dock-scroll] {
+[data-interface-style="sculpted"] [data-conversation-dock-scroll] {
   height: auto;
   border-radius: 0.625rem;
 }
 
-[data-theme-id="sculpted"] [data-conversation-dock-row] {
+[data-interface-style="sculpted"] [data-conversation-dock-row] {
   --conversation-dock-row-height: 2rem;
   --sidebar-row-active: var(--accent);
-  border-radius: 0.625rem;
+  border-radius: 9999px;
 }
 
-[data-theme-id="sculpted"] [data-conversation-dock-row][aria-current="page"] {
+[data-interface-style="sculpted"] [data-conversation-dock-row][aria-current="page"] {
   --contrast-foreground: var(--accent-foreground);
   --contrast-secondary-label: var(--accent-foreground);
   color: var(--accent-foreground);
 }
 
 /* Thin highlights keep the selected glass distinguishable without an opaque tile. */
-[data-theme-id="liquid-glass"][data-glass-style="clear"]
+[data-theme-id="liquid-glass"][data-glass-style="clear"]:not([data-interface-style="sculpted"])
   :is([data-conversation-dock-views] > button, [data-testid="conversation-dock-row"]) {
   border-radius: 0.625rem;
   color: var(--sidebar-foreground);
 }
 
-[data-theme-id="liquid-glass"][data-glass-style="clear"]
+[data-theme-id="liquid-glass"][data-glass-style="clear"]:not([data-interface-style="sculpted"])
   :is([data-conversation-dock-views] > button, [data-testid="conversation-dock-row"]):is(
     :hover,
     [aria-pressed="true"],
@@ -206,7 +206,7 @@
   box-shadow: var(--dock-glass-rim);
 }
 
-[data-theme-id="liquid-glass"][data-glass-style="clear"]
+[data-theme-id="liquid-glass"][data-glass-style="clear"]:not([data-interface-style="sculpted"])
   [data-testid="conversation-dock-row"]:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: -2px;

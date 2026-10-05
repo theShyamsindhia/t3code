@@ -215,6 +215,7 @@ function RootRouteView() {
       <AnchoredToastProvider>
         <DocumentTitleSync />
         <ContrastAppearanceSync />
+        <SculptedAppearanceSync />
         <EnvironmentThemeSync />
         <GlassAppearanceSync />
         <FontAppearanceSync />
@@ -277,6 +278,20 @@ function ContrastAppearanceSync() {
   useEffect(() => {
     applyAppearanceContrast(document.documentElement, appearanceContrast);
   }, [appearanceContrast]);
+
+  return null;
+}
+
+function SculptedAppearanceSync() {
+  const enabled = useClientSettings((settings) => settings.sculptedInterfaceEnabled);
+
+  useEffect(() => {
+    if (enabled) document.documentElement.dataset.interfaceStyle = "sculpted";
+    else delete document.documentElement.dataset.interfaceStyle;
+    return () => {
+      delete document.documentElement.dataset.interfaceStyle;
+    };
+  }, [enabled]);
 
   return null;
 }

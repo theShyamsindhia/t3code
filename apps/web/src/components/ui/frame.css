@@ -198,3 +198,16 @@
     backdrop-filter: none;
   }
 }
+
+/* The beta material uses solid surfaces independently of the selected palette. */
+:root[data-interface-style="sculpted"] :is([data-conversation-layout="dock"], .dialog-frame) {
+  --conversation-frame: var(--sidebar);
+  --frame-paint: var(--conversation-frame);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+:root[data-interface-style="sculpted"] [data-conversation-dock] {
+  background: transparent;
+}

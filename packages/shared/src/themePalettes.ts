@@ -1183,7 +1183,7 @@ export const LIQUID_GLASS_THEME: ThemeDefinition = {
 
 export const SCULPTED_THEME = {
   id: "sculpted",
-  label: "Sculpted",
+  label: "Moss",
   appearance: "light",
   colors: {
     canvas: "oklch(0.982152 0.010576 112.364)",

@@ -141,4 +141,19 @@ describe("clientPersistenceStorage", () => {
     writeBrowserClientSettings({ ...DEFAULT_CLIENT_SETTINGS, diffLayout: "split" });
     expect(readBrowserClientSettings()?.diffLayout).toBe("split");
   });
+
+  it("persists opting into and out of Sculpted without changing the color theme", async () => {
+    const testWindow = getTestWindow();
+    testWindow.localStorage.setItem("t3code:client-settings:v1", "{}");
+    testWindow.localStorage.setItem("t3code:theme", "ocean");
+    const { readBrowserClientSettings, writeBrowserClientSettings } =
+      await import("./clientPersistenceStorage");
+
+    expect(readBrowserClientSettings()?.sculptedInterfaceEnabled).toBe(false);
+    for (const enabled of [true, false]) {
+      writeBrowserClientSettings({ ...DEFAULT_CLIENT_SETTINGS, sculptedInterfaceEnabled: enabled });
+      expect(readBrowserClientSettings()?.sculptedInterfaceEnabled).toBe(enabled);
+      expect(testWindow.localStorage.getItem("t3code:theme")).toBe("ocean");
+    }
+  });
 });

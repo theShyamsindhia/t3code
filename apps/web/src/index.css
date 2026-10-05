@@ -323,13 +323,14 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 }
 
-html[data-theme-id="sculpted"] {
+html[data-interface-style="sculpted"] {
   --radius: 0.875rem;
   --control-radius: 0.875rem;
   --sidebar-icon-color: var(--contrast-sidebar-foreground);
 }
 
-html[data-theme-id="sculpted"] :is([data-slot="composer-shell"], .surface-glass, .alert-glass) {
+html[data-interface-style="sculpted"]
+  :is([data-slot="composer-shell"], .surface-glass, .alert-glass, .dialog-glass, .dropdown-glass) {
   --glass-opacity: 100%;
   --glass-blur: 0px;
   --glass-saturation: 1;

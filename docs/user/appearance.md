@@ -5,6 +5,11 @@ appearance or stay in light or dark mode. To use different themes for light and 
 the corresponding preview within each theme. Appearance preferences are saved separately on each
 device or browser.
 
+On web and desktop, **Settings → Appearance → Beta → Sculpted material** enables rounded
+controls, solid surfaces, and the curved chat tray. Choose any color theme independently;
+**Moss** is the original green palette. Turn Sculpted off to return to the standard shapes
+without changing your colors.
+
 **Liquid Glass** uses Apple's native glass for the window frame and chat dock on macOS 26
 or newer. Older Macs use native translucency; other clients retain the same light and dark
 palette. Choose **Regular** or **Clear** under **Liquid Glass style** in Appearance; Clear

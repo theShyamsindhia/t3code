@@ -194,6 +194,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     targetId: "appearance",
   },
   {
+    id: "sculpted-material",
+    title: "Sculpted material",
+    to: "/settings/appearance",
+    searchTerms: ["beta experimental interface rounded shapes pills curved chat tray dock solid"],
+  },
+  {
     // Prefixed because the slider control already owns the `appearance-contrast` id.
     id: "setting-appearance-contrast",
     title: "Contrast",
