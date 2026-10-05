@@ -92,8 +92,8 @@ export function buildThreadActionMenuItems(
     ...(state.supports.settlement
       ? [
           state.isSettled
-            ? { id: "unsettle" as const, label: "Un-settle thread", icon: "circle-check" }
-            : { id: "settle" as const, label: "Settle thread", icon: "circle-check" },
+            ? { id: "unsettle" as const, label: "Move to Working", icon: "undo-2" }
+            : { id: "settle" as const, label: "Move to Settled", icon: "arrow-down-to-line" },
         ]
       : []),
     ...(state.supports.snooze

@@ -119,11 +119,9 @@ function SidebarControl({ dock }: { dock: boolean }) {
   }, [keybindings, toggleSidebar, usagePageOpen]);
 
   return (
-    // The right-side layout controls carry mr-px (border compensation inside
-    // the panel), so the trigger mirrors it: both clusters sit one extra pixel
-    // off their edge and the titlebar reads symmetric.
+    // Fixed controls include the frame inset; headers already sit inside it.
     <div
-      className="pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 ml-px flex h-[var(--workspace-topbar-height)] items-center"
+      className="pointer-events-none fixed left-[calc(var(--workspace-controls-left)+var(--conversation-workspace-inset,0px))] top-[var(--workspace-controls-top)] z-50 flex h-[var(--workspace-topbar-height)] items-center"
       data-sidebar-control=""
     >
       <Tooltip>
@@ -280,6 +278,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     ...(isMacosDesktop && !isWindowFullscreen
       ? {
           "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET,
+          // Keep the native traffic lights and web controls on the same baseline.
+          "--workspace-titlebar-content-inset": "0px",
           // Concentric with the 16px native window corners, inside the 6px frame.
           "--conversation-workspace-radius": "10px",
         }

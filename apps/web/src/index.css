@@ -110,6 +110,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --glass-saturation: 1.14;
   --desktop-window-right-resize-inset: 0px;
   --workspace-topbar-height: 44px;
+  --workspace-titlebar-content-inset: 0px;
   --workspace-controls-top: 0px;
   --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
   --workspace-controls-right: calc(env(safe-area-inset-right) + 0.75rem);
@@ -334,6 +335,20 @@ html[data-interface-style="sculpted"]
   --glass-opacity: 100%;
   --glass-blur: 0px;
   --glass-saturation: 1;
+}
+
+html[data-interface-style="sculpted"] [data-composer-send] {
+  background: var(--accent);
+  color: var(--contrast-accent-foreground);
+  box-shadow: none;
+}
+
+html[data-interface-style="sculpted"] [data-composer-send]:enabled:hover {
+  background: color-mix(in srgb, var(--accent-foreground) 8%, var(--accent));
+}
+
+html[data-interface-style="sculpted"] [data-composer-send-art] {
+  display: none;
 }
 
 @utility surface-glass {

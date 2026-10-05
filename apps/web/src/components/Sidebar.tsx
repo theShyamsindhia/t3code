@@ -65,8 +65,8 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
   AlarmClockIcon,
   AlarmClockOffIcon,
+  ArrowDownToLineIcon,
   ArrowRightLeftIcon,
-  CheckIcon,
   CircleAlertIcon,
   CircleCheckIcon,
   CircleDashedIcon,
@@ -1091,7 +1091,7 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
   ),
   settle: (
     <>
-      <CircleCheckIcon aria-hidden className="size-3" />
+      <ArrowDownToLineIcon aria-hidden className="size-3" />
       Settle
     </>
   ),
@@ -1792,7 +1792,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               hover so the tail stays scannable when you're hunting. */}
             <span
               className={cn(
-                "shrink-0 transition-opacity",
+                "flex shrink-0 items-center transition-opacity",
                 (!props.isActive || variantAction === "unsettle") &&
                   cn(
                     variant === "dock" ? "opacity-80" : "opacity-40",
@@ -1830,7 +1830,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               <span
                 className={cn(
                   "relative ml-auto flex h-6 shrink-0 items-center justify-end",
-                  variant === "dock" ? "w-4" : "min-w-8",
+                  variant === "dock" ? "min-w-6" : "min-w-8",
                 )}
               >
                 <span
@@ -1882,11 +1882,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                       aria-label="Wake thread now"
                       onClick={handleUnsnoozeClick}
                       className={cn(
-                        "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100",
+                        "pointer-events-none absolute inset-y-0 right-0 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md bg-transparent p-0 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100",
                         isWoke && "group-hover/sidebar-row:static",
                       )}
                     >
-                      <AlarmClockOffIcon className="mb-px size-3" />
+                      <AlarmClockOffIcon className="size-3.5" />
                     </button>
                   )
                 ) : !props.settlementSupported ? null : variantAction === "unsettle" ? (
@@ -1895,31 +1895,38 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                       render={
                         <button
                           type="button"
-                          aria-label="Un-settle thread"
+                          aria-label="Move to Working"
                           onClick={handleUnsettleClick}
                           className={cn(
-                            "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100",
+                            "pointer-events-none absolute inset-y-0 right-0 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md bg-transparent p-0 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100",
                             isWoke && "group-hover/sidebar-row:static",
                           )}
                         />
                       }
                     >
-                      <Undo2Icon className="mb-px size-3.5" />
+                      <Undo2Icon className="size-3.5" />
                     </TooltipTrigger>
-                    <TooltipPopup side="top">Un-settle thread</TooltipPopup>
+                    <TooltipPopup side="top">Move to Working</TooltipPopup>
                   </Tooltip>
                 ) : (
-                  <button
-                    type="button"
-                    aria-label="Settle thread"
-                    onClick={handleSettleClick}
-                    className={cn(
-                      "pointer-events-none absolute inset-y-0 right-0 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100",
-                      isWoke && "group-hover/sidebar-row:static",
-                    )}
-                  >
-                    <CheckIcon className="size-3" />
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          type="button"
+                          aria-label="Move to Settled"
+                          onClick={handleSettleClick}
+                          className={cn(
+                            "pointer-events-none absolute inset-y-0 right-0 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md bg-transparent p-0 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100",
+                            isWoke && "group-hover/sidebar-row:static",
+                          )}
+                        />
+                      }
+                    >
+                      <ArrowDownToLineIcon aria-hidden className="size-3.5" />
+                    </TooltipTrigger>
+                    <TooltipPopup side="top">Move to Settled</TooltipPopup>
+                  </Tooltip>
                 )}
               </span>
             )}
@@ -2100,16 +2107,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                             render={
                               <button
                                 type="button"
-                                aria-label="Settle thread"
+                                aria-label="Move to Settled"
                                 onClick={handleSettleClick}
                                 className="-mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
                               />
                             }
                           >
-                            <CheckIcon className="size-3.5" />
+                            <ArrowDownToLineIcon aria-hidden className="size-3.5" />
                             Settle
                           </TooltipTrigger>
-                          <TooltipPopup>Settle thread</TooltipPopup>
+                          <TooltipPopup>Move to Settled</TooltipPopup>
                         </Tooltip>
                       ) : null}
                     </span>
@@ -4180,7 +4187,7 @@ export default function Sidebar({ dock = false }: { dock?: boolean }) {
         api.contextMenu.show(
           [
             ...(unpinMenuItem ? [unpinMenuItem] : []),
-            { id: "settle", label: `Settle (${count})` },
+            { id: "settle", label: `Move to Settled (${count})`, icon: "arrow-down-to-line" },
             ...(canSnoozeSelection
               ? [
                   {

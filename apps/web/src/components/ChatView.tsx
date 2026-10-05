@@ -285,7 +285,7 @@ import { isEditableFocused } from "../lib/editableFocus";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import {
   AlarmClockIcon,
-  CheckCircle2Icon,
+  ArrowDownToLineIcon,
   PaperclipIcon,
   ChevronDownIcon,
   DownloadIcon,
@@ -6992,7 +6992,7 @@ export default function ChatView(props: ChatViewProps) {
     return {
       id: `thread-${isSnoozed ? "snoozed" : "settled"}:${activeThread?.id ?? "unknown"}`,
       variant: "info",
-      icon: isSnoozed ? <AlarmClockIcon /> : <CheckCircle2Icon />,
+      icon: isSnoozed ? <AlarmClockIcon /> : <ArrowDownToLineIcon />,
       title: `This thread is ${isSnoozed ? "snoozed" : "settled"}`,
       description: `Send a message to ${isSnoozed ? "wake" : "unsettle"}`,
       actions: (
@@ -7009,8 +7009,8 @@ export default function ChatView(props: ChatViewProps) {
               ? "Waking..."
               : "Wake now"
             : isUnsettling
-              ? "Un-settling..."
-              : "Un-settle"}
+              ? "Moving..."
+              : "Move to Working"}
         </Button>
       ),
     };
@@ -10524,7 +10524,7 @@ export default function ChatView(props: ChatViewProps) {
       className={cn(
         // Keep one viewport anchor inside the header's no-drag region. The
         // header can shrink behind the right panel without moving the controls.
-        "pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
+        "pointer-events-none fixed top-[var(--workspace-controls-top)] right-[calc(var(--workspace-controls-right)+var(--conversation-workspace-inset,0px))] z-50 flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
       )}
       data-workspace-titlebar-controls
     >
@@ -10600,7 +10600,7 @@ export default function ChatView(props: ChatViewProps) {
           ref={threadPanelPopoverAnchorRef}
           data-chat-header
           className={cn(
-            "relative bg-background transition-[padding-left] duration-200 ease-linear motion-reduce:transition-none",
+            "relative bg-background pt-(--workspace-titlebar-content-inset) transition-[padding-left] duration-200 ease-linear motion-reduce:transition-none",
             isElectron
               ? cn(
                   "drag-region flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center px-3 sm:px-5",
@@ -10615,7 +10615,7 @@ export default function ChatView(props: ChatViewProps) {
           {isElectron && rightPanelControlsAtRoot ? (
             <span
               aria-hidden
-              className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
+              className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[calc(var(--workspace-controls-right)+var(--conversation-workspace-inset,0px))] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
             />
           ) : null}
           {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
@@ -11277,14 +11277,8 @@ export default function ChatView(props: ChatViewProps) {
           <RightPanelTabs
             mode="sheet"
             inlineSize={previewPanelInlineSize}
-            // Same effective inset as the closed-state titlebar controls
-            // (pr-3 in the tab bar plus this pixel equals the absolute
-            // right inset plus mr-px), so the cluster does not creep when
-            // the sheet opens.
             layoutControls={
-              rightPanelOpen ? (
-                <div className="mr-px flex items-center">{panelToggleControls}</div>
-              ) : null
+              rightPanelOpen ? <div className="flex items-center">{panelToggleControls}</div> : null
             }
             surfaces={renderedRightPanelSurfaces}
             environmentId={activeThreadRef.environmentId}

@@ -4,6 +4,15 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 // Inline Lucide-style icon paths (stroke-based, viewBox 0 0 24 24, strokeWidth 2).
 const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<string, string> }>> = {
+  "arrow-down-to-line": [
+    { tag: "path", attrs: { d: "M12 17V3" } },
+    { tag: "path", attrs: { d: "m6 11 6 6 6-6" } },
+    { tag: "path", attrs: { d: "M19 21H5" } },
+  ],
+  "undo-2": [
+    { tag: "path", attrs: { d: "M9 14 4 9l5-5" } },
+    { tag: "path", attrs: { d: "M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" } },
+  ],
   archive: [
     { tag: "rect", attrs: { width: "20", height: "5", x: "2", y: "3", rx: "1" } },
     { tag: "path", attrs: { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" } },
