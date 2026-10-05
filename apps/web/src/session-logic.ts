@@ -1,3 +1,4 @@
+import { chatWidgetPresentation } from "@t3tools/client-runtime/interaction";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import {
   type AssetResource,
@@ -315,7 +316,9 @@ const PERSISTENT_RESOURCE_V2_ITEM_TYPES = new Set<OrchestrationV2TurnItem["type"
 
 export function timelineEntryIsPersistentResourceCard(entry: TimelineEntry): boolean {
   return (
-    entry.kind === "event" && PERSISTENT_RESOURCE_V2_ITEM_TYPES.has(entry.projectedItem.item.type)
+    entry.kind === "event" &&
+    (PERSISTENT_RESOURCE_V2_ITEM_TYPES.has(entry.projectedItem.item.type) ||
+      chatWidgetPresentation(entry.projectedItem.item) !== null)
   );
 }
 
@@ -685,7 +688,7 @@ export function deriveTimelineEntriesFromVisibleTurnItems(
       continue;
     }
 
-    if (STANDALONE_V2_ITEM_TYPES.has(item.type)) {
+    if (STANDALONE_V2_ITEM_TYPES.has(item.type) || chatWidgetPresentation(item) !== null) {
       entries.push({
         id: item.id,
         kind: "event",

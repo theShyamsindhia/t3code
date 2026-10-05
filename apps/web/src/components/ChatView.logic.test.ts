@@ -40,6 +40,7 @@ import {
   getAntigravitySendBlockReason,
   resolveBackgroundDraftWorkspaceOptions,
   resolveComposerInteractionMode,
+  resolveFollowUpInteractionMode,
   restorePlanFollowUpComposer,
   resolveComposerProviderSelection,
   resolveProactiveTurnDiffAction,
@@ -2158,5 +2159,58 @@ describe("waitForRevertedMessage", () => {
     await vi.advanceTimersByTimeAsync(50);
     await settled;
     vi.useRealTimers();
+  });
+});
+
+describe("shared-space follow-up modes", () => {
+  it("sends ordinary replies when the optional plan-mode setting is off", () => {
+    const mode = resolveComposerInteractionMode({
+      planModeEnabled: false,
+      provider: { showInteractionModeToggle: true },
+      interactionMode: "default",
+    });
+    expect(
+      resolveFollowUpInteractionMode({
+        source: "interaction",
+        interactionMode: mode.interactionMode,
+        planModeEnabled: mode.enabled,
+      }),
+    ).toBe("default");
+    expect(
+      resolveFollowUpInteractionMode({
+        source: "plan",
+        interactionMode: mode.interactionMode,
+        planModeEnabled: mode.enabled,
+      }),
+    ).toBeNull();
+  });
+
+  it("supports providers without plan mode and preserves supported plan conversations", () => {
+    const mode = resolveComposerInteractionMode({
+      planModeEnabled: true,
+      provider: { showInteractionModeToggle: false },
+      interactionMode: "plan",
+    });
+    expect(
+      resolveFollowUpInteractionMode({
+        source: "interaction",
+        interactionMode: mode.interactionMode,
+        planModeEnabled: mode.enabled,
+      }),
+    ).toBe("default");
+    expect(
+      resolveFollowUpInteractionMode({
+        source: "interaction",
+        interactionMode: "plan",
+        planModeEnabled: true,
+      }),
+    ).toBe("plan");
+    expect(
+      resolveFollowUpInteractionMode({
+        source: "plan",
+        interactionMode: "default",
+        planModeEnabled: true,
+      }),
+    ).toBe("default");
   });
 });

@@ -91,6 +91,9 @@
   outline: 2px solid var(--ring);
   outline-offset: -2px;
 }
+[data-conversation-dock-tray] {
+  display: contents;
+}
 [data-conversation-dock-scroll] {
   min-width: 0;
   height: 100%;
@@ -118,6 +121,72 @@
   [data-conversation-dock-list] > [data-thread-item] {
     flex-basis: calc((100% - 0.25rem) / 2);
   }
+}
+
+[data-theme-id="sculpted"] [data-conversation-dock] {
+  padding-top: 0;
+}
+
+[data-theme-id="sculpted"] [data-conversation-dock-views] {
+  border-right: 0;
+}
+
+[data-theme-id="sculpted"] [data-conversation-dock-views] > button {
+  border-radius: var(--control-radius);
+}
+
+/* The tray joins the workspace; only the chats inside it scroll. */
+[data-theme-id="sculpted"] [data-conversation-dock-tray] {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-self: stretch;
+  min-width: 0;
+  padding-inline: 0.375rem;
+  border-radius: 0 0 1.25rem 1.25rem;
+  background: var(--background);
+}
+
+[data-theme-id="sculpted"] [data-conversation-dock-tray]::before,
+[data-theme-id="sculpted"] [data-conversation-dock-tray]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 0.75rem;
+  height: 0.75rem;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at var(--tray-curve-origin) 100%,
+    transparent calc(0.75rem - 0.5px),
+    var(--background) 0.75rem
+  );
+}
+
+[data-theme-id="sculpted"] [data-conversation-dock-tray]::before {
+  --tray-curve-origin: 0%;
+  left: -0.75rem;
+}
+
+[data-theme-id="sculpted"] [data-conversation-dock-tray]::after {
+  --tray-curve-origin: 100%;
+  right: -0.75rem;
+}
+
+[data-theme-id="sculpted"] [data-conversation-dock-scroll] {
+  height: auto;
+  border-radius: 0.625rem;
+}
+
+[data-theme-id="sculpted"] [data-conversation-dock-row] {
+  --conversation-dock-row-height: 2rem;
+  --sidebar-row-active: var(--accent);
+  border-radius: 0.625rem;
+}
+
+[data-theme-id="sculpted"] [data-conversation-dock-row][aria-current="page"] {
+  --contrast-foreground: var(--accent-foreground);
+  --contrast-secondary-label: var(--accent-foreground);
+  color: var(--accent-foreground);
 }
 
 /* Thin highlights keep the selected glass distinguishable without an opaque tile. */

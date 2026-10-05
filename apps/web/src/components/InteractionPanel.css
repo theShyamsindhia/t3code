@@ -1,0 +1,21 @@
+[data-theme-id="sculpted"] [data-interaction-panel] {
+  background: var(--card);
+}
+
+[data-theme-id="sculpted"] [data-interaction-item] {
+  border-color: transparent;
+  border-radius: 1rem 1.75rem 1.75rem;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  --contrast-foreground: var(--secondary-foreground);
+  --contrast-muted-foreground: var(--secondary-foreground);
+}
+
+[data-theme-id="sculpted"] [data-interaction-item][data-emphasized] {
+  border-radius: 1.75rem 1.75rem 0.75rem 1.75rem;
+  border-color: var(--ring);
+  background: var(--accent);
+  color: var(--accent-foreground);
+  --contrast-foreground: var(--accent-foreground);
+  --contrast-muted-foreground: var(--accent-foreground);
+}

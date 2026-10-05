@@ -67,33 +67,35 @@ export function ConversationDockContent({
 
   return (
     <>
-      <div
-        ref={scrollRef}
-        data-conversation-dock-scroll=""
-        tabIndex={0}
-        role="region"
-        aria-label="Chat strip"
-        onScroll={(event) => {
-          const node = event.currentTarget;
-          positions.current.set(viewKey, node.scrollLeft);
-          if (node.scrollLeft + node.clientWidth >= node.scrollWidth - 32) onReachEnd?.();
-        }}
-        onKeyDown={(event) => {
-          if (event.target !== event.currentTarget) return;
-          const node = event.currentTarget;
-          const direction =
-            event.key === "ArrowRight" || event.key === "PageDown"
-              ? 1
-              : event.key === "ArrowLeft" || event.key === "PageUp"
-                ? -1
-                : 0;
-          if (!direction) return;
-          event.preventDefault();
-          node.scrollLeft +=
-            direction * (event.key.startsWith("Page") ? node.clientWidth : node.clientWidth / 4);
-        }}
-      >
-        {children}
+      <div data-conversation-dock-tray="">
+        <div
+          ref={scrollRef}
+          data-conversation-dock-scroll=""
+          tabIndex={0}
+          role="region"
+          aria-label="Chat strip"
+          onScroll={(event) => {
+            const node = event.currentTarget;
+            positions.current.set(viewKey, node.scrollLeft);
+            if (node.scrollLeft + node.clientWidth >= node.scrollWidth - 32) onReachEnd?.();
+          }}
+          onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return;
+            const node = event.currentTarget;
+            const direction =
+              event.key === "ArrowRight" || event.key === "PageDown"
+                ? 1
+                : event.key === "ArrowLeft" || event.key === "PageUp"
+                  ? -1
+                  : 0;
+            if (!direction) return;
+            event.preventDefault();
+            node.scrollLeft +=
+              direction * (event.key.startsWith("Page") ? node.clientWidth : node.clientWidth / 4);
+          }}
+        >
+          {children}
+        </div>
       </div>
       <div data-conversation-dock-controls="">{fixedHeader}</div>
     </>

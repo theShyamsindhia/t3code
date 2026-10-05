@@ -1,3 +1,5 @@
+import { chatWidgetPresentation } from "@t3tools/client-runtime/interaction";
+import { ChatWidget } from "./ChatWidget";
 import { ComputerUseAppIcon } from "~/components/Icons";
 import { useChatCanvas } from "./ChatCanvasContext";
 import { WorkLogBlock, WorkLogButton, WorkLogDetails, WorkLogList, WorkLogRow } from "./WorkLog";
@@ -305,6 +307,7 @@ interface TimelineRowSharedState {
   onImageExpand: (preview: ExpandedImagePreview) => void;
   displayThreadKey?: string;
   onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
+  onSubmitWidgetReply?: ((text: string) => Promise<boolean>) | undefined;
   onOpenThread: (threadId: OrchestrationV2TurnItem["threadId"]) => void;
   onForkFromRun: (input: {
     readonly sourceThreadId: ThreadId;
@@ -426,6 +429,7 @@ interface MessagesTimelineProps {
   routeThreadKey: string;
   displayThreadKey?: string;
   onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
+  onSubmitWidgetReply?: ((text: string) => Promise<boolean>) | undefined;
   onOpenThread: (threadId: OrchestrationV2TurnItem["threadId"]) => void;
   parentThreadLink?: {
     readonly threadId: ThreadId;
@@ -509,6 +513,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   displayThreadKey,
   onOpenTurnDiff,
   onOpenThread,
+  onSubmitWidgetReply,
   parentThreadLink = null,
   onForkFromRun,
   onRollbackCheckpoint,
@@ -1154,6 +1159,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       openPullRequest,
       onOpenTurnDiff,
       onOpenThread,
+      onSubmitWidgetReply,
       onForkFromRun,
       onRollbackCheckpoint,
       onToggleTurnFold,
@@ -1187,6 +1193,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       openPullRequest,
       onOpenTurnDiff,
       onOpenThread,
+      onSubmitWidgetReply,
       onForkFromRun,
       onRollbackCheckpoint,
       onToggleTurnFold,
@@ -2763,6 +2770,19 @@ function v2EventPresentation(item: OrchestrationV2TurnItem): {
 function V2EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event" }> }) {
   const ctx = use(TimelineRowCtx);
   const { item, visibility, sourceThreadId } = row.projectedItem;
+  const widget = useMemo(() => chatWidgetPresentation(item), [item]);
+  if (widget) {
+    const storageKey = `t3-widget:${ctx.routeThreadKey}:${sourceThreadId}:${row.projectedItem.sourceItemId}`;
+    return (
+      <ChatWidget
+        key={storageKey}
+        widget={widget}
+        storageKey={storageKey}
+        theme={ctx.resolvedTheme}
+        onSubmit={ctx.onSubmitWidgetReply}
+      />
+    );
+  }
   if (item.type === "subagent" && (row.subagents?.length ?? 1) > 1) {
     return <V2SubagentGroup key={row.id} row={row} />;
   }

@@ -1,3 +1,4 @@
+import { InteractionToolkit } from "./interaction/tools.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
 import {
@@ -40,6 +41,7 @@ const decodeMcpAttachmentInput = Schema.decodeUnknownEffect(McpAttachmentInput);
 it("publishes unique tool names with reference-free object-root inputs", () => {
   const names = new Set<string>();
   for (const toolkit of [
+    InteractionToolkit,
     OrchestratorToolkit,
     PreviewToolkit,
     WorktreeToolkit,
@@ -206,4 +208,73 @@ it.effect("resolves reused attachment references from stored metadata", () =>
     ).pipe(Effect.flip);
     expect(failure.code).toBe("invalid_request");
   }),
+);
+
+it.effect(
+  "makes shared spaces available through the production registration and checks the caller",
+  () =>
+    Effect.gen(function* () {
+      const server = yield* McpServer.McpServer;
+      const result = yield* server
+        .callTool({
+          name: "t3_interaction_present",
+          arguments: {
+            title: "Compare",
+            prompt: "What matters?",
+            groups: [{ id: "keep", label: "Keep" }],
+            items: [
+              { id: "a", label: "A", detail: "First", groupId: null, emphasis: false },
+              { id: "b", label: "B", detail: "Second", groupId: null, emphasis: false },
+            ],
+          },
+        })
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, {
+            ...scope,
+            capabilities: new Set<never>(),
+          }),
+          Effect.provideService(McpSchema.McpServerClient, client),
+        );
+      expect(result.structuredContent).toMatchObject({ code: "capability_denied" });
+    }).pipe(
+      Effect.provide(
+        McpHttpServer.InteractionToolkitRegistrationLive.pipe(
+          Layer.provideMerge(McpServer.McpServer.layer),
+          Layer.provide(Layer.mock(ThreadManagement.ThreadManagementService)({})),
+        ),
+      ),
+    ),
+);
+
+it.effect(
+  "makes inline widgets available through the production registration and checks the caller",
+  () =>
+    Effect.gen(function* () {
+      const server = yield* McpServer.McpServer;
+      const result = yield* server
+        .callTool({
+          name: "t3_widget_present",
+          arguments: {
+            title: "Compare",
+            description: "Choose a value",
+            html: "<input type='range'>",
+            height: 200,
+          },
+        })
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, {
+            ...scope,
+            capabilities: new Set<never>(),
+          }),
+          Effect.provideService(McpSchema.McpServerClient, client),
+        );
+      expect(result.structuredContent).toMatchObject({ code: "capability_denied" });
+    }).pipe(
+      Effect.provide(
+        McpHttpServer.InteractionToolkitRegistrationLive.pipe(
+          Layer.provideMerge(McpServer.McpServer.layer),
+          Layer.provide(Layer.mock(ThreadManagement.ThreadManagementService)({})),
+        ),
+      ),
+    ),
 );

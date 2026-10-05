@@ -1,3 +1,4 @@
+import { InteractionToolkit } from "../../mcp/toolkits/interaction/tools.ts";
 import * as NodeOS from "node:os";
 
 import type {
@@ -645,6 +646,7 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
 
   it("matches the read-only allowlist to the orchestrator toolkit annotations", () => {
     const readOnlyToolNames = [
+      ...Object.values(InteractionToolkit.tools),
       ...Object.values(OrchestratorToolkit.tools),
       ...Object.values(ThreadToolkit.tools),
       ...Object.values(WorktreeToolkit.tools),
@@ -2071,6 +2073,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* Queue.unbounded<Extract<ProviderAdapterV2Event, { type: "turn.terminal" }>>();
       const systemNoticeReceipts =
         yield* Queue.unbounded<Extract<ProviderAdapterV2Event, { type: "turn_item.updated" }>>();
+      const subagentTerminalReceipts =
+        yield* Queue.unbounded<Extract<ProviderAdapterV2Event, { type: "turn_item.updated" }>>();
       let openedOptions: ClaudeAdapterV2.ClaudeAgentSdkQueryOptions | undefined;
       const adapter = ClaudeAdapterV2.makeClaudeAdapterV2({
         instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
@@ -2150,6 +2154,13 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             if (event.type === "turn_item.updated" && event.turnItem.type === "system_notice") {
               yield* Queue.offer(systemNoticeReceipts, event);
             }
+            if (
+              event.type === "turn_item.updated" &&
+              event.turnItem.type === "subagent" &&
+              ["completed", "failed", "cancelled"].includes(event.turnItem.status)
+            ) {
+              yield* Queue.offer(subagentTerminalReceipts, event);
+            }
           }),
         ),
         Effect.forkScoped,
@@ -2175,6 +2186,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         events,
         terminalReceipts,
         systemNoticeReceipts,
+        subagentTerminalReceipts,
         getOpenedOptions: () => openedOptions,
         terminalEvents,
         hasPendingBackgroundWork,
@@ -6309,6 +6321,89 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* awaitUntil(() => harness.terminalEvents().length === 1, "turn terminal");
       }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
     ),
+  );
+
+  it.effect.each([
+    ["completed", "completed"],
+    ["failed", "failed"],
+    ["stopped", "cancelled"],
+  ] as const)(
+    "settles an idle subagent on %s without starting a continuation",
+    ([status, expected]) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const harness = yield* makeWakeHarness;
+          const now = yield* DateTime.now;
+          const taskId = "task-idle-terminal";
+          const toolUseId = "toolu-idle-terminal";
+          yield* harness.runtime.startTurn(
+            makeClaudeTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now,
+              attemptId: RunAttemptId.make("attempt-idle-terminal"),
+              text: "Delegate research in the background.",
+              attachments: [],
+            }),
+          );
+          yield* harness.offerAndWait(
+            makeSubagentTaskStartedFrame({
+              taskId,
+              toolUseId,
+              uuid: "00000000-0000-4000-8000-000000000351",
+            }),
+          );
+          yield* harness.offerAndWait(
+            makeResultFrame({
+              uuid: "00000000-0000-4000-8000-000000000352",
+              result: "Research is running in the background.",
+            }),
+          );
+          yield* Queue.take(harness.terminalReceipts);
+          const notification = claudeSdkFrame({
+            ...makeSubagentNotificationFrame({
+              taskId,
+              toolUseId,
+              summary: "Research ended.",
+              uuid: "00000000-0000-4000-8000-000000000353",
+            }),
+            status,
+          });
+          // The parent may be unable to start its wake turn (for example, its
+          // context allowance is exhausted). Completion must still reach clients.
+          yield* harness.offerAndWait(notification);
+          yield* Queue.take(harness.subagentTerminalReceipts);
+          const subagentEvent = harness.events.findLast(
+            (event) => event.type === "subagent.updated",
+          );
+          assert.equal(subagentEvent?.subagent.status, expected);
+          assert.equal(subagentEvent?.subagent.result, "Research ended.");
+          assert.isNotNull(subagentEvent?.subagent.completedAt);
+          const turnItemEvent = harness.events.findLast(
+            (event) => event.type === "turn_item.updated" && event.turnItem.type === "subagent",
+          );
+          assert.equal(
+            turnItemEvent?.type === "turn_item.updated" && turnItemEvent.turnItem.status,
+            expected,
+          );
+          const nodes = new Map(
+            harness.events.flatMap((event) =>
+              event.type === "node.updated" &&
+              (event.node.id === subagentEvent?.subagent.id ||
+                event.node.threadId === subagentEvent?.subagent.childThreadId)
+                ? [[event.node.id, event.node] as const]
+                : [],
+            ),
+          );
+          assert.equal(nodes.size, 2);
+          assert.isTrue([...nodes.values()].every((node) => node.status === expected));
+          assert.equal(harness.terminalEvents().length, 1);
+          assert.equal(harness.continuationRequests.length, 1);
+
+          yield* harness.offerAndWait(notification);
+          assert.equal(harness.continuationRequests.length, 1);
+        }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+      ),
   );
 
   it.effect("releases the idle pin when a post-settle subagent stops without completing", () =>

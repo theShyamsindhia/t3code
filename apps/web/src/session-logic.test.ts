@@ -1107,6 +1107,51 @@ describe("native provider presentation in the v2 timeline", () => {
     expect(workEntryIndicatesToolSuccess(entry.entry)).toBe(false);
   });
 
+  it("keeps completed widgets inline after surrounding work folds, but not failed calls", () => {
+    const widget = {
+      ...base,
+      type: "dynamic_tool" as const,
+      toolName: "t3_widget_present",
+      runId: RunId.make("widget-run"),
+      input: {
+        title: "Try it",
+        description: "Find a balance",
+        html: "<input type='range'>",
+        height: 200,
+      },
+    } satisfies OrchestrationV2TurnItem;
+    const entries = deriveTimelineEntriesFromVisibleTurnItems({
+      visibleTurnItems: [
+        visible({
+          ...base,
+          id: TurnItemId.make("before-widget"),
+          runId: widget.runId,
+          type: "command_execution",
+          input: "echo ready",
+          output: "ready",
+          exitCode: 0,
+        }),
+        visible(widget),
+      ],
+      optimisticMessages: [],
+    });
+    expect(entries[1]?.kind).toBe("event");
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: entries,
+      isWorking: false,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    });
+    expect(rows.some((row) => row.kind === "turn-fold")).toBe(true);
+    expect(rows.some((row) => row.kind === "work")).toBe(false);
+    expect(rows).toContainEqual(expect.objectContaining({ kind: "event", id: widget.id }));
+    const failed = deriveTimelineEntriesFromVisibleTurnItems({
+      visibleTurnItems: [visible({ ...widget, output: { isError: true } })],
+      optimisticMessages: [],
+    });
+    expect(failed[0]?.kind).toBe("work");
+  });
+
   it("retains Claude Read image previews without tool output", () => {
     const item = {
       ...base,

@@ -579,6 +579,8 @@ function surfaceTitle(
   terminalLabelsById: ReadonlyMap<string, string>,
 ): string {
   switch (surface.kind) {
+    case "interaction":
+      return "Shared space";
     case "diff":
       return "Diff";
     case "files":
@@ -646,6 +648,8 @@ function SurfaceIcon({
   pullRequestStatusSeeds: Readonly<Record<string, PullRequestTabStatusSeed>> | undefined;
 }) {
   switch (surface.kind) {
+    case "interaction":
+      return <Files className="size-3 shrink-0" />;
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       const url = !snapshot || snapshot.navStatus._tag === "Idle" ? null : snapshot.navStatus.url;

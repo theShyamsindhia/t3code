@@ -279,3 +279,19 @@ including filenames or folders containing `#` or `?`.
 
 On mobile, select a PDF attachment or link to open it. iOS uses the native viewer;
 Android opens a compatible installed file viewer.
+
+## Compare and arrange ideas
+
+Ask your agent to use **Shared space** to compare a few directions or help you express a preference. When it offers a space, open it above the composer, move items into groups, and add notes about what matters. **Send arrangement** sends your choices back to that conversation without replacing your composer draft. You can undo edits or reset to the agent’s original arrangement.
+
+This experiment is available on web and desktop. Mobile can respond to the agent’s accompanying text summary. Unsent arrangements are saved only on the device where you edit them; sent replies remain in the chat. Earlier presentations are available while their messages are loaded in the conversation.
+
+### Interactive widgets
+
+Ask the agent for an interactive explanation or a way to explore a choice. On web and desktop,
+widgets appear inside the conversation: adjust their controls, review the reply below, then choose
+**Send reply** to continue. Exploring a widget does not send a message by itself.
+
+You can close or restart a widget. Its controls reset when reopened or reloaded; your prepared
+reply is saved locally on this device. The widget itself remains in the conversation history.
+Mobile clients receive the agent's accompanying explanation and can answer in text.

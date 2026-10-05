@@ -1,3 +1,5 @@
+import { InteractionToolkit } from "./toolkits/interaction/tools.ts";
+import { InteractionHandlersLive } from "./toolkits/interaction/handlers.ts";
 import * as NodeCrypto from "node:crypto";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -666,6 +668,10 @@ export const OrchestratorToolkitRegistrationLive = McpServer.toolkit(Orchestrato
   Layer.provide(ThreadMetadataMcpService.layer),
 );
 
+export const InteractionToolkitRegistrationLive = McpServer.toolkit(InteractionToolkit).pipe(
+  Layer.provide(InteractionHandlersLive),
+);
+
 export const ThreadToolkitRegistrationLive = McpServer.toolkit(ThreadToolkit).pipe(
   Layer.provide(ThreadToolkitHandlersLive),
 );
@@ -716,6 +722,7 @@ const McpTransportLive = McpServer.layerHttp({
 }).pipe(Layer.provide(McpAuthMiddlewareLive));
 
 export const layer = Layer.mergeAll(
+  InteractionToolkitRegistrationLive,
   PreviewToolkitRegistrationLive,
   OrchestratorToolkitRegistrationLive,
   ThreadToolkitRegistrationLive,

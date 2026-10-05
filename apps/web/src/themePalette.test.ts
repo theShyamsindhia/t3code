@@ -32,6 +32,7 @@ import {
   GROVE_THEME,
   IRIS_THEME,
   OCEAN_THEME,
+  SCULPTED_THEME,
   updateCustomTheme,
   CUSTOM_THEMES_STORAGE_KEY,
   createVividThemeColors,
@@ -80,6 +81,23 @@ function contrastRatio(first: string, second: string): number {
 }
 
 describe("theme files", () => {
+  it.each(["light", "dark"] as const)("keeps Sculpted text readable in %s mode", (mode) => {
+    const colors = getThemeColorsForMode(SCULPTED_THEME, mode)!;
+    for (const [foreground, background] of [
+      [colors.text, colors.canvas],
+      [colors.textMuted, colors.canvas],
+      [colors.textMuted, colors.surfaceRaised],
+      [colors.sidebarMutedForeground, colors.sidebar],
+      [colors.sidebarForeground, colors.sidebarRowSelected],
+      [colors.accentSurfaceForeground, colors.accentSurface],
+      [colors.secondaryForeground, colors.secondary],
+      [colors.messageForeground, colors.messageSurface],
+      [colors.messageActionForeground, colors.messageAction],
+    ]) {
+      expect(contrastRatio(foreground!, background!)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   it("keeps every built-in palette value in canonical OKLCH form", () => {
     for (const theme of BUILT_IN_THEMES) {
       for (const colors of [theme.colors, ...Object.values(theme.variants ?? {})]) {

@@ -929,6 +929,8 @@ export const CLAUDE_T3_MCP_TOOL_WILDCARD = "mcp__t3-code__*";
 export const CLAUDE_READ_ONLY_T3_MCP_ALLOWED_TOOLS: ReadonlyArray<string> = [
   "mcp__t3-code__orchestrator_capabilities",
   "mcp__t3-code__list_scheduled_tasks",
+  "mcp__t3-code__t3_interaction_present",
+  "mcp__t3-code__t3_widget_present",
   "mcp__t3-code__t3_thread_list",
   "mcp__t3-code__t3_thread_wait",
   "mcp__t3-code__t3_pending_request_list",
@@ -2687,6 +2689,8 @@ interface ActiveClaudeSubagent {
   // The launch run's root node. task.parentNodeId is that same node, or the
   // owning subagent's node for a subagent another subagent started.
   readonly rootNodeId: OrchestrationV2ExecutionNode["id"];
+  readonly providerThreadId: OrchestrationV2ProviderThread["id"];
+  readonly providerTurnId: OrchestrationV2ProviderTurn["id"];
   readonly childThreadId: ThreadId;
   readonly childRootNodeId: OrchestrationV2ExecutionNode["id"];
   readonly turnItemId: OrchestrationV2TurnItem["id"];
@@ -3934,6 +3938,8 @@ export function makeClaudeAdapterV2(
               updatedAt: now,
             },
             rootNodeId: resume.context.input.rootNodeId,
+            providerThreadId: resume.context.input.providerThread.id,
+            providerTurnId: resume.context.providerTurnId,
             childThreadId: ids.childThreadId,
             childRootNodeId: ids.childRootNodeId,
             turnItemId: ids.turnItemId,
@@ -3953,6 +3959,195 @@ export function makeClaudeAdapterV2(
           yield* Ref.update(sessionSubagentTaskIdsByToolUseId, (current) =>
             new Map(current).set(launchToolUseId, resume.taskId),
           );
+        });
+
+        const emitClaudeSubagentUpdate = Effect.fnUntraced(function* (input: {
+          readonly subagent: ActiveClaudeSubagent;
+          readonly taskId: string;
+          readonly lifecycleChanged: boolean;
+          readonly prompt?: { readonly nativeItemId: string; readonly ordinal: number };
+          readonly result?: string;
+        }) {
+          const { subagent } = input;
+          const { task, childThreadId, childRootNodeId } = subagent;
+          const nodeId = task.id;
+          const now = task.updatedAt;
+          const nativeItemId = `task:${input.taskId}`;
+          if (input.lifecycleChanged) {
+            yield* emitProviderEvent({
+              type: "node.updated",
+              driver: CLAUDE_PROVIDER,
+              node: {
+                id: nodeId,
+                // Parenting stays with the launch run's root node (or the
+                // owning subagent) even on wake-replay; runId follows
+                // task.runId, which a reopen re-attributes to the resuming run
+                // (see task construction).
+                threadId: task.threadId,
+                runId: task.runId,
+                parentNodeId: task.parentNodeId,
+                rootNodeId: subagent.rootNodeId,
+                kind: "subagent",
+                status: task.status,
+                countsForRun: false,
+                providerThreadId: subagent.providerThreadId,
+                providerTurnId: subagent.providerTurnId,
+                nativeItemRef: {
+                  driver: CLAUDE_PROVIDER,
+                  nativeId: input.taskId,
+                  strength: "strong",
+                },
+                runtimeRequestId: null,
+                checkpointScopeId: null,
+                startedAt: task.startedAt,
+                completedAt: task.completedAt,
+              },
+            });
+            yield* emitProviderEvent({
+              type: "node.updated",
+              driver: CLAUDE_PROVIDER,
+              node: {
+                id: childRootNodeId,
+                threadId: childThreadId,
+                runId: null,
+                parentNodeId: null,
+                rootNodeId: childRootNodeId,
+                kind: "root_turn",
+                status: task.status,
+                countsForRun: false,
+                providerThreadId: null,
+                providerTurnId: null,
+                nativeItemRef: task.nativeTaskRef,
+                runtimeRequestId: null,
+                checkpointScopeId: null,
+                startedAt: task.startedAt,
+                completedAt: task.completedAt,
+              },
+            });
+          }
+          if (input.prompt !== undefined) {
+            const promptNativeItemId = input.prompt.nativeItemId;
+            const promptArtifacts = makeSubagentConversationArtifacts({
+              senderThreadId: task.threadId,
+              messageId: idAllocator.derive.messageFromProviderItem({
+                driver: CLAUDE_PROVIDER,
+                nativeItemId: promptNativeItemId,
+              }),
+              turnItemId: idAllocator.derive.turnItemFromProviderItem({
+                driver: CLAUDE_PROVIDER,
+                nativeItemId: promptNativeItemId,
+              }),
+              threadId: childThreadId,
+              rootNodeId: childRootNodeId,
+              providerThreadId: null,
+              providerTurnId: null,
+              nativeItemRef: {
+                driver: CLAUDE_PROVIDER,
+                nativeId: promptNativeItemId,
+                strength: "strong",
+              },
+              role: "user",
+              text: task.prompt,
+              ordinal: input.prompt.ordinal,
+              now,
+            });
+            yield* emitProviderEvent({
+              type: "message.updated",
+              driver: CLAUDE_PROVIDER,
+              message: promptArtifacts.message,
+            });
+            yield* emitProviderEvent({
+              type: "turn_item.updated",
+              driver: CLAUDE_PROVIDER,
+              turnItem: promptArtifacts.turnItem,
+            });
+          }
+          yield* emitProviderEvent({
+            type: "subagent.updated",
+            driver: CLAUDE_PROVIDER,
+            subagent: task,
+          });
+          yield* emitProviderEvent({
+            type: "turn_item.updated",
+            driver: CLAUDE_PROVIDER,
+            turnItem: {
+              id: subagent.turnItemId,
+              threadId: task.threadId,
+              runId: task.runId,
+              nodeId: task.id,
+              providerThreadId: subagent.providerThreadId,
+              providerTurnId: subagent.providerTurnId,
+              nativeItemRef: task.nativeTaskRef,
+              parentItemId: null,
+              ordinal: subagent.turnItemOrdinal,
+              status: task.status,
+              title: task.title,
+              startedAt: task.startedAt,
+              completedAt: task.completedAt,
+              updatedAt: task.updatedAt,
+              type: "subagent",
+              subagentId: task.id,
+              origin: task.origin,
+              driver: task.driver,
+              providerInstanceId: task.providerInstanceId,
+              childThreadId: task.childThreadId,
+              prompt: task.prompt,
+              ...(task.progress === undefined ? {} : { progress: task.progress }),
+              result: task.result,
+            },
+          });
+
+          // A completed subagent's result is normally its final assistant
+          // message, which is already in the child thread when its text was
+          // routed there. Failures and cancellations always get the message.
+          const resultAlreadyShown =
+            task.status === "completed" &&
+            input.result !== undefined &&
+            normalizeClaudeResultText(subagent.lastAssistantText ?? "") ===
+              normalizeClaudeResultText(input.result);
+          if (
+            input.result !== undefined &&
+            input.result.trim().length > 0 &&
+            task.status !== "running" &&
+            !resultAlreadyShown
+          ) {
+            const resultNativeItemId = `${nativeItemId}:result`;
+            const resultItemOrdinal = subagent.resultItemOrdinal ?? ++subagent.nextChildItemOrdinal;
+            subagent.resultItemOrdinal = resultItemOrdinal;
+            const resultArtifacts = makeSubagentConversationArtifacts({
+              messageId: idAllocator.derive.messageFromProviderItem({
+                driver: CLAUDE_PROVIDER,
+                nativeItemId: resultNativeItemId,
+              }),
+              turnItemId: idAllocator.derive.turnItemFromProviderItem({
+                driver: CLAUDE_PROVIDER,
+                nativeItemId: resultNativeItemId,
+              }),
+              threadId: childThreadId,
+              rootNodeId: childRootNodeId,
+              providerThreadId: null,
+              providerTurnId: null,
+              nativeItemRef: {
+                driver: CLAUDE_PROVIDER,
+                nativeId: resultNativeItemId,
+                strength: "strong",
+              },
+              role: "assistant",
+              text: input.result,
+              ordinal: resultItemOrdinal,
+              now,
+            });
+            yield* emitProviderEvent({
+              type: "message.updated",
+              driver: CLAUDE_PROVIDER,
+              message: resultArtifacts.message,
+            });
+            yield* emitProviderEvent({
+              type: "turn_item.updated",
+              driver: CLAUDE_PROVIDER,
+              turnItem: resultArtifacts.turnItem,
+            });
+          }
         });
 
         const updateClaudeSubagentNode = Effect.fnUntraced(function* (input: {
@@ -4093,6 +4288,8 @@ export function makeClaudeAdapterV2(
           const subagent = {
             task,
             rootNodeId: existingSubagent?.rootNodeId ?? input.context.input.rootNodeId,
+            providerThreadId: input.context.input.providerThread.id,
+            providerTurnId: input.context.providerTurnId,
             childThreadId,
             childRootNodeId,
             turnItemId: existingSubagent?.turnItemId ?? derivedIds.turnItemId,
@@ -4169,188 +4366,27 @@ export function makeClaudeAdapterV2(
             });
           }
 
-          if (lifecycleChanged) {
-            yield* emitProviderEvent({
-              type: "node.updated",
-              driver: CLAUDE_PROVIDER,
-              node: {
-                id: nodeId,
-                // Parenting stays with the launch run's root node (or the
-                // owning subagent) even on wake-replay; runId follows
-                // task.runId, which a reopen re-attributes to the resuming run
-                // (see task construction).
-                threadId: task.threadId,
-                runId: task.runId,
-                parentNodeId: task.parentNodeId,
-                rootNodeId: subagent.rootNodeId,
-                kind: "subagent",
-                status: input.status,
-                countsForRun: false,
-                providerThreadId: input.context.input.providerThread.id,
-                providerTurnId: input.context.providerTurnId,
-                nativeItemRef: {
-                  driver: CLAUDE_PROVIDER,
-                  nativeId: input.taskId,
-                  strength: "strong",
-                },
-                runtimeRequestId: null,
-                checkpointScopeId: null,
-                startedAt: task.startedAt,
-                completedAt: task.completedAt,
-              },
-            });
-            yield* emitProviderEvent({
-              type: "node.updated",
-              driver: CLAUDE_PROVIDER,
-              node: {
-                id: childRootNodeId,
-                threadId: childThreadId,
-                runId: null,
-                parentNodeId: null,
-                rootNodeId: childRootNodeId,
-                kind: "root_turn",
-                status: input.status,
-                countsForRun: false,
-                providerThreadId: null,
-                providerTurnId: null,
-                nativeItemRef: task.nativeTaskRef,
-                runtimeRequestId: null,
-                checkpointScopeId: null,
-                startedAt: task.startedAt,
-                completedAt: task.completedAt,
-              },
-            });
-          }
-          // Each run opens with its own prompt in the child thread: the launch
-          // task, then every message that resumes the subagent.
+          // Each run opens with its own prompt in the child thread.
           const promptNativeItemId =
             existingSubagent === undefined
               ? `${nativeItemId}:prompt`
               : resumeToolUseId === null
                 ? null
                 : `${nativeItemId}:prompt:${resumeToolUseId}`;
-          if (promptNativeItemId !== null) {
-            const promptArtifacts = makeSubagentConversationArtifacts({
-              senderThreadId: input.context.input.threadId,
-              messageId: idAllocator.derive.messageFromProviderItem({
-                driver: CLAUDE_PROVIDER,
-                nativeItemId: promptNativeItemId,
-              }),
-              turnItemId: idAllocator.derive.turnItemFromProviderItem({
-                driver: CLAUDE_PROVIDER,
-                nativeItemId: promptNativeItemId,
-              }),
-              threadId: childThreadId,
-              rootNodeId: childRootNodeId,
-              providerThreadId: null,
-              providerTurnId: null,
-              nativeItemRef: {
-                driver: CLAUDE_PROVIDER,
-                nativeId: promptNativeItemId,
-                strength: "strong",
-              },
-              role: "user",
-              text: task.prompt,
-              ordinal: existingSubagent === undefined ? 100 : ++subagent.nextChildItemOrdinal,
-              now,
-            });
-            yield* emitProviderEvent({
-              type: "message.updated",
-              driver: CLAUDE_PROVIDER,
-              message: promptArtifacts.message,
-            });
-            yield* emitProviderEvent({
-              type: "turn_item.updated",
-              driver: CLAUDE_PROVIDER,
-              turnItem: promptArtifacts.turnItem,
-            });
-          }
-          yield* emitProviderEvent({
-            type: "subagent.updated",
-            driver: CLAUDE_PROVIDER,
-            subagent: task,
+          yield* emitClaudeSubagentUpdate({
+            subagent,
+            taskId: input.taskId,
+            lifecycleChanged,
+            ...(promptNativeItemId === null
+              ? {}
+              : {
+                  prompt: {
+                    nativeItemId: promptNativeItemId,
+                    ordinal: existingSubagent === undefined ? 100 : ++subagent.nextChildItemOrdinal,
+                  },
+                }),
+            ...(input.result === undefined ? {} : { result: input.result }),
           });
-          yield* emitProviderEvent({
-            type: "turn_item.updated",
-            driver: CLAUDE_PROVIDER,
-            turnItem: {
-              id: subagent.turnItemId,
-              threadId: task.threadId,
-              runId: task.runId,
-              nodeId: task.id,
-              providerThreadId: input.context.input.providerThread.id,
-              providerTurnId: input.context.providerTurnId,
-              nativeItemRef: task.nativeTaskRef,
-              parentItemId: null,
-              ordinal: subagent.turnItemOrdinal,
-              status: task.status,
-              title: task.title,
-              startedAt: task.startedAt,
-              completedAt: task.completedAt,
-              updatedAt: task.updatedAt,
-              type: "subagent",
-              subagentId: task.id,
-              origin: task.origin,
-              driver: task.driver,
-              providerInstanceId: task.providerInstanceId,
-              childThreadId: task.childThreadId,
-              prompt: task.prompt,
-              ...(task.progress === undefined ? {} : { progress: task.progress }),
-              result: task.result,
-            },
-          });
-
-          // A completed subagent's result is normally its final assistant
-          // message, which is already in the child thread when its text was
-          // routed there. Failures and cancellations always get the message.
-          const resultAlreadyShown =
-            input.status === "completed" &&
-            input.result !== undefined &&
-            normalizeClaudeResultText(subagent.lastAssistantText ?? "") ===
-              normalizeClaudeResultText(input.result);
-          if (
-            input.result !== undefined &&
-            input.result.trim().length > 0 &&
-            input.status !== "running" &&
-            !resultAlreadyShown
-          ) {
-            const resultNativeItemId = `${nativeItemId}:result`;
-            const resultItemOrdinal = subagent.resultItemOrdinal ?? ++subagent.nextChildItemOrdinal;
-            subagent.resultItemOrdinal = resultItemOrdinal;
-            const resultArtifacts = makeSubagentConversationArtifacts({
-              messageId: idAllocator.derive.messageFromProviderItem({
-                driver: CLAUDE_PROVIDER,
-                nativeItemId: resultNativeItemId,
-              }),
-              turnItemId: idAllocator.derive.turnItemFromProviderItem({
-                driver: CLAUDE_PROVIDER,
-                nativeItemId: resultNativeItemId,
-              }),
-              threadId: childThreadId,
-              rootNodeId: childRootNodeId,
-              providerThreadId: null,
-              providerTurnId: null,
-              nativeItemRef: {
-                driver: CLAUDE_PROVIDER,
-                nativeId: resultNativeItemId,
-                strength: "strong",
-              },
-              role: "assistant",
-              text: input.result,
-              ordinal: resultItemOrdinal,
-              now,
-            });
-            yield* emitProviderEvent({
-              type: "message.updated",
-              driver: CLAUDE_PROVIDER,
-              message: resultArtifacts.message,
-            });
-            yield* emitProviderEvent({
-              type: "turn_item.updated",
-              driver: CLAUDE_PROVIDER,
-              turnItem: resultArtifacts.turnItem,
-            });
-          }
         });
 
         const emitClaudePlanProjection = Effect.fnUntraced(function* (input: {
@@ -5503,6 +5539,32 @@ export function makeClaudeAdapterV2(
                 message,
                 activeContext: null,
               });
+              // Completion belongs to the task, even if its parent's wake turn
+              // is delayed or fails to start. Buffer first to preserve wake
+              // evidence before clearing the task's running status.
+              const subagent = (yield* Ref.get(sessionSubagentsByTaskId)).get(message.task_id);
+              if (subagent?.task.status === "running") {
+                const now = yield* DateTime.now;
+                subagent.task = {
+                  ...subagent.task,
+                  status:
+                    message.status === "completed"
+                      ? "completed"
+                      : message.status === "stopped"
+                        ? "cancelled"
+                        : "failed",
+                  result: message.summary,
+                  completedAt: now,
+                  updatedAt: now,
+                };
+                yield* emitClaudeSubagentUpdate({
+                  subagent,
+                  taskId: message.task_id,
+                  lifecycleChanged: true,
+                  // Child messages replay before the notification's fallback
+                  // result, avoiding a duplicate of the final assistant text.
+                });
+              }
             } else {
               yield* applyBackgroundTaskRosterMessage({
                 nativeThreadId: liveQuery.nativeThreadId,
@@ -7433,13 +7495,19 @@ export function makeClaudeAdapterV2(
               }
             }
             const buffers = yield* Ref.get(wakeBuffers);
+            const subagents = yield* Ref.get(sessionSubagentsByTaskId);
             for (const entry of buffers.values()) {
               if (
                 entry.messages.some(
                   (message) =>
                     message.type === "user" ||
                     message.type === "assistant" ||
-                    message.type === "result",
+                    message.type === "result" ||
+                    // The task is already terminal, but its queued parent wake
+                    // still needs the session to replay the buffered output.
+                    (message.type === "system" &&
+                      message.subtype === "task_notification" &&
+                      subagents.has(message.task_id)),
                 )
               ) {
                 return true;

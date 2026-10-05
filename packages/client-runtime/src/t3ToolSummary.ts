@@ -112,6 +112,16 @@ export function summarizeT3ToolCalls(
   );
   let label: string;
   switch (action) {
+    case "widget-present":
+      return {
+        label: phrase("Showed", "show", quantity(selected.length, "chat widget")),
+        failedCount,
+      };
+    case "interaction-present":
+      return {
+        label: phrase("Shared", "share", quantity(selected.length, "visual question")),
+        failedCount,
+      };
     case "thread-send": {
       const messages = countEntities(selected.map((call) => id(call.output?.messageId)));
       const targetsKnown = threadIds.every((value) => value !== undefined);

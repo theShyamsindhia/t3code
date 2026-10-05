@@ -10,6 +10,7 @@ import {
   resolveThemeAppearance,
   AFTERGLOW_THEME,
   CLOUD_THEME,
+  SCULPTED_THEME,
   T3_CHAT_THEME,
   EMBER_THEME,
   GROVE_THEME,
@@ -352,6 +353,7 @@ describe("index.html boot script", () => {
       IRIS_THEME,
       AFTERGLOW_THEME,
       CLOUD_THEME,
+      SCULPTED_THEME,
     ]) {
       // The boot script resolves every built-in from a light base appearance.
       expect(theme.appearance).toBe("light");

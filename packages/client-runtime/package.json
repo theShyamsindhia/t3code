@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./interaction": {
+      "types": "./src/interaction.ts",
+      "default": "./src/interaction.ts"
+    },
     "./composerThreadItems": {
       "types": "./src/composerThreadItems.ts",
       "default": "./src/composerThreadItems.ts"

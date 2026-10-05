@@ -635,6 +635,16 @@ export function resolveComposerInteractionMode(input: {
   };
 }
 
+/** Visual replies are ordinary messages, independent of the optional plan-mode UI. */
+export function resolveFollowUpInteractionMode(input: {
+  source: "plan" | "interaction";
+  interactionMode: ProviderInteractionMode;
+  planModeEnabled: boolean;
+}): ProviderInteractionMode | null {
+  if (!input.planModeEnabled) return input.source === "plan" ? null : "default";
+  return input.interactionMode;
+}
+
 export function getAntigravitySendBlockReason(
   provider:
     | Pick<ServerProvider, "driver" | "installed" | "auth" | "models" | "status">

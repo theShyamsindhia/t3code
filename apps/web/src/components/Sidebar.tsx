@@ -893,6 +893,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
         aria-label={accessibility.label}
         aria-current={accessibility.current}
         data-testid="sidebar-draft-row"
+        data-conversation-dock-row={props.dock ? "" : undefined}
         className={cn(
           "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           props.isActive ? "bg-sidebar-row-active" : draftSurfaceClassName,
@@ -904,7 +905,9 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
         <div
           className={cn(
             "relative z-10 px-(--sidebar-row-content-inset)",
-            props.dock ? "flex h-9 items-center" : "h-[4.875rem] py-(--sidebar-content-inset)",
+            props.dock
+              ? "flex h-[var(--conversation-dock-row-height,2.25rem)] items-center"
+              : "h-[4.875rem] py-(--sidebar-content-inset)",
           )}
         >
           <div className="flex h-5 min-w-0 flex-1 items-center gap-1.5">
@@ -1771,8 +1774,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 aria-label={accessibility.label}
                 aria-current={accessibility.current}
                 data-testid={variant === "dock" ? "conversation-dock-row" : "sidebar-row-slim"}
+                data-conversation-dock-row={variant === "dock" ? "" : undefined}
                 aria-busy={isRegeneratingTitle || undefined}
-                className={cn(rowSurfaceClassName, "flex h-9 items-center gap-2.5 px-2.5")}
+                className={cn(
+                  rowSurfaceClassName,
+                  "flex h-[var(--conversation-dock-row-height,2.25rem)] items-center gap-2.5 px-2.5",
+                )}
                 onClick={handleClick}
                 onDoubleClick={handleDoubleClick}
                 onKeyDown={handleKeyDown}

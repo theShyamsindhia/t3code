@@ -1,3 +1,5 @@
+import { interactionPresentations } from "@t3tools/client-runtime/interaction";
+import { InteractionPanel } from "./InteractionPanel";
 import { externalSessionSource } from "@t3tools/contracts";
 import { ExternalConversationNotice } from "./chat/ExternalConversationNotice";
 import { ChatCanvas } from "./chat/ChatCanvas";
@@ -512,6 +514,7 @@ import {
   waitForRevertedMessage,
   reconcileMountedTerminalThreadIds,
   resolveComposerInteractionMode,
+  resolveFollowUpInteractionMode,
   resolveComposerProviderSelection,
   getAntigravitySendBlockReason,
   observeProactivePanelUserChoice,
@@ -1651,6 +1654,10 @@ export default function ChatView(props: ChatViewProps) {
     return null;
   }, [serverProjection?.providerTurns]);
   const serverVisibleTurnItems = useThreadVisibleTurnItems(routeThreadDetailRef);
+  const sharedPresentations = useMemo(
+    () => interactionPresentations(serverVisibleTurnItems),
+    [serverVisibleTurnItems],
+  );
   const serverThreadHistory = useThreadHistory(routeThreadDetailRef);
   const threadHistoryControls = useMemo<MessagesTimelineHistoryControls | undefined>(() => {
     if (routeThreadDetailRef === null || !shouldShowLoadEarlierControl(serverThreadHistory)) {
@@ -8472,7 +8479,7 @@ export default function ChatView(props: ChatViewProps) {
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
-      const followUpSent = await onSubmitPlanFollowUp({
+      const followUpSent = await onSubmitFollowUp({
         text: followUp.text,
         context: buildMessageContext({
           terminalContexts: sendableComposerTerminalContexts,
@@ -9668,14 +9675,16 @@ export default function ChatView(props: ChatViewProps) {
     setActivePendingUserInputQuestionIndex(Math.max(activePendingProgress.questionIndex - 1, 0));
   }, [activePendingProgress, setActivePendingUserInputQuestionIndex]);
 
-  async function onSubmitPlanFollowUp({
+  async function onSubmitFollowUp({
     text,
     context,
-    interactionMode: nextInteractionMode,
+    interactionMode: requestedInteractionMode,
+    source = "plan",
   }: {
     text: string;
     context?: ReturnType<typeof buildMessageContext>;
     interactionMode: "default" | "plan";
+    source?: "plan" | "interaction";
   }) {
     if (!activeThread || !isServerThread || isSendBusy || isConnecting || sendInFlightRef.current) {
       return false;
@@ -9687,9 +9696,13 @@ export default function ChatView(props: ChatViewProps) {
     }
 
     const sendCtx = composerRef.current?.getSendContext();
-    if (!sendCtx?.providerAvailable || !sendCtx.interactionModeEnabled) {
-      return false;
-    }
+    if (!sendCtx?.providerAvailable) return false;
+    const nextInteractionMode = resolveFollowUpInteractionMode({
+      source,
+      interactionMode: requestedInteractionMode,
+      planModeEnabled: sendCtx.interactionModeEnabled,
+    });
+    if (nextInteractionMode === null) return false;
     const {
       selectedProvider: ctxSelectedProvider,
       selectedModel: ctxSelectedModel,
@@ -9774,7 +9787,7 @@ export default function ChatView(props: ChatViewProps) {
           titleSeed: activeThread.title,
           runtimeMode,
           interactionMode: nextInteractionMode,
-          ...(nextInteractionMode === "default" && activeProposedPlan
+          ...(source === "plan" && nextInteractionMode === "default" && activeProposedPlan
             ? {
                 sourceProposedPlan: {
                   threadId: activeThread.id,
@@ -9801,7 +9814,7 @@ export default function ChatView(props: ChatViewProps) {
       const error = squashAtomCommandFailure(failure);
       setThreadError(
         threadIdForSend,
-        error instanceof Error ? error.message : "Failed to send plan follow-up.",
+        error instanceof Error ? error.message : "Failed to send follow-up.",
       );
     }
     sendInFlightRef.current = false;
@@ -10249,8 +10262,19 @@ export default function ChatView(props: ChatViewProps) {
     return <NoActiveThreadState />;
   }
 
+  const submitInteractionReply = (text: string) =>
+    onSubmitFollowUp({ text, interactionMode, source: "interaction" });
+
   const rightPanelContent = activeThreadRef ? (
-    renderedRightPanelSurface?.kind === "preview" ? (
+    renderedRightPanelSurface?.kind === "interaction" ? (
+      <InteractionPanel
+        key={activeThreadKey}
+        threadKey={activeThreadKey!}
+        presentations={sharedPresentations}
+        disabled={isSendBusy || isConnecting || !isServerThread}
+        onSubmit={submitInteractionReply}
+      />
+    ) : renderedRightPanelSurface?.kind === "preview" ? (
       <Suspense fallback={null}>
         <PreviewPanel
           mode="embedded"
@@ -10699,6 +10723,11 @@ export default function ChatView(props: ChatViewProps) {
                 routeThreadKey={displayedTimelineKey}
                 displayThreadKey={displayedTimelineKey}
                 onOpenTurnDiff={paintOnlyDisplayedTimeline ? noopHeldTurnDiff : onOpenTurnDiff}
+                onSubmitWidgetReply={
+                  !paintOnlyDisplayedTimeline && !isSendBusy && !isConnecting && isServerThread
+                    ? submitInteractionReply
+                    : undefined
+                }
                 onOpenThread={onOpenRelatedThread}
                 parentThreadLink={paintOnlyDisplayedTimeline ? null : parentThreadLink}
                 onForkFromRun={paintOnlyDisplayedTimeline ? async () => {} : onForkFromRun}
@@ -10797,6 +10826,19 @@ export default function ChatView(props: ChatViewProps) {
                   data-chat-composer-stack="true"
                   className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)"
                 >
+                  {sharedPresentations.length > 0 && activeThreadRef && (
+                    <div className="mb-2 flex justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          useRightPanelStore.getState().open(activeThreadRef, "interaction")
+                        }
+                      >
+                        Open shared space
+                      </Button>
+                    </div>
+                  )}
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full">
                       <div
