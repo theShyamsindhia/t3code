@@ -93,19 +93,57 @@
     [data-slot="alert-dialog-footer"],
     [data-slot="command-footer"]
   ) {
+  --dialog-inner-radius: var(--dialog-footer-radius, calc(var(--radius-2xl) - 4px));
+  --dialog-paint-overlap: min(1px, var(--dialog-inner-radius));
+  --primary: var(--accent);
+  --primary-foreground: var(--contrast-accent-foreground);
   --contrast-foreground: var(--sidebar-foreground);
   --contrast-muted-foreground: var(--sidebar-muted-foreground);
+  position: relative;
+  isolation: isolate;
   align-self: stretch;
   flex-shrink: 0;
   width: 100%;
   min-width: 0;
   border-top: 0;
-  border-radius: 0 0 var(--dialog-footer-radius, calc(var(--radius-2xl) - 4px))
-    var(--dialog-footer-radius, calc(var(--radius-2xl) - 4px));
-  /* Match the header's px-6 and the panel's mx-2 + px-4. */
-  padding: 0.5rem 1.5rem;
-  background: var(--frame-paint);
+  border-radius: 0 0 var(--dialog-inner-radius) var(--dialog-inner-radius);
+  padding: 0.5rem;
+  background: none;
   color: var(--sidebar-foreground);
+}
+
+/* Overlap the frame border so fractional scaling cannot expose a seam. */
+.dialog-frame
+  :is(
+    [data-slot="dialog-footer"],
+    [data-slot="alert-dialog-footer"],
+    [data-slot="command-footer"]
+  )::before {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--dialog-inner-radius)) calc(-1 * var(--dialog-paint-overlap))
+    calc(-1 * var(--dialog-paint-overlap));
+  z-index: -1;
+  border-radius: 0 0 calc(var(--dialog-inner-radius) + var(--dialog-paint-overlap))
+    calc(var(--dialog-inner-radius) + var(--dialog-paint-overlap));
+  background: var(--frame-paint);
+  pointer-events: none;
+  mask:
+    radial-gradient(
+        circle var(--dialog-inner-radius) at 100% 0,
+        transparent calc(var(--dialog-inner-radius) - 0.5px),
+        black var(--dialog-inner-radius)
+      )
+      top left / calc(var(--dialog-inner-radius) + var(--dialog-paint-overlap))
+      var(--dialog-inner-radius) no-repeat,
+    radial-gradient(
+        circle var(--dialog-inner-radius) at 0 0,
+        transparent calc(var(--dialog-inner-radius) - 0.5px),
+        black var(--dialog-inner-radius)
+      )
+      top right / calc(var(--dialog-inner-radius) + var(--dialog-paint-overlap))
+      var(--dialog-inner-radius) no-repeat,
+    linear-gradient(black, black) bottom / 100% calc(100% - var(--dialog-inner-radius)) no-repeat;
 }
 
 .dialog-frame [data-slot="command-footer"] {
