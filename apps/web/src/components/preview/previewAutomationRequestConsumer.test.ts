@@ -7,7 +7,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
-import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
@@ -62,6 +62,45 @@ const consumerState = (handleRequest: (request: PreviewAutomationRequest) => Pro
 });
 
 describe("previewAutomationRequestConsumer", () => {
+  it("pauses the latest host when the registry is disposed", async () => {
+    const disconnected = signal();
+    const firstDisconnect = vi.fn(async () => undefined);
+    const latestDisconnect = vi.fn(async () => {
+      disconnected.resolve();
+      return undefined;
+    });
+    const requestHandlerAtom = Atom.make({
+      handle: async () => undefined,
+      disconnect: firstDisconnect,
+    });
+    const consumerAtom = createPreviewAutomationRequestConsumerAtom({
+      requestsAtom: Atom.make(
+        AsyncResult.success<PreviewAutomationStreamEvent, Error>({
+          type: "connected",
+          connectionId,
+        }),
+      ),
+      clientId,
+      environmentId,
+      connectionAtom: Atom.make<string | null>(null),
+      requestHandlerAtom,
+      respond: async () => undefined,
+      label: "test:preview-disposal",
+    });
+    const registry = AtomRegistry.make();
+    registry.mount(consumerAtom);
+    registry.set(requestHandlerAtom, {
+      handle: async () => undefined,
+      disconnect: latestDisconnect,
+    });
+
+    registry.dispose();
+    await disconnected.promise;
+
+    expect(firstDisconnect).not.toHaveBeenCalled();
+    expect(latestDisconnect).toHaveBeenCalledTimes(1);
+  });
+
   it("acknowledges a replacement stream before consuming requests from it", async () => {
     const requestsAtom = Atom.make(
       AsyncResult.success<PreviewAutomationStreamEvent, Error>({

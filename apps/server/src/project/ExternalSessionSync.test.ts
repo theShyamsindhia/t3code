@@ -14,7 +14,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import * as Sqlite from "../persistence/Sqlite.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
@@ -55,7 +55,7 @@ const testLayer = Layer.mergeAll(
   ProjectionStore.layer,
   ProviderSessionRuntime.layer,
   ServerSettingsService.layerTest({ externalSessionThreadIds: [] }),
-).pipe(Layer.provide(SqlitePersistenceMemory), Layer.provideMerge(NodeServices.layer));
+).pipe(Layer.provide(Sqlite.layerMemory), Layer.provideMerge(NodeServices.layer));
 
 const fixture = Effect.gen(function* () {
   const store = yield* ProjectionStore.ProjectionStoreV2;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { explainProviderConnectionError } from "./providerConnectionError";
+import { explainProviderConnectionError } from "./providerConnectionError.ts";
 
 describe("explainProviderConnectionError", () => {
   it.each([

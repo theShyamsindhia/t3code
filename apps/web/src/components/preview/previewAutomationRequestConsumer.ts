@@ -4,7 +4,7 @@ import type {
   PreviewAutomationResponse,
   PreviewAutomationStreamEvent,
 } from "@t3tools/contracts";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 
 import {
   PreviewAutomationControlInterruptedHostError,
@@ -42,6 +42,10 @@ export function createPreviewAutomationRequestConsumerAtom<E>(options: {
   return Atom.make((get) => {
     get.mount(options.connectionAtom);
     get.mount(options.requestHandlerAtom);
+    let handler = get.once(options.requestHandlerAtom);
+    get.subscribe(options.requestHandlerAtom, (next) => {
+      handler = next;
+    });
     let disposed = false;
     let activeConnectionId: PreviewAutomationStreamEvent["connectionId"] | null = null;
     let connectionExplicitlyAnnounced = false;
@@ -53,9 +57,9 @@ export function createPreviewAutomationRequestConsumerAtom<E>(options: {
       generation += 1;
       activeConnectionId = null;
       reportedConnectionId = null;
-      get.set(options.connectionAtom, null);
-      const handler = get.once(options.requestHandlerAtom);
-      disconnecting = disconnecting.then(() => handler.disconnect?.());
+      if (!disposed) get.set(options.connectionAtom, null);
+      const currentHandler = handler;
+      disconnecting = disconnecting.then(() => currentHandler.disconnect?.());
     };
 
     const consume = (result: AutomationStreamResult<E>) => {
@@ -93,7 +97,7 @@ export function createPreviewAutomationRequestConsumerAtom<E>(options: {
             throw new PreviewAutomationControlInterruptedHostError({
               tabId: request.tabId ?? null,
             });
-          return get.once(options.requestHandlerAtom).handle(request, isCurrent);
+          return handler.handle(request, isCurrent);
         })
         .then(
           (value) =>

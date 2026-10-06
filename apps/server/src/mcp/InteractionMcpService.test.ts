@@ -38,9 +38,13 @@ const caller = {
 };
 const scope: McpInvocationContext.McpInvocationScope = {
   environmentId: EnvironmentId.make("environment"),
-  threadId,
-  providerSessionId: "session",
-  providerInstanceId: ProviderInstanceId.make("codex"),
+  requestNamespace: "interaction-session",
+  thread: {
+    threadId,
+    providerSessionId: "session",
+    providerInstanceId: ProviderInstanceId.make("codex"),
+  },
+  client: undefined,
   issuedAt: 0,
   capabilities: new Set(["orchestration"]),
 };
@@ -54,6 +58,36 @@ const layer = (thread: OrchestrationV2ThreadShell | null) =>
   Layer.mock(ThreadManagement.ThreadManagementService)({
     getThreadShell: () => Effect.succeed(thread),
   });
+
+it.effect("rejects external clients without a conversation to present in", () =>
+  Effect.gen(function* () {
+    for (const invoke of [
+      () => present(input),
+      () =>
+        presentWidget({
+          title: "Compare",
+          description: "Choose",
+          html: "<p>Choose</p>",
+          height: 200,
+        }),
+    ]) {
+      const error = yield* invoke().pipe(
+        Effect.provide(layer(null)),
+        Effect.provideService(McpInvocationContext.McpInvocationContext, {
+          ...scope,
+          thread: undefined,
+          client: {
+            sessionId: "client-session",
+            label: "External client",
+            runtimeModeCeiling: "full-access",
+          },
+        }),
+        Effect.flip,
+      );
+      expect(error.code).toBe("thread_credential_required");
+    }
+  }),
+);
 
 it.effect("lets a live agent present in plan mode without starting work or waiting for input", () =>
   Effect.gen(function* () {

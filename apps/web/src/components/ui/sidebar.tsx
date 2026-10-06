@@ -1,16 +1,12 @@
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
-import {
-  PanelBottomCloseIcon,
-  PanelBottomIcon,
-  PanelLeftCloseIcon,
-  PanelLeftIcon,
-} from "lucide-react";
+import { PanelBottom, PanelBottomClose, PanelLeft, PanelLeftClose } from "lucide";
 import * as React from "react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { Input, type InputProps } from "~/components/ui/input";
+import { MorphIcon } from "~/components/MorphIcon";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import {
   Sheet,
@@ -334,14 +330,14 @@ function SidebarTrigger({
 }: React.ComponentProps<typeof Button> & { orientation?: "horizontal" | "vertical" }) {
   const { toggleSidebar } = useSidebar();
   const isOpen = useSidebarVisibility();
-  const Icon =
+  const icon =
     orientation === "horizontal"
       ? isOpen
-        ? PanelBottomCloseIcon
-        : PanelBottomIcon
+        ? PanelBottomClose
+        : PanelBottom
       : isOpen
-        ? PanelLeftCloseIcon
-        : PanelLeftIcon;
+        ? PanelLeftClose
+        : PanelLeft;
 
   return (
     <Button
@@ -360,7 +356,7 @@ function SidebarTrigger({
       variant="ghost"
       {...props}
     >
-      <Icon className="size-4" />
+      <MorphIcon className="size-4" icon={icon} />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   );

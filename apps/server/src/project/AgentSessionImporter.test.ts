@@ -64,7 +64,7 @@ it.effect(
           },
         }),
     });
-    const testLayer = AgentSessionImporter.layer.pipe(
+    const layerTest = AgentSessionImporter.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.succeed(AgentSessionScanner.AgentSessionScanner, scanner),
@@ -167,6 +167,6 @@ it.effect(
         expect.objectContaining({ type: "thread.unsettle", threadId }),
         expect.objectContaining({ type: "thread.archive", threadId: previewId }),
       ]);
-    }).pipe(Effect.provide(testLayer));
+    }).pipe(Effect.provide(layerTest));
   },
 );

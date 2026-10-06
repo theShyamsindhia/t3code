@@ -4,6 +4,7 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2TurnItem,
+  EventId,
   MessageId,
   ProjectId,
   ProviderInstanceId,
@@ -122,12 +123,12 @@ describe("applyOrchestrationV2ProjectionEvent", () => {
       ],
     };
     const event = {
-      id: "external-refresh",
+      id: EventId.make("external-refresh"),
       type: "thread.external-history.synced",
       threadId,
       occurredAt: now,
       payload: { messages: [], turnItems: [newItem] },
-    } as OrchestrationV2DomainEvent;
+    } satisfies OrchestrationV2DomainEvent;
     const next = applyOrchestrationV2ProjectionEvent(projection, event);
     expect(next?.turnItems).toEqual([newItem]);
     expect(next?.visibleTurnItems.map((row) => row.item)).toEqual([newItem]);

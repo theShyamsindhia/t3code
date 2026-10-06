@@ -131,3 +131,5 @@ export const PREVIEW_PASSWORD_SET_AGENT_ACCESS_CHANNEL =
   "desktop:preview-password-set-agent-access";
 export const PREVIEW_PASSWORD_FILL_CHANNEL = "desktop:preview-password-fill";
 export const PREVIEW_PASSWORD_SIGN_IN_CHANNEL = "desktop:preview-password-sign-in";
+export const TAKE_LEGACY_LOCAL_STORAGE_CHANNEL = "desktop:take-legacy-local-storage";
+export const COMPLETE_LEGACY_LOCAL_STORAGE_CHANNEL = "desktop:complete-legacy-local-storage";
