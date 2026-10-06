@@ -768,7 +768,7 @@ export function PreviewView({
             <>
               {runtimeTabId && desktopOverlay?.hasWebContents ? (
                 <PreviewControlButton
-                  key={runtimeTabId}
+                  key={`control:${runtimeTabId}`}
                   tabId={runtimeTabId}
                   control={desktopOverlay.automationControl ?? "ready"}
                   controller={controller}
@@ -776,7 +776,7 @@ export function PreviewView({
               ) : null}
               {runtimeTabId && desktopOverlay?.hasWebContents && previewBridge.passwords ? (
                 <PreviewPasswords
-                  key={runtimeTabId}
+                  key={`passwords:${runtimeTabId}`}
                   tabId={runtimeTabId}
                   passwords={previewBridge.passwords}
                 />
