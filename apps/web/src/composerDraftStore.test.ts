@@ -403,6 +403,22 @@ describe("composerDraftStore unsent draft marker", () => {
     resetComposerDraftStore();
   });
 
+  it.each(["", "hello"])("does not notify draft subscribers for unchanged text: %j", (prompt) => {
+    useComposerDraftStore.getState().setPrompt(threadRef, prompt);
+    const previous = useComposerDraftStore.getState();
+    const listener = vi.fn();
+    const unsubscribe = useComposerDraftStore.subscribe(listener);
+    try {
+      previous.setPrompt(threadRef, prompt);
+      expect(useComposerDraftStore.getState()).toBe(previous);
+      expect(listener).not.toHaveBeenCalled();
+      previous.setPrompt(threadRef, `${prompt}!`);
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it("reports content for typed text and clears when the composer is emptied", () => {
     const hasDraft = () =>
       composerDraftHasUserContent(useComposerDraftStore.getState().getComposerDraft(threadRef));

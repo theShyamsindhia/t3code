@@ -3078,7 +3078,10 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
         },
         setPrompt: (threadRef, prompt) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
-          if (threadKey.length === 0) {
+          if (
+            threadKey.length === 0 ||
+            (get().draftsByThreadKey[threadKey]?.prompt ?? "") === prompt
+          ) {
             return;
           }
           set((state) => {

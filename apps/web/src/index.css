@@ -2188,8 +2188,27 @@ code {
 /* Rich text composer (Tiptap). The stored prompt stays markdown; only the
    surface renders styled text. Markers (** * ` ~~) appear as non-editable
    widgets while the caret is on styled text. */
+[data-composer-caret-host] {
+  --composer-caret-color: light-dark(var(--color-orange-600), var(--contrast-foreground));
+}
+
 .composer-tiptap {
   position: relative;
+  caret-color: var(--composer-caret-color);
+}
+
+[data-composer-caret-host][data-composer-caret-moving] .composer-tiptap {
+  caret-color: transparent;
+}
+
+.composer-moving-caret {
+  position: absolute;
+  inset: 0 auto auto 0;
+  z-index: 1;
+  width: 1.5px;
+  border-radius: 1px;
+  background: var(--composer-caret-color);
+  pointer-events: none;
 }
 
 .composer-tiptap p {

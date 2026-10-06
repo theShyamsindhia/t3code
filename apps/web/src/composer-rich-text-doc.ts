@@ -542,7 +542,12 @@ function walkTaskList(list: ProseMirrorNode, listStart: number, acc: RichAccumul
   });
 }
 
+// ProseMirror documents are immutable. Selection updates can reuse their mapping.
+const serializedDocs = new WeakMap<ProseMirrorNode, RichDocMap>();
+
 export function serializeEditorDoc(doc: ProseMirrorNode): RichDocMap {
+  const cached = serializedDocs.get(doc);
+  if (cached) return cached;
   const acc: RichAccumulator = { runs: [], value: "", flat: 0, collapsed: 0, md: 0 };
   const blocks: ProseMirrorNode[] = [];
   doc.content.forEach((node) => {
@@ -560,12 +565,14 @@ export function serializeEditorDoc(doc: ProseMirrorNode): RichDocMap {
     pmBlockStart += block.nodeSize;
   });
 
-  return {
+  const result = {
     value: acc.value,
     runs: acc.runs,
     docLength: acc.flat,
     contextIds: Array.from(new Set(collectInlineContextIds(acc.value))),
   };
+  serializedDocs.set(doc, result);
+  return result;
 }
 
 function lastRunEnd(map: RichDocMap, space: "collapsed" | "md"): number {

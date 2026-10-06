@@ -82,6 +82,7 @@ import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/provider
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { importPastedComposerText } from "./composerInlineTokenPaste";
 import { didComposerSelectionChangeVisibly } from "./composerSelection";
+import { attachComposerSmoothCaret } from "./composerSmoothCaret";
 import type { ComposerDraftContextRecords } from "./composerContextPresentation";
 
 export interface ComposerPromptEditorHandle {
@@ -685,15 +686,41 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
     };
   }, []);
 
-  const initialCursor = clampCollapsedComposerCursor(value, cursor);
-  const initialExpandedCursor = expandCollapsedComposerCursor(value, initialCursor);
-  const snapshotRef = useRef({
-    value,
-    cursor: initialCursor,
-    expandedCursor: initialExpandedCursor,
-    contextIds: collectInlineContextIds(value),
+  const [initial] = useState(() => {
+    const initialCursor = clampCollapsedComposerCursor(value, cursor);
+    return {
+      content: buildDocJson(
+        value,
+        (name) => {
+          const normalized = name.startsWith("$") ? name.slice(1) : name;
+          const found = skills.find((candidate) => candidate.name === normalized);
+          if (!found) {
+            return {
+              label: formatProviderSkillDisplayName({ name: normalized }),
+              description: null,
+            };
+          }
+          const shortDescription = found.shortDescription?.trim();
+          return {
+            label: formatProviderSkillDisplayName(found),
+            description: shortDescription || found.description?.trim() || null,
+          };
+        },
+        { styling: richText },
+      ),
+      snapshot: {
+        value,
+        cursor: initialCursor,
+        expandedCursor: expandCollapsedComposerCursor(value, initialCursor),
+        contextIds: collectInlineContextIds(value),
+      },
+    };
   });
-  const selectionRangeRef = useRef({ start: initialExpandedCursor, end: initialExpandedCursor });
+  const snapshotRef = useRef(initial.snapshot);
+  const selectionRangeRef = useRef({
+    start: initial.snapshot.expandedCursor,
+    end: initial.snapshot.expandedCursor,
+  });
   const isApplyingControlledUpdateRef = useRef(false);
   const hasAppliedControlledSelectionRef = useRef(false);
   const citationRequestRef = useRef<ComposerCitationCommentRequest | null>(null);
@@ -848,25 +875,7 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
             ]
           : []),
       ],
-      content: buildDocJson(
-        value,
-        (name) => {
-          const normalized = name.startsWith("$") ? name.slice(1) : name;
-          const found = skills.find((candidate) => candidate.name === normalized);
-          if (!found) {
-            return {
-              label: formatProviderSkillDisplayName({ name: normalized }),
-              description: null,
-            };
-          }
-          const shortDescription = found.shortDescription?.trim();
-          return {
-            label: formatProviderSkillDisplayName(found),
-            description: shortDescription || found.description?.trim() || null,
-          };
-        },
-        { styling: richText },
-      ),
+      content: initial.content,
       editable: !disabled,
       editorProps: {
         attributes: editorAttributes,
@@ -1093,6 +1102,10 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
 
   useEffect(() => {
     editorHolder.current = editor;
+  }, [editor]);
+
+  useEffect(() => {
+    if (editor) return attachComposerSmoothCaret(editor.view);
   }, [editor]);
 
   // Tiptap forwards option changes to the view from a passive effect, so a
@@ -1350,6 +1363,7 @@ function ComposerPromptEditorTiptapInner(props: ComposerPromptEditorProps) {
       <ComposerContextRecordsContext value={contextRecords}>
         <ComposerCitationCommentContext value={citationCommentActions}>
           <div
+            data-composer-caret-host
             className={cn(
               "relative flow-root font-(family-name:--font-composer,var(--font-sans)) text-(length:--font-size-prompt,var(--text-sm)) max-sm:pointer-coarse:text-(length:--font-size-prompt-touch)",
               containerClassName,
