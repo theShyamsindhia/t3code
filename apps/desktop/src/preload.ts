@@ -325,6 +325,27 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       ipcRenderer.invoke(IpcChannels.PREVIEW_SET_AUDIO_MUTED_CHANNEL, { tabId, audioMuted }),
     openDevTools: (tabId) =>
       ipcRenderer.invoke(IpcChannels.PREVIEW_OPEN_DEVTOOLS_CHANNEL, { tabId }),
+    passwords: {
+      list: (tabId) => ipcRenderer.invoke(IpcChannels.PREVIEW_PASSWORD_LIST_CHANNEL, { tabId }),
+      importFile: (tabId) =>
+        ipcRenderer.invoke(IpcChannels.PREVIEW_PASSWORD_IMPORT_CHANNEL, { tabId }),
+      remove: (tabId, id) =>
+        ipcRenderer.invoke(IpcChannels.PREVIEW_PASSWORD_REMOVE_CHANNEL, { tabId, id }),
+      setAgentAccess: (tabId, id, allowed) =>
+        ipcRenderer.invoke(IpcChannels.PREVIEW_PASSWORD_SET_AGENT_ACCESS_CHANNEL, {
+          tabId,
+          id,
+          allowed,
+        }),
+      fill: (tabId, id) =>
+        ipcRenderer.invoke(IpcChannels.PREVIEW_PASSWORD_FILL_CHANNEL, { tabId, id }),
+      signIn: (tabId, username, controlEpoch) =>
+        ipcRenderer.invoke(IpcChannels.PREVIEW_PASSWORD_SIGN_IN_CHANNEL, {
+          tabId,
+          username,
+          controlEpoch,
+        }),
+    },
     listBrowserImportSources: () => ipcRenderer.invoke(IpcChannels.PREVIEW_IMPORT_SOURCES_CHANNEL),
     importBrowserCookies: (input) =>
       ipcRenderer.invoke(IpcChannels.PREVIEW_IMPORT_COOKIES_CHANNEL, input),

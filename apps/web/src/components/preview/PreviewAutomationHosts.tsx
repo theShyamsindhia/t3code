@@ -329,7 +329,9 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
     () => ({
       clientId: automationClientId,
       environmentId,
-      supportedOperations: [...PREVIEW_AUTOMATION_OPERATIONS],
+      supportedOperations: PREVIEW_AUTOMATION_OPERATIONS.filter(
+        (operation) => operation !== "signIn" || Boolean(window.desktopBridge?.preview?.passwords),
+      ),
     }),
     [automationClientId, environmentId],
   );
@@ -766,6 +768,17 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
             return await ready.bridge.automation.scroll(
               ready.runtimeTabId,
               request.input as Parameters<typeof ready.bridge.automation.scroll>[1],
+              ready.controlEpoch,
+            );
+          }
+          case "signIn": {
+            const ready = await requireReadyTab();
+            if (!ready.bridge.passwords)
+              throw new Error("Saved logins require an updated desktop app.");
+            const input = request.input as { username?: string };
+            return await ready.bridge.passwords.signIn(
+              ready.runtimeTabId,
+              input.username,
               ready.controlEpoch,
             );
           }

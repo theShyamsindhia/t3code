@@ -124,3 +124,10 @@ export const CANCEL_PROVIDER_AUTH_CALLBACK_CHANNEL = "desktop:cancel-provider-au
 
 export const PREVIEW_AUTOMATION_SET_PAUSED_CHANNEL = "desktop:preview-automation-set-paused";
 export const PREVIEW_AUTOMATION_CHECK_CONTROL_CHANNEL = "desktop:preview-automation-check-control";
+export const PREVIEW_PASSWORD_LIST_CHANNEL = "desktop:preview-password-list";
+export const PREVIEW_PASSWORD_IMPORT_CHANNEL = "desktop:preview-password-import";
+export const PREVIEW_PASSWORD_REMOVE_CHANNEL = "desktop:preview-password-remove";
+export const PREVIEW_PASSWORD_SET_AGENT_ACCESS_CHANNEL =
+  "desktop:preview-password-set-agent-access";
+export const PREVIEW_PASSWORD_FILL_CHANNEL = "desktop:preview-password-fill";
+export const PREVIEW_PASSWORD_SIGN_IN_CHANNEL = "desktop:preview-password-sign-in";

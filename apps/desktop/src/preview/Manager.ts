@@ -69,6 +69,8 @@ import * as SynchronizedRef from "effect/SynchronizedRef";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { PREVIEW_PICTURE_IN_PICTURE_FRAME_CHANNEL } from "../ipc/channels.ts";
 import * as BrowserSession from "./BrowserSession.ts";
+import { BrowserPasswordError, passwordOrigin, type SavedPassword } from "./PasswordImport.ts";
+import { fillSavedLogin } from "./PasswordAutofill.ts";
 import {
   ANNOTATION_CAPTURED_CHANNEL,
   ANNOTATION_THEME_CHANNEL,
@@ -635,6 +637,17 @@ const inputSignalsMatch = (left: PreviewInputSignal, right: PreviewInputSignal):
   );
 };
 
+const encodeSavedLoginPayload = Schema.encodeEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      origin: Schema.String,
+      username: Schema.String,
+      password: Schema.String,
+      submit: Schema.Boolean,
+    }),
+  ),
+);
+
 const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function* (
   artifactDirectory: string,
   pictureInPicturePreloadPath: string,
@@ -667,6 +680,8 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     ReadonlyMap<number, BrowserControlSession>
   >(new Map());
   const diagnosticsRef = yield* Ref.make<ReadonlyMap<number, BrowserDiagnostics>>(new Map());
+  const passwordPages = new Map<number, string>();
+  const evaluatedPages = new Set<number>();
   const expectedAgentInputsRef = yield* Ref.make<
     ReadonlyMap<string, ReadonlyArray<ExpectedAgentInput>>
   >(new Map());
@@ -1153,6 +1168,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   ) {
     const timestamp = yield* currentIso;
     yield* Ref.update(diagnosticsRef, (allDiagnostics) => {
+      if (passwordPages.has(webContentsId)) return allDiagnostics;
       const current = allDiagnostics.get(webContentsId);
       if (!current) return allDiagnostics;
       const requestId = typeof params["requestId"] === "string" ? params["requestId"] : null;
@@ -1536,6 +1552,17 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   ) {
     const tab = (yield* SynchronizedRef.get(tabsRef)).get(tabId);
     if (!tab) return yield* new PreviewTabNotFoundError({ tabId });
+    if (
+      tab.webContentsId !== null &&
+      passwordPages.has(tab.webContentsId) &&
+      operation !== "status" &&
+      operation !== "navigate"
+    ) {
+      return yield* new BrowserPasswordError({
+        reason:
+          "This page contains an autofilled login. Complete sign-in in the browser; page tools resume after a full navigation. Reload to abandon sign-in.",
+      });
+    }
     const epoch = (yield* Ref.get(controlEpochRef)).get(tabId) ?? 0;
     const readOnly = operation === "status" || READ_ONLY_CONTROL_ACTIONS.has(operation);
     const reason =
@@ -1758,6 +1785,8 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   const detachListeners = Effect.fn("PreviewManager.detachListeners")(function* (
     webContentsId: number,
   ) {
+    passwordPages.delete(webContentsId);
+    evaluatedPages.delete(webContentsId);
     const managed = yield* Ref.modify(attachedRef, (attached) => [
       attached.get(webContentsId),
       replaceMap(attached, (copy) => {
@@ -1771,8 +1800,8 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   });
 
   const computeNavStatus = (wc: Electron.WebContents): PreviewNavStatus => {
-    const url = wc.getURL();
-    const title = wc.getTitle();
+    const url = passwordPages.get(wc.id) ?? wc.getURL();
+    const title = passwordPages.has(wc.id) ? "Sign-in in progress" : wc.getTitle();
     if (url === "" || url === "about:blank") return { kind: "Idle" };
     if (wc.isLoading()) return { kind: "Loading", url, title };
     return { kind: "Success", url, title };
@@ -1884,7 +1913,20 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       if (Option.isSome(next)) yield* emitIfCurrent(tabId, next.value);
     });
     const sync = () => runFork(syncState(true));
-    const syncNavigation = () => runFork(syncState(false, true));
+    const syncNavigation = () => {
+      const containedPassword = passwordPages.delete(wc.id);
+      evaluatedPages.delete(wc.id);
+      runFork(
+        (containedPassword
+          ? Ref.update(diagnosticsRef, (all) =>
+              replaceMap(all, (copy) =>
+                copy.set(wc.id, { consoleEntries: [], networkEntries: [], requests: new Map() }),
+              ),
+            )
+          : Effect.void
+        ).pipe(Effect.andThen(syncState(false, true))),
+      );
+    };
     const syncInPageNavigation = () => runFork(syncState(false));
     const restoreRecordingCursor = () =>
       runFork(
@@ -2696,6 +2738,10 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
 
   const pickElement = Effect.fn("PreviewManager.pickElement")(function* (tabId: string) {
     const wc = yield* requireWebContents(tabId);
+    if (passwordPages.has(wc.id))
+      return yield* new BrowserPasswordError({
+        reason: "Finish sign-in or reload before capturing this page.",
+      });
     yield* setAutomationPaused(tabId, true);
     yield* cancelPickElement(tabId);
     const annotationTheme = yield* Ref.get(annotationThemeRef);
@@ -2991,6 +3037,10 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     tabId: string,
   ) {
     const wc = yield* requireWebContents(tabId);
+    if (passwordPages.has(wc.id))
+      return yield* new BrowserPasswordError({
+        reason: "Finish sign-in or reload before capturing this page.",
+      });
     const [createdAt, millis, image] = yield* Effect.all([
       currentIso,
       currentMillis,
@@ -3004,6 +3054,11 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
         wc,
       ),
     ]);
+    if (passwordPages.has(wc.id)) {
+      return yield* new BrowserPasswordError({
+        reason: "Sign-in started while capturing. The screenshot was discarded.",
+      });
+    }
     const id = `browser-screenshot-${artifactSiteSlug(wc.getURL())}-${millis.toString(36)}`;
     const artifactPath = path.join(resolvedArtifactDirectory, `${id}.png`);
     const data = image.toPNG();
@@ -3209,6 +3264,10 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
             return yield* new PreviewTabNotFoundError({ tabId });
           }
           const wc = yield* requireWebContents(tabId);
+          if (passwordPages.has(wc.id))
+            return yield* new BrowserPasswordError({
+              reason: "Finish sign-in or reload before capturing this page.",
+            });
           const current = sessions.get(tabId);
           if (current) {
             if (current.consumers.has(consumer)) {
@@ -3357,6 +3416,10 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
           yield* releasePictureInPicture(tabId, existing, false);
         }
         const wc = yield* requireWebContents(tabId);
+        if (passwordPages.has(wc.id))
+          return yield* new BrowserPasswordError({
+            reason: "Finish sign-in or reload before capturing this page.",
+          });
         const title = yield* attempt(
           {
             operation: "pictureInPicture.readTitle",
@@ -3788,6 +3851,99 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     };
   });
 
+  const passwordContext = Effect.fn("PreviewManager.passwordContext")(function* (tabId: string) {
+    const wc = yield* requireWebContents(tabId);
+    const partition = wc.session.storagePath;
+    if (!partition)
+      return yield* new BrowserPasswordError({
+        reason: "Saved logins are unavailable in incognito.",
+      });
+    return { partition, origin: passwordOrigin(wc.getURL()), webContentsId: wc.id };
+  });
+
+  const fillPassword = Effect.fn("PreviewManager.fillPassword")(function* (
+    tabId: string,
+    login: SavedPassword,
+    webContentsId: number,
+    submit: boolean,
+    controlEpoch?: number,
+  ) {
+    const wc = yield* requireWebContents(tabId);
+    const epoch = submit ? yield* checkAutomationControl(tabId, "signIn", controlEpoch) : undefined;
+    if (!submit) yield* setAutomationPaused(tabId, true);
+    const control = yield* ensureControlSession(wc);
+    return yield* control.semaphore.withPermit(
+      Effect.gen(function* () {
+        if (submit) yield* checkAutomationControl(tabId, "signIn", epoch);
+        const current = yield* requireWebContents(tabId);
+        if (
+          current !== wc ||
+          wc.id !== webContentsId ||
+          wc.session.storagePath !== login.partition ||
+          passwordOrigin(wc.getURL()) !== login.origin
+        ) {
+          return yield* new BrowserPasswordError({
+            reason: "The page changed. Choose the login again on its matching HTTPS website.",
+          });
+        }
+        if (evaluatedPages.has(wc.id)) {
+          return yield* new BrowserPasswordError({
+            reason:
+              "Reload this page before using a saved login because agent JavaScript has run on it.",
+          });
+        }
+        yield* cancelPickElement(tabId);
+        // Share the capture lock so recording cannot start between this check and protection.
+        const canFill = yield* SynchronizedRef.modify(frameCaptureSessionsRef, (sessions) => {
+          if (sessions.has(tabId) || pendingRecording?.tabId === tabId)
+            return [false, sessions] as const;
+          passwordPages.set(wc.id, login.origin);
+          return [true, sessions] as const;
+        });
+        if (!canFill) {
+          return yield* new BrowserPasswordError({
+            reason: "Stop recording and close picture-in-picture before filling a saved login.",
+          });
+        }
+        // Invalidate already queued tools before the secret enters the page.
+        yield* Ref.update(controlEpochRef, (epochs) =>
+          replaceMap(epochs, (copy) => copy.set(tabId, (epochs.get(tabId) ?? 0) + 1)),
+        );
+        yield* Ref.update(diagnosticsRef, (all) =>
+          replaceMap(all, (copy) =>
+            copy.set(wc.id, { consoleEntries: [], networkEntries: [], requests: new Map() }),
+          ),
+        );
+        const payload = yield* encodeSavedLoginPayload({
+          origin: login.origin,
+          username: login.username,
+          password: login.password,
+          submit,
+        }).pipe(
+          Effect.mapError(
+            () => new BrowserPasswordError({ reason: "Could not prepare the saved login." }),
+          ),
+        );
+        const status: unknown = yield* Effect.tryPromise({
+          try: () =>
+            wc.executeJavaScriptInIsolatedWorld(
+              1002,
+              [{ code: `(${fillSavedLogin.toString()})(${payload})` }],
+              true,
+            ),
+          // Page errors can contain input values. Never preserve their cause.
+          catch: () =>
+            new BrowserPasswordError({
+              reason: "Could not fill this login. Complete sign-in in the browser.",
+            }),
+        });
+        return {
+          status: status === "filled" || status === "submitted" ? status : "needs-human",
+        } as const;
+      }),
+    );
+  });
+
   const automationStatus = Effect.fn("PreviewManager.automationStatus")(function* (tabId: string) {
     const tab = (yield* SynchronizedRef.get(tabsRef)).get(tabId);
     const controlEpoch = (yield* Ref.get(controlEpochRef)).get(tabId) ?? 0;
@@ -3820,8 +3976,8 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
           available: true,
           visible: true,
           tabId,
-          url: wc.getURL() || null,
-          title: wc.getTitle() || null,
+          url: passwordPages.get(wc.id) ?? (wc.getURL() || null),
+          title: passwordPages.has(wc.id) ? "Sign-in in progress" : wc.getTitle() || null,
           loading: wc.isLoading(),
         };
   });
@@ -4673,7 +4829,10 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       tabId,
       wc,
       "evaluate",
-      (send) => performAutomationEvaluate(tabId, input, send),
+      (send) =>
+        Effect.sync(() => evaluatedPages.add(wc.id)).pipe(
+          Effect.andThen(performAutomationEvaluate(tabId, input, send)),
+        ),
       controlEpoch,
     );
   });
@@ -4817,6 +4976,8 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   yield* Effect.addFinalizer(() => destroy().pipe(Effect.ignore));
 
   return {
+    passwordContext,
+    fillPassword,
     setAutomationPaused,
     checkAutomationControl,
     automationClick,
@@ -5133,6 +5294,7 @@ export class PreviewAutomationControlInterruptedError extends Schema.TaggedError
 }
 
 export const PreviewManagerError = Schema.Union([
+  BrowserPasswordError,
   PreviewTabNotFoundError,
   PreviewWebContentsNotFoundError,
   PreviewWebviewNotInitializedError,
@@ -5164,6 +5326,21 @@ const isPreviewAutomationInvalidSelectorError = Schema.is(PreviewAutomationInval
 export class PreviewManager extends Context.Service<
   PreviewManager,
   {
+    readonly passwordContext: (tabId: string) => Effect.Effect<
+      {
+        partition: string;
+        origin: string | null;
+        webContentsId: number;
+      },
+      PreviewManagerError
+    >;
+    readonly fillPassword: (
+      tabId: string,
+      login: SavedPassword,
+      webContentsId: number,
+      submit: boolean,
+      controlEpoch?: number,
+    ) => Effect.Effect<import("@t3tools/contracts").BrowserSignInResult, PreviewManagerError>;
     readonly setMainWindow: (window: BrowserWindow) => Effect.Effect<void, PreviewManagerError>;
     readonly getBrowserSession: (
       scope?: string,
@@ -5310,6 +5487,8 @@ export const make = Effect.gen(function* PreviewManagerMake() {
   );
 
   return PreviewManager.of({
+    passwordContext: operations.passwordContext,
+    fillPassword: operations.fillPassword,
     setMainWindow: operations.setMainWindow,
     getBrowserSession: Effect.fn("PreviewManager.getBrowserSession")(
       function* (scope, persistent, namespace) {

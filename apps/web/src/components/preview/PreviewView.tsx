@@ -46,6 +46,7 @@ import { previewBridge } from "./previewBridge";
 import { subscribePreviewAction } from "./previewActionBus";
 import { openPreviewSession } from "./openPreviewSession";
 import { PreviewChromeRow } from "./PreviewChromeRow";
+import { PreviewPasswords } from "./PreviewPasswords";
 import { PreviewControlButton } from "./PreviewControlButton";
 import { PreviewEmptyState } from "./PreviewEmptyState";
 import { PreviewMoreMenu } from "./PreviewMoreMenu";
@@ -771,6 +772,13 @@ export function PreviewView({
                   tabId={runtimeTabId}
                   control={desktopOverlay.automationControl ?? "ready"}
                   controller={controller}
+                />
+              ) : null}
+              {runtimeTabId && desktopOverlay?.hasWebContents && previewBridge.passwords ? (
+                <PreviewPasswords
+                  key={runtimeTabId}
+                  tabId={runtimeTabId}
+                  passwords={previewBridge.passwords}
                 />
               ) : null}
               <PreviewMoreMenu

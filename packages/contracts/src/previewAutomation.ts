@@ -43,6 +43,7 @@ export const PREVIEW_AUTOMATION_OPERATIONS = [
   ...PREVIEW_AUTOMATION_V1_OPERATIONS,
   "resize",
   "setColorScheme",
+  "signIn",
 ] as const;
 
 export const PreviewAutomationOperation = Schema.Literals(PREVIEW_AUTOMATION_OPERATIONS);
@@ -151,6 +152,17 @@ export const BrowserNavigationTarget = Schema.Union([
   }),
 ]);
 export type BrowserNavigationTarget = typeof BrowserNavigationTarget.Type;
+
+export const PreviewAutomationSignInInput = Schema.Struct({
+  ...PreviewAutomationTabTargetFields,
+  username: Schema.optional(
+    Schema.String.annotate({
+      description:
+        "Account username to select when more than one permitted saved login matches this website.",
+    }),
+  ),
+});
+export type PreviewAutomationSignInInput = typeof PreviewAutomationSignInInput.Type;
 
 export const PreviewAutomationNavigateInput = Schema.Struct({
   ...PreviewAutomationTabTargetFields,

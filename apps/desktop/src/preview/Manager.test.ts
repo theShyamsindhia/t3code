@@ -461,7 +461,7 @@ const makeFaviconWebContents = (options?: {
     off,
     ipc: { on: vi.fn(), off: vi.fn() },
     send: webviewSend,
-    session: { fetch },
+    session: { fetch, storagePath: "/tmp/test-profile" },
     navigationHistory: { canGoBack: () => false, canGoForward: () => false },
     setIgnoreMenuShortcuts: vi.fn(),
     setWindowOpenHandler: vi.fn(),
@@ -5077,4 +5077,148 @@ describe("Preview automation diagnostics", () => {
     expect(JSON.stringify(error)).not.toContain(selector);
     expect("locator" in error).toBe(false);
   });
+});
+
+describe("saved login page protection", () => {
+  const login = {
+    id: "login",
+    name: "Example",
+    origin: "https://example.com",
+    username: "me",
+    password: "fixture-secret",
+    partition: "/tmp/test-profile",
+    allowAgent: true,
+  };
+
+  effectIt.effect(
+    "blocks page tools and captures while filled, survives Resume and in-page navigation",
+    () =>
+      withManager((manager) =>
+        Effect.gen(function* () {
+          const preview = makeFaviconWebContents({
+            url: login.origin + "/login",
+            rasterize: async () => "submitted",
+          });
+          fromId.mockReturnValue(preview.webContents);
+          yield* manager.createTab("password-tab");
+          yield* manager.registerWebview("password-tab", 42);
+          const epoch = (yield* manager.automationStatus("password-tab")).controlEpoch;
+          expect(yield* manager.fillPassword("password-tab", login, 42, true, epoch)).toEqual({
+            status: "submitted",
+          });
+          expect((yield* manager.automationStatus("password-tab")).title).toBe(
+            "Sign-in in progress",
+          );
+          expect((yield* manager.automationStatus("password-tab")).url).toBe(login.origin);
+          yield* manager.setAutomationPaused("password-tab", false);
+          preview.listeners.get("did-navigate-in-page")!();
+          for (const operation of [
+            "snapshot",
+            "evaluate",
+            "click",
+            "type",
+            "scroll",
+            "press",
+            "waitFor",
+            "recordingStart",
+            "signIn",
+          ]) {
+            const failure = yield* manager
+              .checkAutomationControl("password-tab", operation)
+              .pipe(Effect.flip, Effect.orDie);
+            expect(failure.message).toContain("autofilled login");
+          }
+          yield* manager.captureScreenshot("password-tab").pipe(Effect.flip, Effect.orDie);
+          yield* manager.pickElement("password-tab").pipe(Effect.flip, Effect.orDie);
+          yield* manager.openPictureInPicture("password-tab").pipe(Effect.flip, Effect.orDie);
+          const navigated = yield* Deferred.make<void>();
+          yield* manager.subscribeStateChanges((_id, state) =>
+            state.navStatus.kind === "Success" && state.navStatus.url === login.origin + "/home"
+              ? Deferred.succeed(navigated, undefined).pipe(Effect.asVoid)
+              : Effect.void,
+          );
+          preview.setUrl(login.origin + "/home");
+          preview.listeners.get("did-navigate")!();
+          yield* Deferred.await(navigated);
+          yield* manager.checkAutomationControl("password-tab", "snapshot");
+          expect((yield* manager.automationStatus("password-tab")).url).toBe(
+            login.origin + "/home",
+          );
+        }),
+      ),
+  );
+
+  effectIt.effect("rejects changed origins, profiles and webviews before filling", () =>
+    withManager((manager) =>
+      Effect.gen(function* () {
+        const preview = makeFaviconWebContents({ url: login.origin });
+        fromId.mockReturnValue(preview.webContents);
+        yield* manager.createTab("password-tab");
+        yield* manager.registerWebview("password-tab", 42);
+        for (const changed of [
+          { ...login, origin: "https://other.example" },
+          { ...login, partition: "/tmp/other-profile" },
+        ]) {
+          yield* manager
+            .fillPassword("password-tab", changed, 42, true)
+            .pipe(Effect.flip, Effect.orDie);
+        }
+        yield* manager
+          .fillPassword("password-tab", login, 43, true)
+          .pipe(Effect.flip, Effect.orDie);
+        expect(preview.executeJavaScriptInIsolatedWorld).not.toHaveBeenCalled();
+      }),
+    ),
+  );
+
+  effectIt.effect("requires a reload after arbitrary agent JavaScript", () =>
+    withManager((manager) =>
+      Effect.gen(function* () {
+        const preview = makeFaviconWebContents({
+          url: login.origin,
+          rasterize: async () => "submitted",
+        });
+        fromId.mockReturnValue(preview.webContents);
+        yield* manager.createTab("password-tab");
+        yield* manager.registerWebview("password-tab", 42);
+        Object.assign((preview.webContents as Electron.WebContents).debugger, {
+          sendCommand: vi.fn(async () => ({ result: { value: 42 } })),
+        });
+        yield* manager.automationEvaluate("password-tab", { expression: "42" });
+        const failure = yield* manager
+          .fillPassword("password-tab", login, 42, true)
+          .pipe(Effect.flip, Effect.orDie);
+        expect(failure.message).toContain("Reload this page");
+        expect(preview.executeJavaScriptInIsolatedWorld).not.toHaveBeenCalled();
+        preview.listeners.get("did-navigate")!();
+        expect(yield* manager.fillPassword("password-tab", login, 42, true)).toEqual({
+          status: "submitted",
+        });
+      }),
+    ),
+  );
+
+  effectIt.effect("does not expose exceptions containing the credential", () =>
+    withManager((manager) =>
+      Effect.gen(function* () {
+        const preview = makeFaviconWebContents({
+          url: login.origin,
+          rasterize: async () => {
+            throw new Error(login.password);
+          },
+        });
+        fromId.mockReturnValue(preview.webContents);
+        yield* manager.createTab("password-tab");
+        yield* manager.registerWebview("password-tab", 42);
+        const failure = yield* manager
+          .fillPassword("password-tab", login, 42, true)
+          .pipe(Effect.flip, Effect.orDie);
+        expect(encodePreviewManagerError(failure)).not.toHaveProperty("cause");
+        expect(String(failure)).not.toContain(login.password);
+        yield* manager
+          .checkAutomationControl("password-tab", "snapshot")
+          .pipe(Effect.flip, Effect.orDie);
+      }),
+    ),
+  );
 });

@@ -1,5 +1,7 @@
 import {
   ToolActivityIcon,
+  BrowserSignInResult,
+  PreviewAutomationSignInInput,
   PreviewAutomationClickInput,
   PreviewAutomationError,
   PreviewAutomationEvaluateInput,
@@ -85,6 +87,17 @@ const PreviewNavigateTool = safeBrowserTool(
     failure: PreviewAutomationError,
     dependencies,
   }).annotate(Tool.Title, "Navigate browser preview"),
+);
+
+const PreviewSignInTool = browserTool(
+  Tool.make("preview_sign_in", {
+    description:
+      "Use a saved login the user has permitted for this exact HTTPS website and browser profile. Inspect the page first; do not run preview_evaluate on the login page. Specify username only when multiple accounts match. Returns submitted or needs-human, never a password. Submitted means the form was submitted, not that authentication succeeded. Page automation is protected until a full navigation; ask the user to finish MFA/CAPTCHA or a sign-in that stays on the same page.",
+    parameters: PreviewAutomationSignInInput,
+    success: Schema.Struct({ ...BrowserSignInResult.fields, ...presentationFields }),
+    failure: PreviewAutomationError,
+    dependencies,
+  }).annotate(Tool.Title, "Sign in with saved login"),
 );
 
 const PreviewResizeTool = safeBrowserTool(
@@ -245,6 +258,7 @@ export const PreviewToolkit = Toolkit.make(
   PreviewStatusTool,
   PreviewOpenTool,
   PreviewNavigateTool,
+  PreviewSignInTool,
   PreviewResizeTool,
   PreviewSetAppearanceTool,
   PreviewSnapshotTool,
@@ -262,6 +276,7 @@ export const PreviewStandardToolkit = Toolkit.make(
   PreviewStatusTool,
   PreviewOpenTool,
   PreviewNavigateTool,
+  PreviewSignInTool,
   PreviewResizeTool,
   PreviewSetAppearanceTool,
   PreviewClickTool,
