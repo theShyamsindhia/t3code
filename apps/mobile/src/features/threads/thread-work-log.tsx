@@ -1,4 +1,5 @@
 import { SubagentStatusDot } from "./SubagentStatusDot";
+import { explainProviderConnectionError } from "@t3tools/client-runtime/provider-connection-error";
 import { ThreadSubagentGroup } from "./thread-subagent-group";
 import {
   WorkLogLabel,
@@ -791,6 +792,7 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
   const failureItem = row.projectedItem.item;
   if (failureItem.type === "error" && failureItem.status === "failed") {
     const warning = failureItem.failure.class === "usage_limit";
+    const connectionError = explainProviderConnectionError(failureItem.failure.message);
     const timestamp = new Date(row.createdAt);
     const resetAt = failureItem.failure.resetAt;
     const resetTime = resetAt
@@ -806,8 +808,18 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
       : row.summary;
     return (
       <WorkLogPressable
-        accessibilityLabel={warning ? label : `${row.summary}: ${failureItem.failure.message}`}
-        accessibilityHint="Long press to copy."
+        accessibilityLabel={
+          warning
+            ? label
+            : `${row.summary}: ${connectionError?.detail ?? failureItem.failure.message}`
+        }
+        accessibilityHint={
+          connectionError
+            ? "Double tap to toggle technical details. Long press to copy."
+            : "Long press to copy."
+        }
+        accessibilityState={connectionError ? { expanded } : undefined}
+        onPress={connectionError ? () => props.onToggleRow(row.id, props.anchorKey) : undefined}
         onLongPress={() => props.onCopyRow(row.id, row.getCopyText())}
       >
         <View className="flex-1 py-1">
@@ -847,8 +859,30 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
           </View>
           {!warning ? (
             <Text selectable className="ml-7 text-sm text-foreground">
-              {failureItem.failure.message}
+              {connectionError?.detail ?? failureItem.failure.message}
             </Text>
+          ) : null}
+          {connectionError ? (
+            <View className="ml-7 mt-1 gap-1">
+              <Text className="text-xs text-foreground-subtle">
+                {expanded ? "Hide technical details" : "Show technical details"}
+              </Text>
+              {expanded ? (
+                <>
+                  <Text selectable className="text-xs text-foreground-subtle">
+                    {failureItem.failure.message}
+                  </Text>
+                  {failureItem.retry ? (
+                    <Text className="text-xs text-foreground-subtle">
+                      Retries: {failureItem.retry.attempt}
+                      {failureItem.retry.maxAttempts === null
+                        ? ""
+                        : `/${failureItem.retry.maxAttempts}`}
+                    </Text>
+                  ) : null}
+                </>
+              ) : null}
+            </View>
           ) : null}
         </View>
       </WorkLogPressable>

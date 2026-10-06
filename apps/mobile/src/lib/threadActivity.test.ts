@@ -2287,6 +2287,35 @@ it("previews a settled thought in its collapsed header and labels its expanded h
   expect(detail.activities[0]?.detail).toBe(thought.text);
 });
 
+it("explains a Codex routing failure and keeps its original details available", () => {
+  const error: OrchestrationV2TurnItem = {
+    ...base("routing-failure", "2026-10-06T00:16:52.000Z", 2),
+    type: "error",
+    title: "Provider error",
+    status: "failed",
+    failure: {
+      class: "provider_error",
+      message: "workspace routing discovery failed",
+      code: "other",
+      retryable: null,
+    },
+    retry: { attempt: 5, maxAttempts: 5, retryDelayMs: null },
+  };
+  const activities = buildThreadFeed([projected(userMessage(), 0), projected(error, 1)]).flatMap(
+    (entry) => (entry.type === "activity-group" ? entry.activities : []),
+  );
+  const failure = activities.find((entry) => entry.projectedItem.item.id === error.id);
+  expect(failure).toMatchObject({
+    summary: "Codex couldn't connect",
+    detail:
+      "Codex couldn't reach ChatGPT to continue. Check your connection, then retry. If it keeps happening, try again shortly.",
+    canExpand: true,
+    prominent: true,
+  });
+  expect(failure?.getCopyText()).toContain(error.failure.message);
+  expect(failure?.getFullDetail()).toContain('"attempt": 5');
+});
+
 it.each(["provider_error", "usage_limit"] as const)(
   "keeps a historical %s failure and preceding work visible without disclosures",
   (failureClass) => {

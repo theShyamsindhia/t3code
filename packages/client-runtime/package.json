@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./provider-connection-error": {
+      "types": "./src/providerConnectionError.ts",
+      "default": "./src/providerConnectionError.ts"
+    },
     "./interaction": {
       "types": "./src/interaction.ts",
       "default": "./src/interaction.ts"

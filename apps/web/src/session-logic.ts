@@ -1,4 +1,5 @@
 import { chatWidgetPresentation } from "@t3tools/client-runtime/interaction";
+import { explainProviderConnectionError } from "@t3tools/client-runtime/provider-connection-error";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import {
   type AssetResource,
@@ -368,6 +369,16 @@ function projectedWorkEntryTone(item: OrchestrationV2TurnItem): WorkLogEntry["to
 export function providerErrorPresentation(
   item: Extract<OrchestrationV2TurnItem, { readonly type: "error" }>,
 ): { readonly label: string; readonly detail: string } {
+  const connectionError = explainProviderConnectionError(item.failure.message, item.status);
+  if (connectionError) {
+    return {
+      label:
+        item.status === "running" && item.retry
+          ? `${connectionError.label} (${item.retry.attempt}${item.retry.maxAttempts === null ? "" : `/${item.retry.maxAttempts}`})`
+          : connectionError.label,
+      detail: `${connectionError.detail}\n\n${item.failure.message}`,
+    };
+  }
   if (item.retry === undefined) {
     return {
       label:

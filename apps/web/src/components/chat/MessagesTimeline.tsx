@@ -1,4 +1,6 @@
 import { chatWidgetPresentation } from "@t3tools/client-runtime/interaction";
+import { explainProviderConnectionError } from "@t3tools/client-runtime/provider-connection-error";
+import { ProviderConnectionErrorDetails } from "./ProviderConnectionErrorDetails";
 import { ChatWidget } from "./ChatWidget";
 import { ComputerUseAppIcon } from "~/components/Icons";
 import { useChatCanvas } from "./ChatCanvasContext";
@@ -4987,11 +4989,12 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   const failureItem = workEntry.projectedItem?.item;
   if (failureItem?.type === "error" && failureItem.status === "failed") {
     const warning = failureItem.failure.class === "usage_limit";
+    const connectionError = explainProviderConnectionError(failureItem.failure.message);
     const resetAt = failureItem.failure.resetAt;
     const resetTime = resetAt ? formatUpcomingTimestamp(resetAt, timestampFormat) : null;
     const label = warning
       ? `Usage limit reached.${resetTime ? ` Retry after ${resetTime}.` : ""}`
-      : workEntry.label;
+      : (connectionError?.label ?? workEntry.label);
     return (
       <WorkLogRow
         data-v2-item-type="error"
@@ -5018,9 +5021,17 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         }
       >
         {!warning ? (
-          <p className="ms-7 whitespace-pre-wrap break-words py-1 text-sm leading-relaxed text-foreground/80">
-            {failureItem.failure.message}
-          </p>
+          <div className="ms-7 whitespace-pre-wrap break-words py-1 text-sm leading-relaxed text-foreground/80">
+            {connectionError ? (
+              <ProviderConnectionErrorDetails
+                description={connectionError.detail}
+                message={failureItem.failure.message}
+                retry={failureItem.retry}
+              />
+            ) : (
+              <p>{failureItem.failure.message}</p>
+            )}
+          </div>
         ) : null}
       </WorkLogRow>
     );

@@ -4,6 +4,7 @@ import type {
   ThreadUserInputQuestion,
 } from "@t3tools/client-runtime/state/thread-requests";
 import { turnItemIsWorkspacePreparation } from "@t3tools/client-runtime/state/turn-item-presentation";
+import { explainProviderConnectionError } from "@t3tools/client-runtime/provider-connection-error";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import { extractToolActivityPresentation } from "@t3tools/client-runtime/work-log/tool-presentation";
 import {
@@ -536,6 +537,10 @@ function itemSummary(
   item: OrchestrationV2TurnItem,
   toolPresentation: T3McpToolPresentation | null = null,
 ): string {
+  if (item.type === "error") {
+    const connectionError = explainProviderConnectionError(item.failure.message, item.status);
+    if (connectionError) return connectionError.label;
+  }
   if (item.type === "notification") return item.summary;
   if (item.type === "system_notice") return item.message;
   if (item.type === "compaction") return contextCompactionLabel(item);
@@ -625,7 +630,10 @@ function itemPreview(item: OrchestrationV2TurnItem): string | null {
     case "system_notice":
       return item.message || null;
     case "error":
-      return item.failure.message;
+      return (
+        explainProviderConnectionError(item.failure.message, item.status)?.detail ??
+        item.failure.message
+      );
     case "compaction":
     case "handoff":
       return item.summary ?? null;
@@ -765,7 +773,11 @@ function toFeedActivity(
     attemptId,
     summary,
     detail,
-    canExpand: !(item.type === "error" && item.status === "failed") && (readPaths?.length ?? 1) > 0,
+    canExpand:
+      (item.type !== "error" ||
+        item.status !== "failed" ||
+        explainProviderConnectionError(item.failure.message) !== null) &&
+      (readPaths?.length ?? 1) > 0,
     getFullDetail,
     getCopyText,
     icon: workEntry.toolSurface ?? itemIcon(item),

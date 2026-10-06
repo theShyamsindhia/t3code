@@ -188,6 +188,24 @@ describe("V2 session presentation", () => {
         completedAt: now,
       }),
     ).toMatchObject({ label: "Provider error after 10/10 retries" });
+
+    const connectionFailure = {
+      ...retryItem,
+      failure: { ...retryItem.failure, message: "workspace routing discovery failed" },
+      retry: { ...retryItem.retry, attempt: 5, maxAttempts: 5 },
+    };
+    expect(providerErrorPresentation(connectionFailure).label).toBe("Codex is reconnecting (5/5)");
+    expect(providerErrorPresentation({ ...connectionFailure, status: "failed" })).toEqual({
+      label: "Codex couldn't connect",
+      detail:
+        "Codex couldn't reach ChatGPT to continue. Check your connection, then retry. If it keeps happening, try again shortly.\n\nworkspace routing discovery failed",
+    });
+    expect(providerErrorPresentation({ ...connectionFailure, status: "completed" }).label).toBe(
+      "Codex reconnected",
+    );
+    expect(providerErrorPresentation({ ...connectionFailure, status: "cancelled" }).label).toBe(
+      "Codex reconnection stopped",
+    );
   });
 
   it("selects the latest proposed plan for a run", () => {
