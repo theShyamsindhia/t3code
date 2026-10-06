@@ -11,7 +11,7 @@ import {
   PreviewAutomationWaitForInput,
 } from "./previewAutomation.ts";
 import { SnapShotSource } from "./chatAttachment.ts";
-import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { EnvironmentId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { BrowserProfileId } from "./browserProfile.ts";
 import type {
   BrowserImportResult,
@@ -1123,6 +1123,24 @@ export const DesktopPreviewAutomationWaitForInputSchema = Schema.Struct({
 export const SystemSettingsPaneSchema = Schema.Literals(["full-disk-access"]);
 export type SystemSettingsPane = typeof SystemSettingsPaneSchema.Type;
 
+export const DesktopActivityThread = Schema.Struct({
+  environmentId: EnvironmentId,
+  threadId: ThreadId,
+  title: Schema.String.check(Schema.isMaxLength(240)),
+  project: Schema.String.check(Schema.isMaxLength(120)),
+  environment: Schema.String.check(Schema.isMaxLength(120)),
+  status: Schema.Literals(["approval", "input", "failed", "limited", "working", "waiting"]),
+});
+export type DesktopActivityThread = typeof DesktopActivityThread.Type;
+
+export const DesktopActivitySnapshot = Schema.Struct({
+  threads: Schema.Array(DesktopActivityThread).check(Schema.isMaxLength(16)),
+  attentionCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  workingCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  unavailableCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+});
+export type DesktopActivitySnapshot = typeof DesktopActivitySnapshot.Type;
+
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   /** Absolute path of a dropped or picked file; absent on desktop builds predating it. */
@@ -1131,6 +1149,10 @@ export interface DesktopBridge {
   getClientPlatform?: () => string;
   setNotificationBadge?: (badge: { count: number; image: string | null }) => Promise<void>;
   onNotificationBadgeClear?: (listener: () => void) => () => void;
+  setActivitySnapshot?: (snapshot: DesktopActivitySnapshot | null) => Promise<void>;
+  onActivityOpenThread?: (
+    listener: (thread: { environmentId: EnvironmentId; threadId: ThreadId }) => void,
+  ) => () => void;
   onTrackpadScrollEnd?: (listener: () => void) => () => void;
   /**
    * The OS locale as a BCP-47 tag, which the renderer cannot read for itself:

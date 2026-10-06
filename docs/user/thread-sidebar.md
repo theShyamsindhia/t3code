@@ -41,6 +41,15 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
+## Check activity from the macOS menu bar
+
+In the desktop app, click the T3 menu-bar icon to see chats that need your input
+and chats still working across connected environments. Choose a chat to open it.
+The number beside the icon counts chats needing attention; unavailable connections
+are marked so cached status isn't mistaken for live activity. The same chat
+shortcuts are available by right-clicking T3 in the Dock. Press Escape or click
+outside the activity panel to dismiss it.
+
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.

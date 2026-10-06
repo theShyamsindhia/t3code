@@ -74,6 +74,14 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   getClientPlatform: () => clientPlatform,
   setNotificationBadge: (badge) =>
     ipcRenderer.invoke(IpcChannels.SET_NOTIFICATION_BADGE_CHANNEL, badge),
+  setActivitySnapshot: (snapshot) =>
+    ipcRenderer.invoke(IpcChannels.SET_ACTIVITY_SNAPSHOT_CHANNEL, snapshot),
+  onActivityOpenThread: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, thread: Parameters<typeof listener>[0]) =>
+      listener(thread);
+    ipcRenderer.on(IpcChannels.ACTIVITY_OPEN_THREAD_CHANNEL, handler);
+    return () => ipcRenderer.removeListener(IpcChannels.ACTIVITY_OPEN_THREAD_CHANNEL, handler);
+  },
   onNotificationBadgeClear: (listener) => {
     const handler = () => listener();
     ipcRenderer.on(IpcChannels.SET_NOTIFICATION_BADGE_CHANNEL, handler);
