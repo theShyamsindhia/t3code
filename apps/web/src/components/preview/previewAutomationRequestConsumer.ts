@@ -7,6 +7,7 @@ import type {
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
 import {
+  PreviewAutomationControlInterruptedHostError,
   PreviewAutomationOperationError,
   type PreviewAutomationOperationContext,
   serializePreviewAutomationHostError,
@@ -29,7 +30,11 @@ export function createPreviewAutomationRequestConsumerAtom<E>(options: {
   readonly connectionAtom: Atom.Writable<PreviewAutomationStreamEvent["connectionId"] | null>;
   readonly environmentId: PreviewAutomationHost["environmentId"];
   readonly requestHandlerAtom: Atom.Atom<{
-    readonly handle: (request: PreviewAutomationRequest) => Promise<unknown>;
+    readonly handle: (
+      request: PreviewAutomationRequest,
+      isCurrent: () => boolean,
+    ) => Promise<unknown>;
+    readonly disconnect?: () => Promise<void>;
   }>;
   readonly respond: (response: PreviewAutomationResponse) => Promise<unknown>;
   readonly label: string;
@@ -42,17 +47,33 @@ export function createPreviewAutomationRequestConsumerAtom<E>(options: {
     let connectionExplicitlyAnnounced = false;
     let reportedConnectionId: PreviewAutomationStreamEvent["connectionId"] | null = null;
     let requestsVersion = 0;
+    let generation = 0;
+    let disconnecting = Promise.resolve();
+    const disconnect = () => {
+      generation += 1;
+      activeConnectionId = null;
+      reportedConnectionId = null;
+      get.set(options.connectionAtom, null);
+      const handler = get.once(options.requestHandlerAtom);
+      disconnecting = disconnecting.then(() => handler.disconnect?.());
+    };
 
     const consume = (result: AutomationStreamResult<E>) => {
-      if (!AsyncResult.isSuccess(result)) return;
+      if (!AsyncResult.isSuccess(result)) {
+        if (activeConnectionId !== null) disconnect();
+        return;
+      }
       const event = result.value;
       if (event.type === "connected") {
+        if (activeConnectionId !== null && activeConnectionId !== event.connectionId) disconnect();
         activeConnectionId = event.connectionId;
         connectionExplicitlyAnnounced = true;
       } else if (activeConnectionId === null) {
+        if (connectionExplicitlyAnnounced) return;
         activeConnectionId = event.connectionId;
       } else if (activeConnectionId !== event.connectionId) {
         if (connectionExplicitlyAnnounced) return;
+        disconnect();
         activeConnectionId = event.connectionId;
       }
       if (reportedConnectionId !== event.connectionId) {
@@ -63,9 +84,17 @@ export function createPreviewAutomationRequestConsumerAtom<E>(options: {
         return;
       }
       const request = event.request;
-      void get
-        .once(options.requestHandlerAtom)
-        .handle(request)
+      const requestGeneration = generation;
+      const isCurrent = () =>
+        !disposed && requestGeneration === generation && activeConnectionId === event.connectionId;
+      void disconnecting
+        .then(() => {
+          if (!isCurrent())
+            throw new PreviewAutomationControlInterruptedHostError({
+              tabId: request.tabId ?? null,
+            });
+          return get.once(options.requestHandlerAtom).handle(request, isCurrent);
+        })
         .then(
           (value) =>
             options.respond({
@@ -94,6 +123,7 @@ export function createPreviewAutomationRequestConsumerAtom<E>(options: {
 
     get.addFinalizer(() => {
       disposed = true;
+      if (activeConnectionId !== null) disconnect();
     });
     const initialRequest = get.once(options.requestsAtom);
     if (AsyncResult.isSuccess(initialRequest)) {

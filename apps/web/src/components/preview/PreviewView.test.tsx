@@ -7,7 +7,7 @@ import {
   FILL_PREVIEW_VIEWPORT,
   ThreadId,
 } from "@t3tools/contracts";
-import { act, createElement, Profiler } from "react";
+import { act, createElement, Profiler, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -220,19 +220,17 @@ vi.mock("./PreviewChromeRow", () => ({
     onPickElement?: () => void;
     onPictureInPicture?: () => void;
     pictureInPicture?: boolean;
-    trailingActions?: {
-      props: { onNativePictureInPicture?: () => void };
-    };
+    trailingActions?: ReactNode;
   }) => {
     mocks.submittedUrl = props.onSubmit;
     mocks.toggleAnnotation = props.onPickElement ?? null;
     mocks.togglePictureInPicture = props.onPictureInPicture ?? null;
-    mocks.toggleNativePictureInPicture =
-      props.trailingActions?.props.onNativePictureInPicture ?? null;
     mocks.pictureInPicturePressed = props.pictureInPicture ?? false;
-    return null;
+    return props.trailingActions ?? null;
   },
 }));
+
+vi.mock("./PreviewControlButton", () => ({ PreviewControlButton: () => null }));
 
 vi.mock("./PreviewEmptyState", () => ({
   PreviewEmptyState: (props: { onOpenUrl: (url: string) => void }) => {

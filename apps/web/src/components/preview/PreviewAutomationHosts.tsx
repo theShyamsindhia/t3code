@@ -65,6 +65,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 
 import { previewBridge } from "./previewBridge";
 import {
+  PreviewAutomationControlInterruptedHostError,
   PreviewAutomationOperationError,
   PreviewAutomationOverlayTimeoutError,
   PreviewAutomationRecordingNotActiveError,
@@ -281,15 +282,17 @@ export function PreviewAutomationHosts() {
     <>
       {/*
        * Host lifetime follows the desktop runtime's environment connections,
-       * not the routed thread. This keeps background threads automatable and
-       * lets the subscription runtime own reconnects for every saved target.
+       * not the routed thread. Disconnecting disposes the consumer and pauses
+       * its tabs even while the subscription runtime is waiting to reconnect.
        */}
-      {environments.map((environment) => (
-        <PreviewAutomationHost
-          key={environment.environmentId}
-          environmentId={environment.environmentId}
-        />
-      ))}
+      {environments
+        .filter((environment) => environment.connection.phase === "connected")
+        .map((environment) => (
+          <PreviewAutomationHost
+            key={environment.environmentId}
+            environmentId={environment.environmentId}
+          />
+        ))}
     </>
   );
 }
@@ -356,7 +359,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
   const presentationSuppressedRuntimeTabsRef = useRef(new Map<string, Set<string>>());
 
   const handleRequest = useCallback(
-    async (request: PreviewAutomationRequest): Promise<unknown> => {
+    async (request: PreviewAutomationRequest, isCurrent: () => boolean): Promise<unknown> => {
       // Session sync and tab creation consume the same budget as overlay registration.
       const hostDeadlineMs = Date.now() + resolveHostWaitBudgetMs(request.timeoutMs);
       const threadRef: ScopedThreadRef = {
@@ -364,6 +367,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
         threadId: request.threadId,
       };
       let tabId = request.tabId ?? null;
+      let controlTarget: { runtimeTabId: string; epoch: number | undefined } | undefined;
       const browserActivity = { release: null as (() => void) | null };
       try {
         let state = readThreadPreviewState(threadRef);
@@ -382,6 +386,29 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
           state = readThreadPreviewState(threadRef);
         }
         tabId = request.tabId ?? state.snapshot?.tabId ?? null;
+        const assertConnection = () => {
+          if (!isCurrent()) throw new PreviewAutomationControlInterruptedHostError({ tabId });
+        };
+        assertConnection();
+        const controlEpochs = new Map<string, number>();
+        const checkControl = async (runtimeTabId: string, operation = request.operation) => {
+          assertConnection();
+          if (!previewBridge) return undefined;
+          controlTarget = { runtimeTabId, epoch: controlEpochs.get(runtimeTabId) };
+          const epoch = await previewBridge.automation.checkControl(
+            runtimeTabId,
+            operation,
+            controlEpochs.get(runtimeTabId),
+          );
+          controlEpochs.set(runtimeTabId, epoch);
+          controlTarget.epoch = epoch;
+          return epoch;
+        };
+        if (tabId && state.desktopByTabId[tabId]) {
+          // Read-only check captures the epoch even if this request will later fail
+          // on the pause latch. A handoff during readiness must invalidate it.
+          await checkControl(previewRuntimeTabId(threadRef, state.serverEpoch, tabId), "status");
+        }
         const unavailableTarget = {
           requestId: request.requestId,
           operation: request.operation,
@@ -424,10 +451,12 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
             request.operation,
             hostDeadlineMs,
           );
+          const controlEpoch = await checkControl(runtimeTabId);
           return {
             bridge,
             tabId: readyTabId,
             runtimeTabId,
+            controlEpoch,
           };
         };
         switch (request.operation) {
@@ -450,9 +479,13 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
               ? (state.sessions[activeTabId] ?? state.snapshot ?? undefined)
               : undefined;
             const reusedExistingTab = activeTabId !== null;
+            if (activeTabId && state.desktopByTabId[activeTabId]) {
+              await checkControl(previewRuntimeTabId(threadRef, state.serverEpoch, activeTabId));
+            }
             tabId = activeTabId;
             if (!activeTabId) {
               const defaults = await resolveBrowserDefaults();
+              assertConnection();
               const result = await open({
                 environmentId,
                 input: {
@@ -487,6 +520,8 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
                 const resizeResult = await runBrowserViewportMutation(
                   activeRuntimeTabId,
                   async () => {
+                    assertConnection();
+                    if (reusedExistingTab) await checkControl(activeRuntimeTabId);
                     assertPreviewRuntimeCurrent(
                       threadRef,
                       activeTabId,
@@ -510,6 +545,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
                 updatePreviewServerSnapshot(threadRef, resizeResult.value);
               }
             }
+            assertConnection();
             const shouldPresentPreview = shouldOpenPreviewMiniPlayer(
               input,
               (await resolveBrowserDefaults()).autoShowFloatingPreview,
@@ -557,7 +593,11 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
             }
             if (reusedExistingTab && resolvedInputUrl && previewBridge) {
               assertPreviewRuntimeCurrent(threadRef, activeTabId, activeRuntimeTabId, request);
-              await previewBridge.navigate(activeRuntimeTabId, resolvedInputUrl);
+              await previewBridge.navigate(
+                activeRuntimeTabId,
+                resolvedInputUrl,
+                await checkControl(activeRuntimeTabId),
+              );
               await waitForNavigationReadiness(
                 threadRef,
                 request.requestId,
@@ -580,7 +620,11 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
                 url: input.url!,
               },
             );
-            await ready.bridge.navigate(ready.runtimeTabId, resolution.resolvedUrl);
+            await ready.bridge.navigate(
+              ready.runtimeTabId,
+              resolution.resolvedUrl,
+              ready.controlEpoch,
+            );
             await waitForNavigationReadiness(
               threadRef,
               request.requestId,
@@ -597,6 +641,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
             const input = request.input as PreviewAutomationResizeInput;
             const setting = resolvePreviewViewport(input);
             const applied = await runBrowserViewportMutation(ready.runtimeTabId, async () => {
+              await checkControl(ready.runtimeTabId);
               const operationState = assertPreviewRuntimeCurrent(
                 threadRef,
                 ready.tabId,
@@ -639,6 +684,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
               );
             } catch (cause) {
               await runBrowserViewportMutation(ready.runtimeTabId, async () => {
+                await checkControl(ready.runtimeTabId);
                 const latestState = readThreadPreviewState(threadRef);
                 const latestSetting =
                   latestState.sessions[ready.tabId]?.viewport ?? FILL_PREVIEW_VIEWPORT;
@@ -675,7 +721,11 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
           case "setColorScheme": {
             const ready = await requireReadyTab();
             const input = request.input as PreviewAutomationSetColorSchemeInput;
-            await ready.bridge.setColorScheme(ready.runtimeTabId, input.colorScheme);
+            await ready.bridge.setColorScheme(
+              ready.runtimeTabId,
+              input.colorScheme,
+              ready.controlEpoch,
+            );
             return {
               tabId: ready.tabId,
               colorScheme: input.colorScheme,
@@ -683,7 +733,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
           }
           case "snapshot": {
             const ready = await requireReadyTab();
-            return await ready.bridge.automation.snapshot(ready.runtimeTabId);
+            return await ready.bridge.automation.snapshot(ready.runtimeTabId, ready.controlEpoch);
           }
           case "click": {
             const ready = await requireReadyTab();
@@ -691,6 +741,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
               ready.bridge.automation.click(
                 ready.runtimeTabId,
                 request.input as Parameters<typeof ready.bridge.automation.click>[1],
+                ready.controlEpoch,
               ),
             );
           }
@@ -699,6 +750,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
             return await ready.bridge.automation.type(
               ready.runtimeTabId,
               request.input as Parameters<typeof ready.bridge.automation.type>[1],
+              ready.controlEpoch,
             );
           }
           case "press": {
@@ -706,6 +758,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
             return await ready.bridge.automation.press(
               ready.runtimeTabId,
               request.input as Parameters<typeof ready.bridge.automation.press>[1],
+              ready.controlEpoch,
             );
           }
           case "scroll": {
@@ -713,6 +766,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
             return await ready.bridge.automation.scroll(
               ready.runtimeTabId,
               request.input as Parameters<typeof ready.bridge.automation.scroll>[1],
+              ready.controlEpoch,
             );
           }
           case "evaluate": {
@@ -720,6 +774,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
             return await ready.bridge.automation.evaluate(
               ready.runtimeTabId,
               request.input as Parameters<typeof ready.bridge.automation.evaluate>[1],
+              ready.controlEpoch,
             );
           }
           case "waitFor": {
@@ -727,6 +782,7 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
             return await ready.bridge.automation.waitFor(
               ready.runtimeTabId,
               request.input as Parameters<typeof ready.bridge.automation.waitFor>[1],
+              ready.controlEpoch,
             );
           }
           case "recordingStart": {
@@ -785,6 +841,21 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
           }
         }
       } catch (cause) {
+        // Electron invoke rejections preserve the message, not tagged error fields.
+        // Re-read authoritative control state rather than parsing that message.
+        if (controlTarget && previewBridge) {
+          const status = await previewBridge.automation
+            .status(controlTarget.runtimeTabId)
+            .catch(() => null);
+          if (
+            status &&
+            (status.automationControl === "paused" ||
+              status.automationControl === "needs-snapshot" ||
+              (controlTarget.epoch !== undefined && status.controlEpoch !== controlTarget.epoch))
+          ) {
+            throw new PreviewAutomationControlInterruptedHostError({ tabId });
+          }
+        }
         throw PreviewAutomationOperationError.fromCause({
           requestId: request.requestId,
           operation: request.operation,
@@ -799,11 +870,24 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
     },
     [environmentId, listPreviews, open, registry, resize],
   );
-  const [requestHandlerAtom] = useState(() => Atom.make({ handle: handleRequest }));
+  const disconnect = useCallback(async () => {
+    const pauses = Object.entries(previewSessions).flatMap(([key, state]) => {
+      const ref = parseScopedThreadKey(key);
+      if (!ref || ref.environmentId !== environmentId) return [];
+      return Object.keys(state.desktopByTabId).map((tabId) =>
+        previewBridge?.automation.setPaused(
+          previewRuntimeTabId(ref, state.serverEpoch, tabId),
+          true,
+        ),
+      );
+    });
+    await Promise.allSettled(pauses);
+  }, [environmentId, previewSessions]);
+  const [requestHandlerAtom] = useState(() => Atom.make({ handle: handleRequest, disconnect }));
   const setRequestHandler = useAtomSet(requestHandlerAtom);
   useEffect(() => {
-    setRequestHandler({ handle: handleRequest });
-  }, [handleRequest, setRequestHandler]);
+    setRequestHandler({ handle: handleRequest, disconnect });
+  }, [disconnect, handleRequest, setRequestHandler]);
 
   const automationRequestConsumerAtom = useMemo(
     () =>

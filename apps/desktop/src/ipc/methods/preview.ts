@@ -1,5 +1,8 @@
 import {
   DesktopPreviewAnnotationThemeInputSchema,
+  DesktopPreviewAutomationControlInputSchema,
+  DesktopPreviewAutomationCheckInputSchema,
+  DesktopPreviewAutomationSnapshotInputSchema,
   DesktopPreviewArtifactInputSchema,
   DesktopPreviewAutomationClickInputSchema,
   DesktopPreviewAutomationEvaluateInputSchema,
@@ -98,9 +101,9 @@ export const navigate = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_NAVIGATE_CHANNEL,
   payload: DesktopPreviewNavigateInputSchema,
   result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.preview.navigate")(function* ({ tabId, url }) {
+  handler: Effect.fn("desktop.ipc.preview.navigate")(function* ({ tabId, url, controlEpoch }) {
     const manager = yield* PreviewManager.PreviewManager;
-    yield* manager.navigate(tabId, url);
+    yield* manager.navigate(tabId, url, controlEpoch);
   }),
 });
 
@@ -161,9 +164,13 @@ export const setColorScheme = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_SET_COLOR_SCHEME_CHANNEL,
   payload: DesktopPreviewSetColorSchemeInputSchema,
   result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.preview.setColorScheme")(function* ({ tabId, colorScheme }) {
+  handler: Effect.fn("desktop.ipc.preview.setColorScheme")(function* ({
+    tabId,
+    colorScheme,
+    controlEpoch,
+  }) {
     const manager = yield* PreviewManager.PreviewManager;
-    yield* manager.setColorScheme(tabId, colorScheme);
+    yield* manager.setColorScheme(tabId, colorScheme, controlEpoch);
   }),
 });
 export const setAudioMuted = DesktopIpc.makeIpcMethod({
@@ -392,6 +399,30 @@ export const copyArtifactToClipboard = DesktopIpc.makeIpcMethod({
   }),
 });
 
+export const setAutomationPaused = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_AUTOMATION_SET_PAUSED_CHANNEL,
+  payload: DesktopPreviewAutomationControlInputSchema,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.preview.setAutomationPaused")(function* ({ tabId, paused }) {
+    const manager = yield* PreviewManager.PreviewManager;
+    yield* manager.setAutomationPaused(tabId, paused);
+  }),
+});
+
+export const checkAutomationControl = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_AUTOMATION_CHECK_CONTROL_CHANNEL,
+  payload: DesktopPreviewAutomationCheckInputSchema,
+  result: Schema.Int,
+  handler: Effect.fn("desktop.ipc.preview.checkAutomationControl")(function* ({
+    tabId,
+    operation,
+    controlEpoch,
+  }) {
+    const manager = yield* PreviewManager.PreviewManager;
+    return yield* manager.checkAutomationControl(tabId, operation, controlEpoch);
+  }),
+});
+
 export const automationStatus = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_AUTOMATION_STATUS_CHANNEL,
   payload: DesktopPreviewTabInputSchema,
@@ -404,11 +435,11 @@ export const automationStatus = DesktopIpc.makeIpcMethod({
 
 export const automationSnapshot = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_AUTOMATION_SNAPSHOT_CHANNEL,
-  payload: DesktopPreviewTabInputSchema,
+  payload: DesktopPreviewAutomationSnapshotInputSchema,
   result: PreviewAutomationSnapshot,
-  handler: Effect.fn("desktop.ipc.preview.automationSnapshot")(function* ({ tabId }) {
+  handler: Effect.fn("desktop.ipc.preview.automationSnapshot")(function* ({ tabId, controlEpoch }) {
     const manager = yield* PreviewManager.PreviewManager;
-    return yield* manager.automationSnapshot(tabId);
+    return yield* manager.automationSnapshot(tabId, controlEpoch);
   }),
 });
 
@@ -416,9 +447,13 @@ export const automationClick = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_AUTOMATION_CLICK_CHANNEL,
   payload: DesktopPreviewAutomationClickInputSchema,
   result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.preview.automationClick")(function* ({ tabId, input }) {
+  handler: Effect.fn("desktop.ipc.preview.automationClick")(function* ({
+    tabId,
+    input,
+    controlEpoch,
+  }) {
     const manager = yield* PreviewManager.PreviewManager;
-    yield* manager.automationClick(tabId, input);
+    yield* manager.automationClick(tabId, input, controlEpoch);
   }),
 });
 
@@ -426,9 +461,13 @@ export const automationType = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_AUTOMATION_TYPE_CHANNEL,
   payload: DesktopPreviewAutomationTypeInputSchema,
   result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.preview.automationType")(function* ({ tabId, input }) {
+  handler: Effect.fn("desktop.ipc.preview.automationType")(function* ({
+    tabId,
+    input,
+    controlEpoch,
+  }) {
     const manager = yield* PreviewManager.PreviewManager;
-    yield* manager.automationType(tabId, input);
+    yield* manager.automationType(tabId, input, controlEpoch);
   }),
 });
 
@@ -436,9 +475,13 @@ export const automationPress = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_AUTOMATION_PRESS_CHANNEL,
   payload: DesktopPreviewAutomationPressInputSchema,
   result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.preview.automationPress")(function* ({ tabId, input }) {
+  handler: Effect.fn("desktop.ipc.preview.automationPress")(function* ({
+    tabId,
+    input,
+    controlEpoch,
+  }) {
     const manager = yield* PreviewManager.PreviewManager;
-    yield* manager.automationPress(tabId, input);
+    yield* manager.automationPress(tabId, input, controlEpoch);
   }),
 });
 
@@ -446,9 +489,13 @@ export const automationScroll = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_AUTOMATION_SCROLL_CHANNEL,
   payload: DesktopPreviewAutomationScrollInputSchema,
   result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.preview.automationScroll")(function* ({ tabId, input }) {
+  handler: Effect.fn("desktop.ipc.preview.automationScroll")(function* ({
+    tabId,
+    input,
+    controlEpoch,
+  }) {
     const manager = yield* PreviewManager.PreviewManager;
-    yield* manager.automationScroll(tabId, input);
+    yield* manager.automationScroll(tabId, input, controlEpoch);
   }),
 });
 
@@ -456,9 +503,13 @@ export const automationEvaluate = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_AUTOMATION_EVALUATE_CHANNEL,
   payload: DesktopPreviewAutomationEvaluateInputSchema,
   result: Schema.Unknown,
-  handler: Effect.fn("desktop.ipc.preview.automationEvaluate")(function* ({ tabId, input }) {
+  handler: Effect.fn("desktop.ipc.preview.automationEvaluate")(function* ({
+    tabId,
+    input,
+    controlEpoch,
+  }) {
     const manager = yield* PreviewManager.PreviewManager;
-    return yield* manager.automationEvaluate(tabId, input);
+    return yield* manager.automationEvaluate(tabId, input, controlEpoch);
   }),
 });
 
@@ -466,9 +517,13 @@ export const automationWaitFor = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_AUTOMATION_WAIT_FOR_CHANNEL,
   payload: DesktopPreviewAutomationWaitForInputSchema,
   result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.preview.automationWaitFor")(function* ({ tabId, input }) {
+  handler: Effect.fn("desktop.ipc.preview.automationWaitFor")(function* ({
+    tabId,
+    input,
+    controlEpoch,
+  }) {
     const manager = yield* PreviewManager.PreviewManager;
-    yield* manager.automationWaitFor(tabId, input);
+    yield* manager.automationWaitFor(tabId, input, controlEpoch);
   }),
 });
 
@@ -508,6 +563,8 @@ export const methods = [
   copyArtifactToClipboard,
   openPictureInPicture,
   closePictureInPicture,
+  setAutomationPaused,
+  checkAutomationControl,
   automationStatus,
   automationSnapshot,
   automationClick,

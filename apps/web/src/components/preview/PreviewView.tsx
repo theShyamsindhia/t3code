@@ -46,6 +46,7 @@ import { previewBridge } from "./previewBridge";
 import { subscribePreviewAction } from "./previewActionBus";
 import { openPreviewSession } from "./openPreviewSession";
 import { PreviewChromeRow } from "./PreviewChromeRow";
+import { PreviewControlButton } from "./PreviewControlButton";
 import { PreviewEmptyState } from "./PreviewEmptyState";
 import { PreviewMoreMenu } from "./PreviewMoreMenu";
 import {
@@ -258,6 +259,8 @@ export function PreviewView({
   const handleViewportChange = useCallback(
     async (nextViewport: PreviewViewportSetting) => {
       if (!tabId) return;
+      if (previewBridge && runtimeTabId)
+        await previewBridge.automation.setPaused(runtimeTabId, true);
       const result = await resize({
         environmentId: threadRef.environmentId,
         input: {
@@ -277,7 +280,7 @@ export function PreviewView({
       }
       updatePreviewServerSnapshot(threadRef, result.value);
     },
-    [resize, tabId, threadRef],
+    [resize, runtimeTabId, tabId, threadRef],
   );
 
   const handleToggleDeviceToolbar = () => {
@@ -761,19 +764,29 @@ export function PreviewView({
         }
         trailingActions={
           previewBridge ? (
-            <PreviewMoreMenu
-              environmentId={threadRef.environmentId}
-              profileId={activeProfileId}
-              profileName={activeProfileName}
-              tabId={runtimeTabId}
-              hasWebContents={desktopOverlay?.hasWebContents ?? false}
-              zoomFactor={desktopOverlay?.zoomFactor ?? 1}
-              colorScheme={desktopOverlay?.colorScheme ?? "system"}
-              deviceToolbarVisible={viewport._tag !== "fill"}
-              onToggleDeviceToolbar={handleToggleDeviceToolbar}
-              nativePictureInPicture={desktopOverlay?.pictureInPicture ?? false}
-              onNativePictureInPicture={handleNativePictureInPicture}
-            />
+            <>
+              {runtimeTabId && desktopOverlay?.hasWebContents ? (
+                <PreviewControlButton
+                  key={runtimeTabId}
+                  tabId={runtimeTabId}
+                  control={desktopOverlay.automationControl ?? "ready"}
+                  controller={controller}
+                />
+              ) : null}
+              <PreviewMoreMenu
+                environmentId={threadRef.environmentId}
+                profileId={activeProfileId}
+                profileName={activeProfileName}
+                tabId={runtimeTabId}
+                hasWebContents={desktopOverlay?.hasWebContents ?? false}
+                zoomFactor={desktopOverlay?.zoomFactor ?? 1}
+                colorScheme={desktopOverlay?.colorScheme ?? "system"}
+                deviceToolbarVisible={viewport._tag !== "fill"}
+                onToggleDeviceToolbar={handleToggleDeviceToolbar}
+                nativePictureInPicture={desktopOverlay?.pictureInPicture ?? false}
+                onNativePictureInPicture={handleNativePictureInPicture}
+              />
+            </>
           ) : null
         }
       />

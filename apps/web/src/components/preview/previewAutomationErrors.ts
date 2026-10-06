@@ -172,6 +172,18 @@ const targetNotEditableDiagnostics = (
   };
 };
 
+export class PreviewAutomationControlInterruptedHostError extends Schema.TaggedError<PreviewAutomationControlInterruptedHostError>()(
+  "PreviewAutomationControlInterruptedHostError",
+  { tabId: Schema.NullOr(Schema.String) },
+) {
+  get responseTag() {
+    return "PreviewAutomationControlInterruptedError" as const;
+  }
+  override get message(): string {
+    return "Browser control changed. Check preview_status; if paused, wait for the user to choose Resume in this tab. Then call preview_snapshot before acting. Do not retry actions or open another tab to bypass takeover.";
+  }
+}
+
 export class PreviewAutomationOperationError extends Schema.TaggedError<PreviewAutomationOperationError>()(
   "PreviewAutomationOperationError",
   {
@@ -187,6 +199,14 @@ export class PreviewAutomationOperationError extends Schema.TaggedError<PreviewA
     input: PreviewAutomationOperationContext & { readonly cause: unknown },
   ): PreviewAutomationHostError {
     if (isPreviewAutomationHostError(input.cause)) return input.cause;
+    if (
+      typeof input.cause === "object" &&
+      input.cause !== null &&
+      "_tag" in input.cause &&
+      input.cause._tag === "PreviewAutomationControlInterruptedError"
+    ) {
+      return new PreviewAutomationControlInterruptedHostError({ tabId: input.tabId });
+    }
     const diagnostics = targetNotEditableDiagnostics(input.cause);
     return diagnostics
       ? new PreviewAutomationTargetNotEditableHostError({
@@ -210,6 +230,7 @@ export class PreviewAutomationOperationError extends Schema.TaggedError<PreviewA
 }
 
 export const PreviewAutomationHostError = Schema.Union([
+  PreviewAutomationControlInterruptedHostError,
   PreviewAutomationRecordingTransferError,
   PreviewAutomationRecordingDesktopUpdateRequiredError,
   PreviewAutomationRecordingTooLargeError,

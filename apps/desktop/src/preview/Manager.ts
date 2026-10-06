@@ -25,6 +25,7 @@ import type {
   DesktopPreviewScreenshotArtifact,
   DesktopPreviewTabDefaults,
   PreviewAutomationClickInput,
+  PreviewAutomationControl,
   PreviewAutomationActionEvent,
   PreviewAutomationConsoleEntry,
   PreviewAutomationEvaluateInput,
@@ -118,6 +119,7 @@ export interface PreviewTabState {
   /** Observed from Chromium. Stays true while a muted tab keeps playing. */
   audible: boolean;
   controller: "human" | "agent" | "none";
+  automationControl: PreviewAutomationControl;
   favicon?: DesktopPreviewFavicon;
   updatedAt: string;
 }
@@ -982,11 +984,13 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     tabId: string,
     patch: Partial<PreviewTabState>,
     humanPoint?: { readonly x: number; readonly y: number },
+    expectedState?: PreviewTabState,
   ) {
     const updatedAt = yield* currentIso;
     const next = yield* SynchronizedRef.modify(tabsRef, (tabs) => {
       const current = tabs.get(tabId);
-      if (!current) return [Option.none<PreviewTabState>(), tabs] as const;
+      if (!current || (expectedState && current !== expectedState))
+        return [Option.none<PreviewTabState>(), tabs] as const;
       const state: PreviewTabState = { ...current, ...patch, updatedAt };
       return [
         Option.some(state),
@@ -1497,6 +1501,59 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     );
   });
 
+  const setAutomationPaused = Effect.fn("PreviewManager.setAutomationPaused")(function* (
+    tabId: string,
+    paused: boolean,
+    humanPoint?: { readonly x: number; readonly y: number },
+  ) {
+    const tab = (yield* SynchronizedRef.get(tabsRef)).get(tabId);
+    if (!tab) return yield* new PreviewTabNotFoundError({ tabId });
+    if (!paused && tab.automationControl !== "paused") return;
+    yield* Ref.update(controlEpochRef, (epochs) =>
+      replaceMap(epochs, (copy) => copy.set(tabId, (epochs.get(tabId) ?? 0) + 1)),
+    );
+    yield* Ref.update(expectedAgentInputsRef, (inputs) =>
+      replaceMap(inputs, (copy) => copy.delete(tabId)),
+    );
+    if (tab.webContentsId !== null) {
+      const wc = webContents.fromId(tab.webContentsId);
+      if (wc) agentDrivenWebContents.delete(wc);
+    }
+    yield* update(
+      tabId,
+      {
+        automationControl: paused ? "paused" : "needs-snapshot",
+        controller: paused ? "human" : "none",
+      },
+      humanPoint,
+    );
+  });
+
+  const checkAutomationControl = Effect.fn("PreviewManager.checkAutomationControl")(function* (
+    tabId: string,
+    operation: string,
+    expectedEpoch?: number,
+  ) {
+    const tab = (yield* SynchronizedRef.get(tabsRef)).get(tabId);
+    if (!tab) return yield* new PreviewTabNotFoundError({ tabId });
+    const epoch = (yield* Ref.get(controlEpochRef)).get(tabId) ?? 0;
+    const readOnly = operation === "status" || READ_ONLY_CONTROL_ACTIONS.has(operation);
+    const reason =
+      expectedEpoch !== undefined && expectedEpoch !== epoch
+        ? "changed"
+        : !readOnly && tab.automationControl !== "ready"
+          ? tab.automationControl
+          : undefined;
+    if (reason)
+      return yield* new PreviewAutomationControlInterruptedError({
+        tabId,
+        operation,
+        webContentsId: tab.webContentsId ?? 0,
+        reason,
+      });
+    return epoch;
+  });
+
   const withControlSession = Effect.fn("PreviewManager.withControlSession")(function* <A>(
     tabId: string,
     wc: Electron.WebContents,
@@ -1506,7 +1563,9 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       sendCleanup: SendCommand,
       checkControl: Effect.Effect<void, PreviewManagerError>,
     ) => Effect.Effect<A, PreviewManagerError>,
+    expectedEpoch?: number,
   ) {
+    const epoch = yield* checkAutomationControl(tabId, action, expectedEpoch);
     const sequence = yield* nextCounter(actionSequenceRef);
     const startedAt = yield* currentIso;
     const millis = yield* currentMillis;
@@ -1517,16 +1576,17 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       startedAt,
     };
     yield* pushAction(tabId, actionEvent);
-    const epoch = (yield* Ref.get(controlEpochRef)).get(tabId) ?? 0;
     const control = yield* ensureControlSession(wc);
     const execute = Effect.fn("PreviewManager.executeControlAction")(function* () {
       const checkControl = Effect.gen(function* () {
-        const currentEpoch = (yield* Ref.get(controlEpochRef)).get(tabId) ?? 0;
-        if (currentEpoch !== epoch) {
+        yield* checkAutomationControl(tabId, action, epoch);
+        const tab = (yield* SynchronizedRef.get(tabsRef)).get(tabId);
+        if (tab?.webContentsId !== wc.id || wc.isDestroyed()) {
           return yield* new PreviewAutomationControlInterruptedError({
-            operation: action,
             tabId,
+            operation: action,
             webContentsId: wc.id,
+            reason: "changed",
           });
         }
       });
@@ -1534,7 +1594,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       // the page; marking it agent-driven would hide their Save dialog.
       yield* checkControl;
       if (!READ_ONLY_CONTROL_ACTIONS.has(action)) agentDrivenWebContents.add(wc);
-      yield* update(tabId, { controller: "agent" });
+      if (!READ_ONLY_CONTROL_ACTIONS.has(action)) yield* update(tabId, { controller: "agent" });
       const send: SendCommand = Effect.fn("PreviewManager.sendCommand")(
         function* (method, commandParams, sessionId) {
           yield* checkControl;
@@ -1567,7 +1627,15 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
           );
         },
       );
-      return yield* use(send, sendCleanup, checkControl);
+      const result = yield* use(send, sendCleanup, checkControl);
+      yield* checkControl;
+      if (action === "snapshot") {
+        const tab = (yield* SynchronizedRef.get(tabsRef)).get(tabId);
+        if (tab?.automationControl === "needs-snapshot") {
+          yield* update(tabId, { automationControl: "ready" }, undefined, tab);
+        }
+      }
+      return result;
     });
     const finalize = Effect.fn("PreviewManager.finalizeControlAction")(function* (
       exit: Exit.Exit<A, PreviewManagerError>,
@@ -1599,7 +1667,8 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
         });
       }
       const tabs = yield* SynchronizedRef.get(tabsRef);
-      if (tabs.has(tabId)) yield* update(tabId, { controller: "none" });
+      const tab = tabs.get(tabId);
+      if (tab?.controller === "agent") yield* update(tabId, { controller: "none" }, undefined, tab);
     });
     return yield* control.semaphore.withPermit(execute().pipe(Effect.onExit(finalize)));
   });
@@ -1956,27 +2025,17 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     const handleHumanInput = Effect.fn("PreviewManager.handleHumanInput")(function* (
       rawSignal?: unknown,
     ) {
+      if (rawSignal !== undefined && !isPreviewInputSignal(rawSignal)) return;
       if (isPreviewInputSignal(rawSignal) && (yield* consumeExpectedAgentInput(tabId, rawSignal))) {
         return;
       }
-      agentDrivenWebContents.delete(wc);
-      yield* Ref.update(controlEpochRef, (epochs) =>
-        replaceMap(epochs, (copy) => {
-          copy.set(tabId, (epochs.get(tabId) ?? 0) + 1);
-        }),
-      );
-      yield* update(
+      yield* setAutomationPaused(
         tabId,
-        { controller: "human" },
+        true,
         isPreviewInputSignal(rawSignal) && rawSignal.kind === "pointer"
           ? { x: rawSignal.x, y: rawSignal.y }
           : undefined,
       );
-      yield* Effect.sleep(750);
-      const tabs = yield* SynchronizedRef.get(tabsRef);
-      if (tabs.get(tabId)?.controller === "human") {
-        yield* update(tabId, { controller: "none" });
-      }
     });
     const recordingInput = (_event: unknown, input: unknown) => {
       if (!isRecordingInput(input)) return;
@@ -2039,9 +2098,14 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       if (isPreviewRefreshShortcut(input)) {
         event.preventDefault();
         runFork(
-          attempt({ operation: "shortcut.refresh", tabId, webContentsId: wc.id }, () =>
-            wc.reload(),
-          ).pipe(Effect.ignore),
+          handleHumanInput({ kind: "key", key: input.key, code: input.code }).pipe(
+            Effect.andThen(
+              attempt({ operation: "shortcut.refresh", tabId, webContentsId: wc.id }, () =>
+                wc.reload(),
+              ),
+            ),
+            Effect.ignore,
+          ),
         );
         return;
       }
@@ -2166,6 +2230,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
           audioMuted: false,
           audible: false,
           controller: "none",
+          automationControl: "ready",
           updatedAt,
         };
         return [
@@ -2192,6 +2257,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
 
   const closeTabUnlocked = Effect.fn("PreviewManager.closeTabUnlocked")(function* (tabId: string) {
     if (!(yield* SynchronizedRef.get(tabsRef)).has(tabId)) return;
+    yield* setAutomationPaused(tabId, true);
     clearPendingRecording(tabId);
     yield* Effect.all(
       [
@@ -2301,6 +2367,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
         ? tab.webContentsId
         : null;
     if (replacedWebContentsId !== null) {
+      yield* setAutomationPaused(tabId, true);
       // The replaced guest can no longer redeem a display-media grant.
       clearPendingRecording(tabId);
       yield* Effect.all(
@@ -2452,10 +2519,15 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     );
   });
 
-  const navigate = Effect.fn("PreviewManager.navigate")(function* (tabId: string, rawUrl: string) {
+  const navigate = Effect.fn("PreviewManager.navigate")(function* (
+    tabId: string,
+    rawUrl: string,
+    controlEpoch?: number,
+  ) {
     const url = yield* attempt({ operation: "navigate.normalizeUrl", tabId }, () =>
       normalizePreviewUrl(rawUrl),
     );
+    if (controlEpoch !== undefined) yield* checkAutomationControl(tabId, "navigate", controlEpoch);
     const updatedAt = yield* currentIso;
     const pending = yield* SynchronizedRef.modify(tabsRef, (tabs) => {
       const current = tabs.get(tabId);
@@ -2479,6 +2551,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
         audioMuted: current?.audioMuted ?? false,
         audible: current?.audible ?? false,
         controller: current?.controller ?? "none",
+        automationControl: current?.automationControl ?? "ready",
         ...(current?.favicon ? { favicon: current.favicon } : {}),
         updatedAt,
       };
@@ -2493,6 +2566,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     // audibility forward, and an audio-state-changed landing in between would
     // otherwise be rolled back with no follow-up transition to correct it.
     yield* emitIfCurrent(tabId, pending);
+    if (controlEpoch === undefined) yield* setAutomationPaused(tabId, true);
     if (pending.webContentsId == null) return;
     const webContentsId = pending.webContentsId;
     const wc = webContents.fromId(webContentsId);
@@ -2547,6 +2621,10 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       );
       return;
     }
+    if (controlEpoch !== undefined) {
+      yield* checkAutomationControl(tabId, "navigate", controlEpoch);
+      agentDrivenWebContents.add(wc);
+    }
     yield* attemptPromise({ operation: "navigate.loadURL", tabId, webContentsId: wc.id }, () =>
       wc.loadURL(url),
     );
@@ -2558,6 +2636,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     use: (wc: Electron.WebContents) => void,
   ) {
     const wc = yield* requireWebContents(tabId);
+    yield* setAutomationPaused(tabId, true);
     yield* attempt({ operation, tabId, webContentsId: wc.id }, () => use(wc));
   });
 
@@ -2617,6 +2696,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
 
   const pickElement = Effect.fn("PreviewManager.pickElement")(function* (tabId: string) {
     const wc = yield* requireWebContents(tabId);
+    yield* setAutomationPaused(tabId, true);
     yield* cancelPickElement(tabId);
     const annotationTheme = yield* Ref.get(annotationThemeRef);
     return yield* Effect.callback<PreviewAnnotationSubmissionResult | null, PreviewManagerError>(
@@ -2851,7 +2931,10 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   const setColorScheme = Effect.fn("PreviewManager.setColorScheme")(function* (
     tabId: string,
     colorScheme: DesktopPreviewColorScheme,
+    controlEpoch?: number,
   ) {
+    if (controlEpoch !== undefined)
+      yield* checkAutomationControl(tabId, "setColorScheme", controlEpoch);
     const tab = (yield* SynchronizedRef.get(tabsRef)).get(tabId);
     if (!tab) {
       return yield* new PreviewTabNotFoundError({ tabId });
@@ -3707,9 +3790,12 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
 
   const automationStatus = Effect.fn("PreviewManager.automationStatus")(function* (tabId: string) {
     const tab = (yield* SynchronizedRef.get(tabsRef)).get(tabId);
+    const controlEpoch = (yield* Ref.get(controlEpochRef)).get(tabId) ?? 0;
+    const control = { automationControl: tab?.automationControl ?? "ready", controlEpoch };
     if (!tab || tab.webContentsId == null) {
       const navStatus = tab?.navStatus;
       return {
+        ...control,
         available: false,
         visible: true,
         tabId,
@@ -3721,6 +3807,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     const wc = webContents.fromId(tab.webContentsId);
     return !wc || wc.isDestroyed()
       ? {
+          ...control,
           available: false,
           visible: true,
           tabId,
@@ -3729,6 +3816,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
           loading: false,
         }
       : {
+          ...control,
           available: true,
           visible: true,
           tabId,
@@ -3845,11 +3933,18 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
 
   const automationSnapshot = Effect.fn("PreviewManager.automationSnapshot")(function* (
     tabId: string,
+    controlEpoch?: number,
   ) {
     const wc = yield* requireWebContents(tabId);
-    return yield* withControlSession(tabId, wc, "snapshot", (send) =>
-      captureAutomationSnapshot(tabId, wc, send),
+    const snapshot = yield* withControlSession(
+      tabId,
+      wc,
+      "snapshot",
+      (send) => captureAutomationSnapshot(tabId, wc, send),
+      controlEpoch,
     );
+    const tab = (yield* SynchronizedRef.get(tabsRef)).get(tabId);
+    return { ...snapshot, automationControl: tab?.automationControl ?? "paused" };
   });
 
   const resolveClickPoint = Effect.fn("PreviewManager.resolveClickPoint")(function* (
@@ -3988,10 +4083,15 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   const automationClick = Effect.fn("PreviewManager.automationClick")(function* (
     tabId: string,
     input: PreviewAutomationClickInput,
+    controlEpoch?: number,
   ) {
     const wc = yield* requireWebContents(tabId);
-    yield* withControlSession(tabId, wc, "click", (send) =>
-      performAutomationClick(tabId, input, send),
+    yield* withControlSession(
+      tabId,
+      wc,
+      "click",
+      (send) => performAutomationClick(tabId, input, send),
+      controlEpoch,
     );
   });
 
@@ -4114,10 +4214,15 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   const automationType = Effect.fn("PreviewManager.automationType")(function* (
     tabId: string,
     input: PreviewAutomationTypeInput,
+    controlEpoch?: number,
   ) {
     const wc = yield* requireWebContents(tabId);
-    yield* withControlSession(tabId, wc, "type", (send) =>
-      performAutomationType(tabId, input, send),
+    yield* withControlSession(
+      tabId,
+      wc,
+      "type",
+      (send) => performAutomationType(tabId, input, send),
+      controlEpoch,
     );
   });
 
@@ -4458,10 +4563,16 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   const automationPress = Effect.fn("PreviewManager.automationPress")(function* (
     tabId: string,
     input: PreviewAutomationPressInput,
+    controlEpoch?: number,
   ) {
     const wc = yield* requireWebContents(tabId);
-    yield* withControlSession(tabId, wc, "press", (send, sendCleanup, checkControl) =>
-      performAutomationPress(tabId, wc, input, send, sendCleanup, checkControl),
+    yield* withControlSession(
+      tabId,
+      wc,
+      "press",
+      (send, sendCleanup, checkControl) =>
+        performAutomationPress(tabId, wc, input, send, sendCleanup, checkControl),
+      controlEpoch,
     );
   });
 
@@ -4514,10 +4625,15 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   const automationScroll = Effect.fn("PreviewManager.automationScroll")(function* (
     tabId: string,
     input: PreviewAutomationScrollInput,
+    controlEpoch?: number,
   ) {
     const wc = yield* requireWebContents(tabId);
-    yield* withControlSession(tabId, wc, "scroll", (send) =>
-      performAutomationScroll(tabId, input, send),
+    yield* withControlSession(
+      tabId,
+      wc,
+      "scroll",
+      (send) => performAutomationScroll(tabId, input, send),
+      controlEpoch,
     );
   });
 
@@ -4550,10 +4666,15 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   const automationEvaluate = Effect.fn("PreviewManager.automationEvaluate")(function* (
     tabId: string,
     input: PreviewAutomationEvaluateInput,
+    controlEpoch?: number,
   ) {
     const wc = yield* requireWebContents(tabId);
-    return yield* withControlSession(tabId, wc, "evaluate", (send) =>
-      performAutomationEvaluate(tabId, input, send),
+    return yield* withControlSession(
+      tabId,
+      wc,
+      "evaluate",
+      (send) => performAutomationEvaluate(tabId, input, send),
+      controlEpoch,
     );
   });
 
@@ -4621,10 +4742,15 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   const automationWaitFor = Effect.fn("PreviewManager.automationWaitFor")(function* (
     tabId: string,
     input: PreviewAutomationWaitForInput,
+    controlEpoch?: number,
   ) {
     const wc = yield* requireWebContents(tabId);
-    yield* withControlSession(tabId, wc, "waitFor", (send) =>
-      performAutomationWaitFor(tabId, input, send),
+    yield* withControlSession(
+      tabId,
+      wc,
+      "waitFor",
+      (send) => performAutomationWaitFor(tabId, input, send),
+      controlEpoch,
     );
   });
 
@@ -4691,6 +4817,8 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   yield* Effect.addFinalizer(() => destroy().pipe(Effect.ignore));
 
   return {
+    setAutomationPaused,
+    checkAutomationControl,
     automationClick,
     automationEvaluate,
     automationPress,
@@ -4994,10 +5122,13 @@ export class PreviewAutomationControlInterruptedError extends Schema.TaggedError
     operation: Schema.String,
     tabId: Schema.String,
     webContentsId: Schema.Number,
+    reason: Schema.optional(Schema.Literals(["changed", "paused", "needs-snapshot"])),
   },
 ) {
   override get message(): string {
-    return `Preview automation ${this.operation} was interrupted by human input in tab ${this.tabId}`;
+    return this.reason === "needs-snapshot"
+      ? `Call preview_snapshot on tab ${this.tabId} before continuing; browser control was resumed.`
+      : `Browser control changed in tab ${this.tabId}. Agent actions stay paused until the user chooses Resume, then call preview_snapshot. Do not retry actions or bypass takeover with another tab.`;
   }
 }
 
@@ -5050,7 +5181,11 @@ export class PreviewManager extends Context.Service<
       webContentsId: number,
     ) => Effect.Effect<void, PreviewManagerError>;
     readonly prepareWebview: (webContents: Electron.WebContents) => Effect.Effect<void>;
-    readonly navigate: (tabId: string, url: string) => Effect.Effect<void, PreviewManagerError>;
+    readonly navigate: (
+      tabId: string,
+      url: string,
+      controlEpoch?: number,
+    ) => Effect.Effect<void, PreviewManagerError>;
     readonly goBack: (tabId: string) => Effect.Effect<void, PreviewManagerError>;
     readonly goForward: (tabId: string) => Effect.Effect<void, PreviewManagerError>;
     readonly refresh: (tabId: string) => Effect.Effect<void, PreviewManagerError>;
@@ -5064,6 +5199,7 @@ export class PreviewManager extends Context.Service<
     readonly setColorScheme: (
       tabId: string,
       colorScheme: DesktopPreviewColorScheme,
+      controlEpoch?: number,
     ) => Effect.Effect<void, PreviewManagerError>;
     readonly setAudioMuted: (
       tabId: string,
@@ -5105,35 +5241,51 @@ export class PreviewManager extends Context.Service<
       mimeType: string,
       data: Uint8Array,
     ) => Effect.Effect<DesktopPreviewRecordingArtifact, PreviewManagerError>;
+    readonly setAutomationPaused: (
+      tabId: string,
+      paused: boolean,
+    ) => Effect.Effect<void, PreviewManagerError>;
+    readonly checkAutomationControl: (
+      tabId: string,
+      operation: string,
+      controlEpoch?: number,
+    ) => Effect.Effect<number, PreviewManagerError>;
     readonly automationStatus: (
       tabId: string,
     ) => Effect.Effect<DesktopPreviewAutomationStatus, PreviewManagerError>;
     readonly automationSnapshot: (
       tabId: string,
+      controlEpoch?: number,
     ) => Effect.Effect<PreviewAutomationSnapshot, PreviewManagerError>;
     readonly automationClick: (
       tabId: string,
       input: PreviewAutomationClickInput,
+      controlEpoch?: number,
     ) => Effect.Effect<void, PreviewManagerError>;
     readonly automationType: (
       tabId: string,
       input: PreviewAutomationTypeInput,
+      controlEpoch?: number,
     ) => Effect.Effect<void, PreviewManagerError>;
     readonly automationPress: (
       tabId: string,
       input: PreviewAutomationPressInput,
+      controlEpoch?: number,
     ) => Effect.Effect<void, PreviewManagerError>;
     readonly automationScroll: (
       tabId: string,
       input: PreviewAutomationScrollInput,
+      controlEpoch?: number,
     ) => Effect.Effect<void, PreviewManagerError>;
     readonly automationEvaluate: (
       tabId: string,
       input: PreviewAutomationEvaluateInput,
+      controlEpoch?: number,
     ) => Effect.Effect<unknown, PreviewManagerError>;
     readonly automationWaitFor: (
       tabId: string,
       input: PreviewAutomationWaitForInput,
+      controlEpoch?: number,
     ) => Effect.Effect<void, PreviewManagerError>;
     readonly subscribeStateChanges: (listener: Listener) => Effect.Effect<void, never, Scope.Scope>;
     readonly subscribePointerEvents: (
@@ -5227,6 +5379,8 @@ export const make = Effect.gen(function* PreviewManagerMake() {
     startRecording: operations.startRecording,
     stopRecording: operations.stopRecording,
     saveRecording: operations.saveRecording,
+    setAutomationPaused: operations.setAutomationPaused,
+    checkAutomationControl: operations.checkAutomationControl,
     automationStatus: operations.automationStatus,
     automationSnapshot: operations.automationSnapshot,
     automationClick: operations.automationClick,

@@ -6,6 +6,7 @@ import {
   PreviewTabId,
   ThreadId,
 } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -46,6 +47,14 @@ const requestEvent = (
   connectionId: eventConnectionId,
   request: request(requestId, overrides),
 });
+
+const signal = () => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+};
 
 const consumerState = (handleRequest: (request: PreviewAutomationRequest) => Promise<unknown>) => ({
   connectionAtom: Atom.make<string | null>(null),
@@ -211,6 +220,82 @@ describe("previewAutomationRequestConsumer", () => {
       ok: true,
     });
     registry.dispose();
+  });
+
+  it("invalidates in-flight requests and pauses tabs before a replacement connection can act", async () => {
+    const requestsAtom = Atom.make<AsyncResult.AsyncResult<PreviewAutomationStreamEvent, Error>>(
+      AsyncResult.success<PreviewAutomationStreamEvent, Error>({ type: "connected", connectionId }),
+    );
+    const disconnected = signal();
+    const finishPause = signal();
+    const handled = signal();
+    let previousIsCurrent: (() => boolean) | undefined;
+    const handle = vi.fn(async (_request: PreviewAutomationRequest, isCurrent: () => boolean) => {
+      previousIsCurrent ??= isCurrent;
+      handled.resolve();
+    });
+    const disconnect = vi.fn(async () => {
+      disconnected.resolve();
+      await finishPause.promise;
+    });
+    const responses: PreviewAutomationResponse[] = [];
+    const responded = signal();
+    const connectionAtom = Atom.make<string | null>(null);
+    const consumerAtom = createPreviewAutomationRequestConsumerAtom({
+      requestsAtom,
+      clientId,
+      environmentId,
+      connectionAtom,
+      requestHandlerAtom: Atom.make({ handle, disconnect }),
+      respond: async (response) => {
+        responses.push(response);
+        responded.resolve();
+      },
+      label: "test:preview-handoff-disconnect",
+    });
+    const registry = AtomRegistry.make();
+    registry.mount(consumerAtom);
+    registry.set(requestsAtom, AsyncResult.success(requestEvent("running")));
+    await handled.promise;
+    await responded.promise;
+    expect(previousIsCurrent?.()).toBe(true);
+    registry.set(requestsAtom, AsyncResult.failure(Cause.fail(new Error("Connection lost"))));
+    await disconnected.promise;
+    expect(previousIsCurrent?.()).toBe(false);
+    expect(registry.get(connectionAtom)).toBeNull();
+    registry.set(requestsAtom, AsyncResult.success(requestEvent("late-old-request")));
+    expect(handle).toHaveBeenCalledTimes(1);
+    registry.set(
+      requestsAtom,
+      AsyncResult.success({ type: "connected", connectionId: "replacement" }),
+    );
+    registry.set(requestsAtom, AsyncResult.success(requestEvent("new", {}, "replacement")));
+    expect(handle).toHaveBeenCalledTimes(1);
+    finishPause.resolve();
+    // The response itself is the milestone; no timing-based wait.
+    const newResponse = signal();
+    handle.mockImplementationOnce(async () => {
+      newResponse.resolve();
+    });
+    await newResponse.promise;
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    registry.dispose();
+  });
+
+  it("preserves actionable takeover instructions across the host error boundary", () => {
+    const response = serializePreviewAutomationError(
+      { _tag: "PreviewAutomationControlInterruptedError" },
+      {
+        requestId: "paused",
+        operation: "click",
+        environmentId,
+        threadId,
+        tabId,
+      },
+    );
+    expect(response._tag).toBe("PreviewAutomationControlInterruptedError");
+    expect(response.message).toContain("Resume");
+    expect(response.message).toContain("preview_snapshot");
   });
 
   it("preserves tagged automation errors and their structured diagnostics", () => {

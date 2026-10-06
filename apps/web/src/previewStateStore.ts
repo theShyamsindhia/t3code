@@ -9,6 +9,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   type DesktopPreviewColorScheme,
+  type PreviewAutomationControl,
   type DesktopPreviewFavicon,
   type PreviewEvent,
   type PreviewListResult,
@@ -31,6 +32,7 @@ export interface DesktopPreviewOverlay {
   audioMuted: boolean;
   audible: boolean;
   controller: "human" | "agent" | "none";
+  automationControl?: PreviewAutomationControl;
   favicon: DesktopPreviewFavicon | null;
 }
 
@@ -373,6 +375,7 @@ function isPreviewStateEqual(
       previous.audioMuted === next.audioMuted &&
       previous.audible === next.audible &&
       previous.controller === next.controller &&
+      previous.automationControl === next.automationControl &&
       previous.favicon?.dataUrl === next.favicon?.dataUrl &&
       previous.favicon?.pageUrl === next.favicon?.pageUrl &&
       previous.favicon?.capturedAt === next.favicon?.capturedAt)

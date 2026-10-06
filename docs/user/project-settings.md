@@ -134,3 +134,13 @@ On mobile, use **Settings → Source control** to change selected environment de
 T3 Code only pulls when it can fast-forward and the checkout has no changed files, untracked files,
 or local commits. It skips checkouts on another branch or without an upstream. If a checkout has
 local work, resolve it yourself before automatic pulls can resume.
+
+## Sharing the browser with an agent
+
+With agent browser access enabled in **Settings → Integrations**, you and the agent use the same
+live tab in the desktop app. Click **Take over**, or click or type in the page, to pause the agent’s
+actions in that tab. Other tabs remain independent. **Resume** restores access and requires the
+agent to inspect the current page before acting again. Your page and signed-in session stay open.
+
+If the agent has already ended its turn, Resume does not start a new one; send a follow-up to
+continue. A disconnected browser host leaves its tabs paused until you resume them.

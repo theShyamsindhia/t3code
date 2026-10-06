@@ -670,6 +670,8 @@ describe("PreviewManager", () => {
     withManager((manager) =>
       Effect.gen(function* () {
         expect(yield* manager.automationStatus("tab_1")).toEqual({
+          automationControl: "ready",
+          controlEpoch: 0,
           available: false,
           visible: true,
           tabId: "tab_1",
@@ -681,6 +683,8 @@ describe("PreviewManager", () => {
         yield* manager.createTab("tab_1");
 
         expect(yield* manager.automationStatus("tab_1")).toEqual({
+          automationControl: "ready",
+          controlEpoch: 0,
           available: false,
           visible: true,
           tabId: "tab_1",
@@ -823,6 +827,8 @@ describe("PreviewManager", () => {
         yield* manager.navigate("tab_pending", "localhost:3200");
 
         expect(yield* manager.automationStatus("tab_pending")).toEqual({
+          automationControl: "paused",
+          controlEpoch: 1,
           available: false,
           visible: true,
           tabId: "tab_pending",
@@ -4594,7 +4600,7 @@ describe("PreviewManager", () => {
           webviewSend.mock.calls
             .filter(([channel]) => channel === "preview:recording-controller")
             .map(([, controller]) => controller),
-        ).toEqual(["agent", "human", "none"]);
+        ).toEqual(["agent", "human"]);
         yield* manager.stopRecording("tab_1");
         if (Exit.isSuccess(exit)) return;
         const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
@@ -4670,11 +4676,192 @@ describe("PreviewManager", () => {
       }),
     ),
   );
+  effectIt.effect("keeps takeover latched per tab and requires a fresh snapshot after resume", () =>
+    withManager((manager) =>
+      Effect.gen(function* () {
+        const image = {
+          toPNG: () => Buffer.from("png"),
+          toJPEG: () => Buffer.from("jpeg"),
+          getSize: () => ({ width: 100, height: 80 }),
+        };
+        const signals = new Map<number, (event: unknown, signal: unknown) => void>();
+        const takenOver = yield* Deferred.make<void>();
+        const tabs = new Map(
+          [42, 43].map((id) => {
+            const wc = makeTestPreviewWebContents(async () => image, id);
+            Object.assign(wc, {
+              isDevToolsOpened: () => false,
+              loadURL: vi.fn(async () => undefined),
+            });
+            Object.assign(wc.ipc, {
+              on: vi.fn((channel: string, listener: (event: unknown, signal: unknown) => void) => {
+                if (channel === "preview:human-input") signals.set(id, listener);
+              }),
+            });
+            Object.assign(wc.debugger, {
+              sendCommand: vi.fn(async (method: string, params?: { expression?: string }) => {
+                if (method === "Runtime.evaluate")
+                  return {
+                    result: {
+                      value:
+                        params?.expression === "42"
+                          ? 42
+                          : {
+                              url: "https://example.com/changed",
+                              title: "Changed",
+                              loading: false,
+                              visibleText: "Current page",
+                              interactiveElements: [],
+                            },
+                    },
+                  };
+                return {};
+              }),
+            });
+            return [id, wc] as const;
+          }),
+        );
+        fromId.mockImplementation((id) => (id === undefined ? null : (tabs.get(id) ?? null)));
+        yield* manager.subscribeStateChanges((id, state) =>
+          id === "tab_1" && state.automationControl === "paused"
+            ? Deferred.succeed(takenOver, undefined).pipe(Effect.asVoid)
+            : Effect.void,
+        );
+        yield* manager.createTab("tab_1");
+        yield* manager.registerWebview("tab_1", 42);
+        yield* manager.createTab("tab_2");
+        yield* manager.registerWebview("tab_2", 43);
+        yield* manager.automationEvaluate("tab_1", { expression: "42" });
+        const originalEpoch = (yield* manager.automationStatus("tab_1")).controlEpoch;
+        signals.get(42)?.({}, { kind: "pointer", x: 10, y: 10, button: 0 });
+        yield* Deferred.await(takenOver);
+        yield* TestClock.adjust(1000);
+        expect((yield* manager.automationStatus("tab_1")).automationControl).toBe("paused");
+        for (const operation of [
+          "click",
+          "type",
+          "press",
+          "scroll",
+          "evaluate",
+          "navigate",
+          "open",
+          "resize",
+          "setColorScheme",
+          "recordingStart",
+        ]) {
+          expect(
+            Exit.isFailure(yield* Effect.exit(manager.checkAutomationControl("tab_1", operation))),
+          ).toBe(true);
+        }
+        const pausedEpoch = (yield* manager.automationStatus("tab_1")).controlEpoch;
+        for (const action of [
+          manager.automationClick("tab_1", { x: 10, y: 10 }),
+          manager.automationType("tab_1", { text: "do not enter this" }),
+          manager.automationPress("tab_1", { key: "Enter" }),
+          manager.automationScroll("tab_1", { deltaY: 100 }),
+          manager.automationEvaluate("tab_1", { expression: "42" }),
+          manager.navigate("tab_1", "https://example.com/agent", pausedEpoch),
+          manager.setColorScheme("tab_1", "dark", pausedEpoch),
+        ]) {
+          expect(Exit.isFailure(yield* Effect.exit(action))).toBe(true);
+        }
+        const pausedSnapshot = yield* manager.automationSnapshot("tab_1");
+        expect(pausedSnapshot.automationControl).toBe("paused");
+        expect(yield* manager.automationEvaluate("tab_2", { expression: "42" })).toBe(42);
+        yield* manager.setAutomationPaused("tab_1", false);
+        expect((yield* manager.automationStatus("tab_1")).automationControl).toBe("needs-snapshot");
+        expect(
+          Exit.isFailure(
+            yield* Effect.exit(manager.automationEvaluate("tab_1", { expression: "42" })),
+          ),
+        ).toBe(true);
+        const snapshot = yield* manager.automationSnapshot("tab_1");
+        expect(snapshot.visibleText).toBe("Current page");
+        expect(snapshot.automationControl).toBe("ready");
+        // A delayed request from before takeover stays invalid even after the fresh snapshot.
+        expect(
+          Exit.isFailure(
+            yield* Effect.exit(
+              manager.automationEvaluate("tab_1", { expression: "42" }, originalEpoch),
+            ),
+          ),
+        ).toBe(true);
+        expect(yield* manager.automationEvaluate("tab_1", { expression: "42" })).toBe(42);
+        expect(tabs.get(42)?.getURL()).toBe("https://example.com");
+        // Closing a tab must invalidate its epoch even if that runtime ID is recreated.
+        const resumedEpoch = (yield* manager.automationStatus("tab_1")).controlEpoch;
+        yield* manager.closeTab("tab_1");
+        yield* manager.createTab("tab_1");
+        yield* manager.registerWebview("tab_1", 42);
+        expect(
+          Exit.isFailure(
+            yield* Effect.exit(
+              manager.automationEvaluate("tab_1", { expression: "42" }, resumedEpoch),
+            ),
+          ),
+        ).toBe(true);
+      }),
+    ),
+  );
+
+  effectIt.effect(
+    "rejects running and queued actions after takeover without releasing the human's control",
+    () =>
+      withManager((manager) =>
+        Effect.gen(function* () {
+          const entered = Promise.withResolvers<void>();
+          const release = Promise.withResolvers<void>();
+          let controller = "none";
+          yield* manager.subscribeStateChanges((_id, state) =>
+            Effect.sync(() => {
+              controller = state.controller;
+            }),
+          );
+          const wc = makeTestPreviewWebContents(vi.fn());
+          Object.assign(wc, { isDevToolsOpened: () => false });
+          const expressions: string[] = [];
+          Object.assign(wc.debugger, {
+            sendCommand: vi.fn(async (method: string, params?: { expression?: string }) => {
+              if (method !== "Runtime.evaluate") return {};
+              if (params?.expression === "running") {
+                entered.resolve();
+                await release.promise;
+              }
+              expressions.push(params?.expression ?? "");
+              return { result: { value: 42 } };
+            }),
+          });
+          fromId.mockReturnValue(wc);
+          yield* manager.createTab("tab_1");
+          yield* manager.registerWebview("tab_1", 42);
+          const running = yield* manager
+            .automationEvaluate("tab_1", { expression: "running" })
+            .pipe(Effect.forkChild({ startImmediately: true }));
+          yield* Effect.promise(() => entered.promise);
+          // This fiber begins before takeover and waits on the tab's control permit.
+          const waiting = yield* manager
+            .automationEvaluate("tab_1", { expression: "queued" })
+            .pipe(Effect.forkChild({ startImmediately: true }));
+          yield* manager.setAutomationPaused("tab_1", true);
+          release.resolve();
+          expect(Exit.isFailure(yield* Fiber.await(running))).toBe(true);
+          expect(Exit.isFailure(yield* Fiber.await(waiting))).toBe(true);
+          expect(expressions).not.toContain("queued");
+          expect(controller).toBe("human");
+          expect((yield* manager.automationStatus("tab_1")).automationControl).toBe("paused");
+        }),
+      ),
+  );
+
   effectIt.effect("saves downloads from agent-driven pages without a Save dialog", () =>
     withManager((manager) =>
       Effect.gen(function* () {
         let humanInput: ((event: unknown, signal?: unknown) => void) | undefined;
-        const wc = makeTestPreviewWebContents(vi.fn());
+        const wc = makeTestPreviewWebContents(async () => ({
+          toPNG: () => Buffer.from("png"),
+          toJPEG: () => Buffer.from("jpeg"),
+          getSize: () => ({ width: 100, height: 80 }),
+        }));
         Object.assign(wc, {
           isDevToolsOpened: () => false,
           loadURL: vi.fn(async () => undefined),
@@ -4758,6 +4945,8 @@ describe("PreviewManager", () => {
 
         // An action still waiting for the page when the human takes over must
         // not mark it as agent-driven again.
+        yield* manager.setAutomationPaused("tab_1", false);
+        yield* manager.automationSnapshot("tab_1");
         holdEvaluate = true;
         const running = yield* manager
           .automationEvaluate("tab_1", { expression: "42" })
@@ -4773,6 +4962,8 @@ describe("PreviewManager", () => {
         expect(Exit.isFailure(yield* Fiber.await(queued))).toBe(true);
         expect(download()).not.toHaveBeenCalled();
 
+        yield* manager.setAutomationPaused("tab_1", false);
+        yield* manager.automationSnapshot("tab_1");
         // URL-bar navigation hands the page back to the human.
         yield* manager.automationEvaluate("tab_1", { expression: "42" });
         expect(download()).toHaveBeenCalled();

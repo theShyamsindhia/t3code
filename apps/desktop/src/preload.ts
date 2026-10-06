@@ -306,8 +306,8 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     closeTab: (tabId) => ipcRenderer.invoke(IpcChannels.PREVIEW_CLOSE_TAB_CHANNEL, { tabId }),
     registerWebview: (tabId, webContentsId) =>
       ipcRenderer.invoke(IpcChannels.PREVIEW_REGISTER_WEBVIEW_CHANNEL, { tabId, webContentsId }),
-    navigate: (tabId, url) =>
-      ipcRenderer.invoke(IpcChannels.PREVIEW_NAVIGATE_CHANNEL, { tabId, url }),
+    navigate: (tabId, url, controlEpoch) =>
+      ipcRenderer.invoke(IpcChannels.PREVIEW_NAVIGATE_CHANNEL, { tabId, url, controlEpoch }),
     goBack: (tabId) => ipcRenderer.invoke(IpcChannels.PREVIEW_GO_BACK_CHANNEL, { tabId }),
     goForward: (tabId) => ipcRenderer.invoke(IpcChannels.PREVIEW_GO_FORWARD_CHANNEL, { tabId }),
     refresh: (tabId) => ipcRenderer.invoke(IpcChannels.PREVIEW_REFRESH_CHANNEL, { tabId }),
@@ -315,8 +315,12 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     zoomOut: (tabId) => ipcRenderer.invoke(IpcChannels.PREVIEW_ZOOM_OUT_CHANNEL, { tabId }),
     resetZoom: (tabId) => ipcRenderer.invoke(IpcChannels.PREVIEW_RESET_ZOOM_CHANNEL, { tabId }),
     hardReload: (tabId) => ipcRenderer.invoke(IpcChannels.PREVIEW_HARD_RELOAD_CHANNEL, { tabId }),
-    setColorScheme: (tabId, colorScheme) =>
-      ipcRenderer.invoke(IpcChannels.PREVIEW_SET_COLOR_SCHEME_CHANNEL, { tabId, colorScheme }),
+    setColorScheme: (tabId, colorScheme, controlEpoch) =>
+      ipcRenderer.invoke(IpcChannels.PREVIEW_SET_COLOR_SCHEME_CHANNEL, {
+        tabId,
+        colorScheme,
+        controlEpoch,
+      }),
     setAudioMuted: (tabId, audioMuted) =>
       ipcRenderer.invoke(IpcChannels.PREVIEW_SET_AUDIO_MUTED_CHANNEL, { tabId, audioMuted }),
     openDevTools: (tabId) =>
@@ -378,22 +382,57 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       },
     },
     automation: {
+      setPaused: (tabId, paused) =>
+        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_SET_PAUSED_CHANNEL, { tabId, paused }),
+      checkControl: (tabId, operation, controlEpoch) =>
+        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_CHECK_CONTROL_CHANNEL, {
+          tabId,
+          operation,
+          controlEpoch,
+        }),
       status: (tabId) =>
         ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_STATUS_CHANNEL, { tabId }),
-      snapshot: (tabId) =>
-        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_SNAPSHOT_CHANNEL, { tabId }),
-      click: (tabId, input) =>
-        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_CLICK_CHANNEL, { tabId, input }),
-      type: (tabId, input) =>
-        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_TYPE_CHANNEL, { tabId, input }),
-      press: (tabId, input) =>
-        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_PRESS_CHANNEL, { tabId, input }),
-      scroll: (tabId, input) =>
-        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_SCROLL_CHANNEL, { tabId, input }),
-      evaluate: (tabId, input) =>
-        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_EVALUATE_CHANNEL, { tabId, input }),
-      waitFor: (tabId, input) =>
-        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_WAIT_FOR_CHANNEL, { tabId, input }),
+      snapshot: (tabId, controlEpoch) =>
+        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_SNAPSHOT_CHANNEL, {
+          tabId,
+          controlEpoch,
+        }),
+      click: (tabId, input, controlEpoch) =>
+        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_CLICK_CHANNEL, {
+          tabId,
+          input,
+          controlEpoch,
+        }),
+      type: (tabId, input, controlEpoch) =>
+        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_TYPE_CHANNEL, {
+          tabId,
+          input,
+          controlEpoch,
+        }),
+      press: (tabId, input, controlEpoch) =>
+        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_PRESS_CHANNEL, {
+          tabId,
+          input,
+          controlEpoch,
+        }),
+      scroll: (tabId, input, controlEpoch) =>
+        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_SCROLL_CHANNEL, {
+          tabId,
+          input,
+          controlEpoch,
+        }),
+      evaluate: (tabId, input, controlEpoch) =>
+        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_EVALUATE_CHANNEL, {
+          tabId,
+          input,
+          controlEpoch,
+        }),
+      waitFor: (tabId, input, controlEpoch) =>
+        ipcRenderer.invoke(IpcChannels.PREVIEW_AUTOMATION_WAIT_FOR_CHANNEL, {
+          tabId,
+          input,
+          controlEpoch,
+        }),
     },
     onStateChange: (listener) => {
       const wrappedListener = (
