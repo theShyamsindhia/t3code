@@ -126,6 +126,42 @@ const writeFirefoxCookieDatabase = (
     database.close();
   });
 
+describe("Aside on macOS", () => {
+  it.effect.skipIf(!symlinksSupported)(
+    "discovers both profiles and respects the running browser",
+    () =>
+      run(
+        Effect.gen(function* () {
+          const aside = BROWSER_IMPORT_SOURCES.find((source) => source.id === "aside")!;
+          const fileSystem = yield* FileSystem.FileSystem;
+          const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3code-aside-mac-" });
+          const context = yield* sourcePathContext.pipe(
+            Effect.provideService(HostProcessEnvironment, { HOME: home }),
+            Effect.provideService(HostProcessPlatform, "darwin"),
+          );
+          const root = `${home}/Library/Application Support/Aside`;
+          yield* fileSystem.makeDirectory(`${root}/Default/Network`, { recursive: true });
+          yield* fileSystem.makeDirectory(`${root}/Profile 1`, { recursive: true });
+          yield* writeCookieDatabase(`${root}/Default/Network/Cookies`, 2);
+          yield* writeCookieDatabase(`${root}/Profile 1/Cookies`, 3);
+          yield* fileSystem.writeFileString(
+            `${root}/Local State`,
+            '{"profile":{"info_cache":{"Default":{"name":"Personal"},"Profile 1":{"name":"Work"}}}}',
+          );
+
+          assert.isTrue(yield* isSourceInstalled(aside, context));
+          assert.deepEqual(yield* listSourceProfiles(aside, context), [
+            { directory: "Default", name: "Personal", cookieCount: 2 },
+            { directory: "Profile 1", name: "Work", cookieCount: 3 },
+          ]);
+          assert.isFalse(yield* isSourceRunning(aside, context));
+          yield* fileSystem.symlink("foreign-host-4242", `${root}/SingletonLock`);
+          assert.isTrue(yield* isSourceRunning(aside, context));
+        }),
+      ),
+  );
+});
+
 describe("Helium on Linux", () => {
   it.effect.skipIf(!symlinksSupported)("discovers its profiles and checks the user-data lock", () =>
     run(

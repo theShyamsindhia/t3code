@@ -168,6 +168,13 @@ export const BROWSER_IMPORT_SOURCES: ReadonlyArray<BrowserImportSourceDefinition
     macSegments: ["Arc", "User Data"],
   }),
   chromiumSource({
+    id: "aside",
+    name: "Aside",
+    keychainService: "Aside Safe Storage",
+    keychainAccount: "Aside",
+    macSegments: ["Aside"],
+  }),
+  chromiumSource({
     id: "helium",
     name: "Helium",
     keychainService: "Helium Storage Key",

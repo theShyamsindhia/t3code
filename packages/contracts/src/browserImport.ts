@@ -23,6 +23,7 @@ const BROWSER_IMPORT_SOURCE_IDS = [
   "vivaldi",
   "opera",
   "arc",
+  "aside",
   "helium",
   "firefox",
   "safari",
