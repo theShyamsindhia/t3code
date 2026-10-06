@@ -4,6 +4,26 @@
 
 This document covers the unified release workflow for stable and nightly desktop releases.
 
+## Community fork previews
+
+This fork restricts the inherited publishing and deployment jobs to `pingdotgg/t3code`.
+Publish fork previews manually from a verified commit instead of dispatching the upstream
+release workflow, which depends on upstream runners, package ownership, and cloud credentials.
+
+For an Apple Silicon Mac preview, run the following with a new preview version and an output
+directory outside the checkout:
+
+```sh
+APP_VERSION=0.0.46-preview.20261006.6 vp run dist:desktop:artifact -- \
+  --platform mac --target zip --arch arm64 \
+  --build-version 0.0.46-preview.20261006.6 --output-dir /tmp/t3-fork-release
+```
+
+Verify the packaged app before tagging that commit and attaching the archive and its SHA-256
+checksum to a GitHub prerelease on `theShyamsindhia/t3code`. Describe the signing status and
+tested platforms in the release notes. Preview builds have no automatic update feed.
+Keep chat data, browser profiles, credentials, and local settings out of release assets.
+
 ## What the workflow does
 
 - Workflow: `.github/workflows/release.yml`
