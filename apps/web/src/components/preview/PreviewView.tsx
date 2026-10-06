@@ -40,6 +40,7 @@ import {
   usePreviewMiniPlayerStore,
 } from "~/previewMiniPlayerStore";
 import { useRightPanelStore } from "~/rightPanelStore";
+import { useClientSettings } from "~/hooks/useSettings";
 
 import { previewBridge } from "./previewBridge";
 import { subscribePreviewAction } from "./previewActionBus";
@@ -104,6 +105,7 @@ export function PreviewView({
   visible,
   onSendAnnotation,
 }: Props) {
+  const sculpted = useClientSettings((settings) => settings.sculptedInterfaceEnabled);
   const [focusUrlNonce, setFocusUrlNonce] = useState<number | undefined>(undefined);
   const [pickActive, setPickActive] = useState(false);
   const activeRecordingTabIds = useActiveBrowserRecordingTabIds();
@@ -782,6 +784,7 @@ export function PreviewView({
             key={runtimeTabId}
             tabId={runtimeTabId}
             visible={visible && !isUnreachable}
+            cornerRadius={sculpted ? 16 : 0}
             className="absolute inset-0 h-full w-full"
           />
         ) : null}

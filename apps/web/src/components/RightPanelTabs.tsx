@@ -62,6 +62,7 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
 import { faviconUrlForOrigin } from "~/lib/favicon";
 import { useTheme } from "~/hooks/useTheme";
+import { useClientSettings } from "~/hooks/useSettings";
 import { useDeviceState } from "~/state/device";
 import type { PreviewPanelInlineSize } from "~/hooks/usePreviewPanelInlineSize";
 import {
@@ -304,13 +305,14 @@ function SurfaceMenuItem(props: {
 }
 
 /**
- * List launcher shown when the right panel has no surfaces. Keyboard-first
+ * Launcher shown when the right panel has no surfaces. Keyboard-first
  * without palette chrome: a surface's letter opens it directly from anywhere
  * outside a typing context, and arrows plus Enter work while the launcher is
  * focused. The highlight only appears on hover or arrow use. Unavailable
  * surfaces stay visible with a one-line reason.
  */
-function RightPanelEmptyState(props: {
+export function RightPanelEmptyState(props: {
+  sculpted?: boolean;
   onAddBrowser: () => void;
   onAddBrowserInProfile: (profileId: string) => void;
   browserProfiles: ReadonlyArray<{ readonly id: string; readonly name: string }>;
@@ -330,6 +332,7 @@ function RightPanelEmptyState(props: {
 }) {
   // -1 means no highlight: it only appears on hover or arrow use.
   const [highlight, setHighlight] = useState(-1);
+  const [showMore, setShowMore] = useState(false);
 
   const actions = [
     {
@@ -393,7 +396,9 @@ function RightPanelEmptyState(props: {
 
   type SurfaceAction = (typeof actions)[number];
 
-  const availableActions = actions.filter((action) => action.available);
+  const visibleActions = props.sculpted && !showMore ? actions.slice(0, 4) : actions;
+  const availableActions = visibleActions.filter((action) => action.available);
+  const shortcutActions = actions.filter((action) => action.available);
   const highlightIndex =
     availableActions.length === 0 ? -1 : Math.min(highlight, availableActions.length - 1);
 
@@ -401,9 +406,9 @@ function RightPanelEmptyState(props: {
   // is focused; focus moves around too easily (stray clicks) to carry them.
   // Capture phase so app-level key handlers cannot swallow the event first;
   // typing contexts and already-handled events are left alone.
-  const shortcutActionsRef = useRef(availableActions);
+  const shortcutActionsRef = useRef(shortcutActions);
   useEffect(() => {
-    shortcutActionsRef.current = availableActions;
+    shortcutActionsRef.current = shortcutActions;
   });
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -465,109 +470,156 @@ function RightPanelEmptyState(props: {
     );
   };
 
+  const renderAction = (action: SurfaceAction) =>
+    action.available ? (
+      // Keep the profile chooser beside the launcher button, not nested in it.
+      <div
+        key={action.label}
+        className="group relative min-w-0"
+        onMouseEnter={() => setHighlight(availableActions.indexOf(action))}
+        onMouseLeave={() =>
+          setHighlight((current) => (current === availableActions.indexOf(action) ? -1 : current))
+        }
+      >
+        <button
+          type="button"
+          onClick={action.onClick}
+          className={cn(
+            "flex w-full cursor-pointer items-center gap-2.5 text-left text-sm transition-colors group-hover:bg-accent/60",
+            props.sculpted
+              ? "h-11 rounded-full bg-muted/60 px-4"
+              : "h-8 rounded-(--control-radius) px-2.5",
+            isHighlighted(action) && "bg-accent/60",
+          )}
+        >
+          {actionIcon(action)}
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate",
+              action.label === "Browser" && props.browserProfiles.length > 1 && "pr-7",
+            )}
+          >
+            {action.label}
+          </span>
+          {props.sculpted ? (
+            <kbd className="shrink-0 font-sans text-xs text-muted-foreground">
+              {action.shortcut}
+            </kbd>
+          ) : (
+            <Kbd>{action.shortcut}</Kbd>
+          )}
+        </button>
+        {action.label === "Browser" && props.browserProfiles.length > 1 ? (
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button
+                  aria-label="Open browser in a profile"
+                  className="absolute top-1/2 right-8 -translate-y-1/2"
+                  size="icon-xs"
+                  variant="ghost-muted"
+                />
+              }
+            >
+              <ChevronDown className="size-3.5" />
+            </MenuTrigger>
+            <MenuPopup align="end" side="bottom" sideOffset={6} className="max-w-56">
+              {props.browserProfiles.map((profile) => (
+                <MenuItem key={profile.id} onClick={() => props.onAddBrowserInProfile(profile.id)}>
+                  <span className="min-w-0 truncate">{profile.name}</span>
+                </MenuItem>
+              ))}
+            </MenuPopup>
+          </Menu>
+        ) : null}
+      </div>
+    ) : (
+      <DisabledReasonTooltip
+        key={action.label}
+        reason={action.disabledReason}
+        trigger={
+          <div
+            tabIndex={0}
+            aria-disabled="true"
+            className={cn(
+              "flex w-full cursor-default items-center gap-2.5 text-left text-sm opacity-50",
+              props.sculpted
+                ? "h-11 rounded-full bg-muted/60 px-4"
+                : "h-8 rounded-(--control-radius) px-2.5",
+            )}
+          >
+            {actionIcon(action)}
+            <span className="min-w-0 flex-1 truncate">{action.label}</span>
+            {props.sculpted ? (
+              <kbd className="shrink-0 font-sans text-xs text-muted-foreground">
+                {action.shortcut}
+              </kbd>
+            ) : (
+              <Kbd>{action.shortcut}</Kbd>
+            )}
+          </div>
+        }
+      />
+    );
+
   return (
     <div
       ref={focusOnMount}
       tabIndex={0}
       onKeyDown={handleKeyDown}
       aria-label="Open a surface"
-      data-surface-launcher-keys={availableActions.map((action) => action.shortcut).join("")}
+      data-surface-launcher-keys={shortcutActions.map((action) => action.shortcut).join("")}
       className={cn(
-        "flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 outline-none",
+        "@container/surface-launcher flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 outline-none",
         // The panel topbar sits above this container; matching bottom padding
         // keeps the list centered against the full panel, not the leftover.
         "pb-(--workspace-topbar-height)",
       )}
     >
-      <div className="w-full max-w-xs py-6">
-        <h3 className="mb-3 text-center font-medium text-foreground text-sm">Open a surface</h3>
-        <div className="flex flex-col gap-0.5">
-          {actions.map((action) =>
-            action.available ? (
-              // The row is itself a button, so the profile chooser sits beside
-              // it in a wrapper rather than inside it. Hover lives on the
-              // wrapper: the chooser overlays the row, and a pointer moving
-              // onto it must not read as leaving the row.
-              <div
-                key={action.label}
-                className="group relative"
-                onMouseEnter={() => setHighlight(availableActions.indexOf(action))}
-                onMouseLeave={() =>
-                  setHighlight((current) =>
-                    current === availableActions.indexOf(action) ? -1 : current,
-                  )
-                }
-              >
-                <button
-                  type="button"
-                  onClick={action.onClick}
-                  className={cn(
-                    "flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-(--control-radius) px-2.5 text-left text-sm transition-colors group-hover:bg-accent/60",
-                    isHighlighted(action) && "bg-accent/60",
-                  )}
-                >
-                  {actionIcon(action, "size-4")}
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 truncate",
-                      action.label === "Browser" && props.browserProfiles.length > 1 && "pr-7",
-                    )}
-                  >
-                    {action.label}
-                  </span>
-                  <Kbd>{action.shortcut}</Kbd>
-                </button>
-                {/*
-                  Same choice the tab bar's "+" menu offers: the row opens the
-                  default profile, the chevron picks another. Only worth showing
-                  once there is something to choose between.
-                */}
-                {action.label === "Browser" && props.browserProfiles.length > 1 ? (
-                  <Menu>
-                    <MenuTrigger
-                      render={
-                        <Button
-                          aria-label="Open browser in a profile"
-                          className="absolute top-1/2 right-8 -translate-y-1/2"
-                          size="icon-xs"
-                          variant="ghost-muted"
-                        />
-                      }
-                    >
-                      <ChevronDown className="size-3.5" />
-                    </MenuTrigger>
-                    <MenuPopup align="end" side="bottom" sideOffset={6} className="max-w-56">
-                      {props.browserProfiles.map((profile) => (
-                        <MenuItem
-                          key={profile.id}
-                          onClick={() => props.onAddBrowserInProfile(profile.id)}
-                        >
-                          <span className="min-w-0 truncate">{profile.name}</span>
-                        </MenuItem>
-                      ))}
-                    </MenuPopup>
-                  </Menu>
-                ) : null}
-              </div>
-            ) : (
-              <DisabledReasonTooltip
-                key={action.label}
-                reason={action.disabledReason}
-                trigger={
-                  <div
-                    tabIndex={0}
-                    aria-disabled="true"
-                    className="flex h-8 w-full cursor-default items-center gap-2.5 rounded-(--control-radius) px-2.5 text-left text-sm opacity-50"
-                  >
-                    {actionIcon(action, "size-4")}
-                    <span className="min-w-0 flex-1 truncate">{action.label}</span>
-                    <Kbd>{action.shortcut}</Kbd>
-                  </div>
-                }
-              />
-            ),
+      <div className={cn("w-full py-6", props.sculpted ? "max-w-sm" : "max-w-xs")}>
+        <h3
+          className={cn(
+            "text-center font-medium text-foreground",
+            props.sculpted ? "text-xl tracking-tight" : "mb-3 text-sm",
           )}
+        >
+          Open a surface
+        </h3>
+        {props.sculpted ? (
+          <p className="mt-1.5 mb-6 text-center text-sm text-muted-foreground">
+            Keep your work beside the conversation.
+          </p>
+        ) : null}
+        <div
+          className={
+            props.sculpted
+              ? "grid grid-cols-1 gap-2 @xs/surface-launcher:grid-cols-2"
+              : "flex flex-col gap-0.5"
+          }
+        >
+          {(props.sculpted ? actions.slice(0, 4) : actions).map(renderAction)}
         </div>
+        {props.sculpted ? (
+          <div className="mt-4 flex flex-col items-center">
+            <button
+              type="button"
+              aria-expanded={showMore}
+              onClick={() => {
+                setShowMore((current) => !current);
+                setHighlight(-1);
+              }}
+              className="flex min-h-9 cursor-pointer items-center gap-2 rounded-full px-3 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            >
+              More surfaces
+              <ChevronDown className={cn("size-3.5", showMore && "rotate-180")} />
+            </button>
+            {showMore ? (
+              <div className="mt-2 flex w-full flex-col gap-2">
+                {actions.slice(4).map(renderAction)}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -796,6 +848,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   const ownsDesktopTitleBar = isElectron && props.mode === "inline";
   const browserProfiles = useBrowserDefaults().profiles;
   const { resolvedTheme } = useTheme();
+  const sculpted = useClientSettings((settings) => settings.sculptedInterfaceEnabled);
   const tabListRef = useRef<HTMLDivElement>(null);
   const [renamingDevice, setRenamingDevice] = useState<string | null>(null);
   const [addSurfaceMenuOpen, setAddSurfaceMenuOpen] = useState(false);
@@ -1089,6 +1142,9 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           data-right-panel-tab-list
         >
           <div className="flex h-full w-max min-w-full items-center gap-1">
+            {sculpted && props.surfaces.length === 0 ? (
+              <span className="px-2 text-sm text-muted-foreground">Workbench</span>
+            ) : null}
             {props.surfaces.map((surface) => {
               const active = surface.id === props.activeSurfaceId;
               const pending = props.pendingSurfaceIds.has(surface.id);
@@ -1106,6 +1162,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                 <div
                   key={surface.id}
                   data-active-tab={active}
+                  data-right-panel-tab
                   onMouseDown={handleTabMouseDown}
                   onAuxClick={(event) => handleTabAuxClick(event, surface)}
                   onContextMenu={(event) => void handleTabContextMenu(event, surface)}
@@ -1367,6 +1424,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       <div className="flex min-h-0 flex-1 flex-col" data-right-panel-surface-content>
         {props.activeSurfaceId === null ? (
           <RightPanelEmptyState
+            sculpted={sculpted}
             onAddBrowser={props.onAddBrowser}
             onAddBrowserInProfile={props.onAddBrowserInProfile}
             browserProfiles={browserProfiles}
