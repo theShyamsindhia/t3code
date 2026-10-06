@@ -34,4 +34,25 @@ describe("resolveCatalogDependencies", () => {
       /Expected key 'missing' in root workspace catalog/,
     );
   });
+
+  it("resolves version-qualified override keys without changing their selectors", () => {
+    assert.deepStrictEqual(
+      resolveCatalogDependencies(
+        {
+          "undici@^8": "catalog:",
+          "ws@^8": "catalog:",
+          "@clerk/backend@^3": "catalog:",
+          "@opencode/protocol>effect@^4": "catalog:",
+        },
+        { ...catalog, undici: "8.11.2", ws: "8.20.1" },
+        "apps/desktop",
+      ),
+      {
+        "undici@^8": "8.11.2",
+        "ws@^8": "8.20.1",
+        "@clerk/backend@^3": "3.18.1",
+        "@opencode/protocol>effect@^4": "4.0.0-rc.115",
+      },
+    );
+  });
 });
