@@ -8,7 +8,12 @@ export function raiseConversationDockPill(row: HTMLElement) {
 
   row.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
   const rect = row.getBoundingClientRect();
-  const radius = getComputedStyle(row).borderRadius;
+  // Animate the visible radius, not the oversized CSS value that makes a pill.
+  const radius = `${Math.min(
+    Number.parseFloat(getComputedStyle(row).borderRadius),
+    rect.width / 2,
+    rect.height / 2,
+  )}px`;
   slot.style.setProperty("--dock-pill-height", `${rect.height}px`);
   row.dataset.dockPreviewRaised = "";
   row.setAttribute("popover", "manual");
