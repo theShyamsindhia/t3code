@@ -1233,7 +1233,8 @@ html[data-interface-style="sculpted"] [data-right-panel-surface-content] {
   --destructive: var(--error);
   --border: var(--color-zinc-200);
   --input: var(--color-zinc-300);
-  --ring: var(--primary);
+  /* Default focus stays neutral; custom themes provide their own focus color. */
+  --ring: var(--color-neutral-600);
   --destructive-foreground: var(--error-foreground);
   --info: var(--color-blue-500);
   --info-foreground: var(--color-blue-700);
@@ -1275,6 +1276,7 @@ html[data-interface-style="sculpted"] [data-right-panel-surface-content] {
     --popover: color-mix(in srgb, var(--background) 97%, var(--color-white));
     --popover-foreground: var(--color-neutral-100);
     --primary: oklch(0.571 0.21 264);
+    --ring: var(--color-neutral-400);
     --secondary: --alpha(var(--color-white) / 3%);
     --secondary-foreground: var(--color-neutral-100);
     --muted: --alpha(var(--color-white) / 3%);

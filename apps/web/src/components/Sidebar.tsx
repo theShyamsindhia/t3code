@@ -893,7 +893,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
         aria-label={accessibility.label}
         aria-current={accessibility.current}
         data-testid="sidebar-draft-row"
-        data-conversation-dock-row={props.dock ? "" : undefined}
+        data-conversation-dock-row={props.dock ? `draft:${draftId}` : undefined}
         className={cn(
           "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           props.isActive ? "bg-sidebar-row-active" : draftSurfaceClassName,
@@ -1817,7 +1817,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 aria-label={accessibility.label}
                 aria-current={accessibility.current}
                 data-testid={variant === "dock" ? "conversation-dock-row" : "sidebar-row-slim"}
-                data-conversation-dock-row={variant === "dock" ? "" : undefined}
+                data-conversation-dock-row={variant === "dock" ? threadKey : undefined}
                 aria-busy={isRegeneratingTitle || undefined}
                 className={cn(
                   rowSurfaceClassName,
@@ -5007,6 +5007,7 @@ export default function Sidebar({ dock = false }: { dock?: boolean }) {
       {dock && sidebarOpen ? (
         <ConversationDockSwitcher
           key={`${projectScopeKey ?? "all"}:${dockView}`}
+          listRef={threadListRef}
           activeKey={routeDraftIdForRows === null ? routeThreadKey : `draft:${routeDraftIdForRows}`}
           getEntries={() => {
             const entries: DockSwitcherEntry[] = [];
