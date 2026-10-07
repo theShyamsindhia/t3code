@@ -180,6 +180,11 @@ local work, resolve it yourself before automatic pulls can resume.
 
 ## Sharing the browser with an agent
 
+In the desktop app, local dev server links in chat and terminal output open in the Workbench.
+Opening the server's root link again reuses its tab and keeps the page you were testing;
+a link to a specific page navigates there. Hold **⌘** or **Ctrl** while clicking to use your
+default browser instead. Other website links follow **Settings → Integrations → Open links in**.
+
 With agent browser access enabled in **Settings → Integrations**, you and the agent use the same
 live tab in the desktop app. Click **Take over**, or click or type in the page, to pause the agent’s
 actions in that tab. Other tabs remain independent. **Resume** restores access and requires the

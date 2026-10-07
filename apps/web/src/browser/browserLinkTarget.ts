@@ -3,12 +3,13 @@
  *
  * Settings → Integrations → Browser lets the user choose between the OS
  * default browser and a tab in the in-app browser. This module turns that
- * preference plus the click itself into one answer, so chat markdown and the
+ * preference plus the click and local-server URL into one answer, so chat markdown and the
  * terminal drawer make the same decision and offer the same escape hatch.
  *
  * @module browserLinkTarget
  */
 import type { BrowserLinkTarget } from "@t3tools/contracts";
+import { isLoopbackHost, normalizePreviewUrl } from "@t3tools/shared/preview";
 
 import { ensureClientSettingsHydrated, getClientSettings } from "~/hooks/useSettings";
 import { isPreviewSupportedInRuntime } from "~/previewStateStore";
@@ -23,18 +24,23 @@ export interface ResolveLinkTargetInput {
 }
 
 /**
- * The target a click resolves to. "app" only comes back when the preference
- * asks for it, the runtime can honour it, the URL is one the in-app browser
- * can load, and the click carried no modifier — the modifier is the one-gesture
- * way out when the default is in-app, mirroring how change-request links
- * already treat it.
+ * Local development links stay beside the conversation. Other links follow
+ * the saved preference; modifier clicks always request the system browser.
  */
 export function resolveLinkTarget(input: ResolveLinkTargetInput): BrowserLinkTarget {
   if (input.event.metaKey || input.event.ctrlKey) return "system";
-  if (input.preference !== "app") return "system";
   if (!input.canOpenInApp) return "system";
   if (!isWebUrl(input.url)) return "system";
-  return "app";
+  return isLocalServerUrl(input.url) ? "app" : input.preference;
+}
+
+export function isLocalServerUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(normalizePreviewUrl(rawUrl));
+    return (url.protocol === "http:" || url.protocol === "https:") && isLoopbackHost(url.hostname);
+  } catch {
+    return false;
+  }
 }
 
 /**

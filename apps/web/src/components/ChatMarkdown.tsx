@@ -199,7 +199,7 @@ import {
   BrowserPreviewUnavailableError,
   BrowserSettingsReadError,
 } from "../browser/openFileInPreview";
-import { resolveLinkTarget } from "../browser/browserLinkTarget";
+import { isLocalServerUrl, resolveLinkTarget } from "../browser/browserLinkTarget";
 import { PullRequestLinkPreview } from "./pullRequest/PullRequestLinkPreview";
 
 interface ChatMarkdownProps {
@@ -2658,12 +2658,13 @@ function useChatMarkdownState({
         if (result._tag === "Success") recordVisitForThread(threadRef, url);
         else if (!isAtomCommandInterrupted(result)) {
           const error = squashAtomCommandFailure(result);
-          if (error instanceof BrowserSettingsReadError) {
+          if (error instanceof BrowserSettingsReadError || isLocalServerUrl(url)) {
             toastManager.add(
               stackedThreadToast({
                 type: "error",
                 title: "Unable to open link in browser",
-                description: error.message,
+                description:
+                  error instanceof Error ? error.message : "Could not open the local preview.",
               }),
             );
           }
@@ -3119,7 +3120,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
             ) {
               return;
             }
-            // Anything else follows the "Open links in" setting. The system browser
+            // Local dev links stay in the Workbench; other links follow "Open links in". The system browser
             // keeps the `_blank` the shell already handles; the in-app browser needs
             // the click intercepted here. A modifier click is the way out of the
             // in-app default, so it is left to the shell too.
@@ -3143,7 +3144,11 @@ const CHAT_MARKDOWN_COMPONENTS = {
                 { operation: "open-link-in-preview", target: href },
                 result.cause,
               );
-              if (squashAtomCommandFailure(result) instanceof BrowserSettingsReadError) return;
+              if (
+                squashAtomCommandFailure(result) instanceof BrowserSettingsReadError ||
+                isLocalServerUrl(href)
+              )
+                return;
               void readLocalApi()?.shell.openExternal(href);
             });
           }}

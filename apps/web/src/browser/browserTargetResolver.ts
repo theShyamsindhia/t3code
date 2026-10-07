@@ -77,22 +77,27 @@ export function resolveBrowserNavigationTarget(
 
 export function resolveDiscoveredServerUrl(environmentId: EnvironmentId, rawUrl: string): string {
   try {
-    const normalizedUrl = normalizePreviewUrl(rawUrl);
-    const parsed = new URL(normalizedUrl);
-    if (!isLoopbackHost(parsed.hostname)) return normalizedUrl;
-    return resolveEnvironmentPortTarget(
-      environmentId,
-      {
-        kind: "environment-port",
-        port: Number(parsed.port || (parsed.protocol === "https:" ? 443 : 80)),
-        protocol: parsed.protocol === "https:" ? "https" : "http",
-        path: `${parsed.pathname}${parsed.search}${parsed.hash}`,
-      },
-      readEnvironmentUrl(environmentId),
-      rawUrl,
-      parsed,
-    ).resolvedUrl;
+    return resolveLocalServerUrl(environmentId, rawUrl);
   } catch {
     return rawUrl;
   }
+}
+
+/** An explicit open must report an unreachable environment, never open the client's localhost. */
+export function resolveLocalServerUrl(environmentId: EnvironmentId, rawUrl: string): string {
+  const normalizedUrl = normalizePreviewUrl(rawUrl);
+  const parsed = new URL(normalizedUrl);
+  if (!isLoopbackHost(parsed.hostname)) return normalizedUrl;
+  return resolveEnvironmentPortTarget(
+    environmentId,
+    {
+      kind: "environment-port",
+      port: Number(parsed.port || (parsed.protocol === "https:" ? 443 : 80)),
+      protocol: parsed.protocol === "https:" ? "https" : "http",
+      path: `${parsed.pathname}${parsed.search}${parsed.hash}`,
+    },
+    readEnvironmentUrl(environmentId),
+    rawUrl,
+    parsed,
+  ).resolvedUrl;
 }
