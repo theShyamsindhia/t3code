@@ -2249,6 +2249,16 @@ code {
   filter: saturate(1.2);
 }
 
+/* Reveal colour through a fixed, open-bottom rim. Scaling the rim itself
+   would flatten the corners as progress grows. */
+.preview-loading-edge {
+  padding: 2px 2px 0;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
 @keyframes preview-loading-progress {
   from {
     transform: scaleX(0.04);

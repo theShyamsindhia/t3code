@@ -129,6 +129,7 @@ describe("HostedBrowserWebview settings hydration", () => {
           pictureInPicture={false}
           profileId="work"
           zoomFactor={1.25}
+          loading={false}
         />,
         {
           createNodeMock: (element) =>

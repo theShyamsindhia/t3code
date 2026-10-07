@@ -56,6 +56,7 @@ export function HostedBrowserWebview(props: {
    */
   readonly profileId: string | undefined;
   readonly zoomFactor: number;
+  readonly loading: boolean;
 }) {
   const {
     threadRef,
@@ -65,6 +66,7 @@ export function HostedBrowserWebview(props: {
     viewport,
     pictureInPicture,
     zoomFactor,
+    loading,
     profileId,
   } = props;
   const clientSettingsHydrated = useClientSettingsHydrated();
@@ -287,6 +289,25 @@ export function HostedBrowserWebview(props: {
       data-preview-rendering={renderingActive ? "active" : "suspended"}
       data-preview-viewport={runtimeTabId}
     >
+      {active ? (
+        <div
+          aria-hidden
+          className="preview-loading-edge pointer-events-none fixed z-50"
+          style={{
+            left: wrapperStyle.left,
+            top: wrapperStyle.top,
+            width: wrapperStyle.width,
+            height: presentation.cornerRadius + 2,
+            borderTopLeftRadius: presentation.cornerRadius,
+            borderTopRightRadius: presentation.cornerRadius,
+          }}
+        >
+          <div
+            data-loading={loading}
+            className="preview-loading-progress absolute inset-0 origin-left bg-primary"
+          />
+        </div>
+      ) : null}
       <div className="relative" style={{ width: layout.canvasWidth, height: layout.canvasHeight }}>
         {deviceToolbarVisible && effectiveViewport._tag !== "fill" ? (
           <BrowserDeviceToolbar
