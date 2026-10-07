@@ -1,6 +1,11 @@
 import { horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { ConversationDockContent, ConversationDockViews } from "./sidebar/ConversationDockContent";
+import {
+  ConversationDockSwitcher,
+  type DockSwitcherEntry,
+} from "./sidebar/ConversationDockSwitcher";
+import { dockPreviewText } from "./sidebar/conversationDockPreview";
 import "./sidebar/conversationDock.css";
 import { ExternalSessionsDialog } from "./sidebar/ExternalSessionsDialog";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "./ThreadHoverCard";
@@ -2408,7 +2413,7 @@ export default function Sidebar({ dock = false }: { dock?: boolean }) {
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShells();
   const router = useRouter();
-  const { isMobile, setOpenMobile } = useSidebar();
+  const { isMobile, setOpenMobile, open: sidebarOpen } = useSidebar();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
@@ -4999,6 +5004,67 @@ export default function Sidebar({ dock = false }: { dock?: boolean }) {
   return (
     <>
       <ThreadContextDragGhost />
+      {dock && sidebarOpen ? (
+        <ConversationDockSwitcher
+          key={`${projectScopeKey ?? "all"}:${dockView}`}
+          activeKey={routeDraftIdForRows === null ? routeThreadKey : `draft:${routeDraftIdForRows}`}
+          getEntries={() => {
+            const entries: DockSwitcherEntry[] = [];
+            if (dockView === "working") {
+              const store = useComposerDraftStore.getState();
+              for (const [key, session] of Object.entries(store.draftThreadsByThreadKey).sort(
+                ([, a], [, b]) => b.createdAt.localeCompare(a.createdAt),
+              )) {
+                const composer = store.draftsByThreadKey[key];
+                const projectKey = `${session.environmentId}:${session.projectId}` as const;
+                if (
+                  session.promotedTo != null ||
+                  !composerDraftHasUserContent(composer) ||
+                  (scopedProjectKeys !== null && !scopedProjectKeys.has(projectKey))
+                )
+                  continue;
+                const text = dockPreviewText(
+                  replaceComposerContextReferences(
+                    composer?.prompt ?? "",
+                    (occurrence) => occurrence.label,
+                  ),
+                );
+                entries.push({
+                  kind: "draft",
+                  key: `draft:${key}`,
+                  draftId: DraftId.make(key),
+                  title: text || "New chat",
+                  text,
+                  project: projectDisplayNameByKey.get(projectKey) ?? "No project",
+                });
+              }
+            }
+            for (const thread of orderedThreads) {
+              entries.push({
+                kind: "thread",
+                key: scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+                thread,
+                title: thread.title,
+                project:
+                  projectDisplayNameByKey.get(`${thread.environmentId}:${thread.projectId}`) ??
+                  "No project",
+              });
+            }
+            return entries;
+          }}
+          onSelect={(entry) => {
+            if (entry.kind === "draft") {
+              const session = useComposerDraftStore.getState().getDraftSession(entry.draftId);
+              if (session && session.promotedTo == null) navigateToDraft(entry.draftId);
+            } else {
+              const ref = scopeThreadRef(entry.thread.environmentId, entry.thread.id);
+              const current = readThreadShell(ref);
+              if (current && current.deletedAt === null && current.archivedAt === null)
+                void navigateToThread(ref);
+            }
+          }}
+        />
+      ) : null}
       {dock ? null : <SidebarChromeHeader isElectron={isElectron} />}
       {dock ? (
         <ConversationDockViews

@@ -39,6 +39,16 @@ on macOS and Ctrl on Windows and Linux, including GNOME, KDE Plasma, Niri, and
 Hyprland. If a custom desktop shortcut takes the same keys, choose another binding
 in Settings.
 
+## Preview chats from the dock
+
+Hold **Control** and press **Tab** to preview chats in the current dock view.
+Keep pressing Tab to move forward, or **Shift+Tab** to go back. Release Control
+to open the selected chat; **Escape** cancels. Previews show current activity or
+the last reply, including chats that need your input. Drafts are included.
+This works from the desktop app's composer, terminal, and embedded browser.
+Regular browsers may reserve Control+Tab for their own tabs. **Command+Tab**
+continues to switch macOS apps.
+
 ## Copy pull request references
 
 With a PR open in the right panel or on the Pull Requests page, use `mod+shift+c`

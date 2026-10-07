@@ -36,6 +36,7 @@ import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import { makeQuitShortcutHandler } from "./QuitHold.ts";
+import { forwardDockSwitcherShortcut } from "./dockSwitcherShortcut.ts";
 
 const TITLEBAR_HEIGHT = 40;
 // Matches --workspace-topbar-height in apps/web/src/index.css. Native macOS
@@ -648,6 +649,15 @@ export const make = Effect.gen(function* () {
     window.webContents.on("did-attach-webview", (_event, contents) => {
       installContextMenu(window, contents);
       void runPromise(previewManager.prepareWebview(contents));
+      // A focused browser guest owns its keyboard events. Return this app
+      // gesture to the host; subsequent Tab presses and Control-up reach it.
+      contents.on("before-input-event", (event, input) => {
+        forwardDockSwitcherShortcut(event, input, {
+          isGuestFocused: () => Electron.webContents.getFocusedWebContents() === contents,
+          focus: () => window.webContents.focus(),
+          send: (action) => window.webContents.send(MENU_ACTION_CHANNEL, action),
+        });
+      });
     });
 
     window.webContents.setWindowOpenHandler(({ url }) => {
