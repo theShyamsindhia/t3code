@@ -76,7 +76,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function render(value = detail) {
+function render(value = detail, checksStale = false) {
   return (
     <PullRequestSummaryTab
       environmentId={EnvironmentId.make("environment")}
@@ -85,6 +85,7 @@ function render(value = detail) {
       detail={value}
       activityPending={false}
       activityError={null}
+      checksStale={checksStale}
       onRefresh={() => {}}
     />
   );
@@ -105,32 +106,50 @@ function click(title: string) {
   );
 }
 
-it("toggles checks from their heading and resets sections for another pull request", () => {
+it("shows passed checks and individual shards immediately and keeps them visible when switching PRs", () => {
+  const value: PullRequestDetailView = {
+    ...detail,
+    checks: [
+      ...detail.checks,
+      { name: "Convex tests (1/2)", status: "pending", description: null, url: null },
+      { name: "Convex tests (2/2)", status: "failure", description: null, url: null },
+      { name: "CodeRabbit", status: "success", description: null, url: null },
+    ],
+  };
   act(() => {
-    renderer = create(render());
+    renderer = create(render(value));
   });
+  const checkNames = () =>
+    renderer.root
+      .findByProps({ "aria-label": "Checks" })
+      .findAllByType("h3")
+      .map((heading) => heading.children.join(""));
+  expect(checkNames()).toEqual([
+    "Convex tests (2/2)",
+    "Convex tests (1/2)",
+    "Unit tests",
+    "CodeRabbit",
+  ]);
+  act(() => renderer.update(render(value, true)));
+  expect(checkNames()).toHaveLength(value.checks.length);
   expect(
-    renderer.root.findAllByType("span").some((span) => span.children.includes("Unit tests")),
-  ).toBe(false);
-  click("Checks");
-  expect(
-    renderer.root.findAllByType("span").some((span) => span.children.includes("Unit tests")),
+    renderer.root
+      .findAllByType("p")
+      .some((node) => node.children.join("") === "Last reported: Passed"),
   ).toBe(true);
-  click("Checks");
-  expect(heading("Checks").props["aria-expanded"]).toBe(false);
-  click("Checks");
   click("Description");
   act(() =>
     renderer.update(render({ ...detail, url: "https://github.com/owner/repo/pull/2", number: 2 })),
   );
-  expect(heading("Checks").props["aria-expanded"]).toBe(false);
-  expect(heading("Description").props["aria-expanded"]).toBe(true);
+  expect(checkNames()).toEqual(["Unit tests"]);
+  expect(heading("Description").props["aria-expanded"]).toBe(false);
 });
 
 it("keeps an unsaved description when collapsed and reopened", () => {
   act(() => {
     renderer = create(render());
   });
+  click("Description");
   act(() => renderer.root.findByProps({ "aria-label": "Edit description" }).props.onClick());
   act(() =>
     renderer.root.findByType("textarea").props.onChange({
@@ -143,6 +162,46 @@ it("keeps an unsaved description when collapsed and reopened", () => {
   expect(heading("Description").props["aria-expanded"]).toBe(false);
   click("Description");
   expect(renderer.root.findByType("textarea").props.value).toBe("Unsaved description");
+});
+
+it("keeps new CodeRabbit activity visible through refreshes and clears it on the next visit", () => {
+  const storage = new Map([
+    [`t3:pr-review-seen:environment:author:${detail.url}`, "2026-09-01T00:00:00Z"],
+  ]);
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, value),
+  });
+  const newReview: PullRequestDetailView = {
+    ...detail,
+    comments: [
+      {
+        id: "new-review",
+        kind: "review",
+        body: "No actionable findings.",
+        author: { login: "coderabbitai", name: null, avatarUrl: null },
+        createdAt: "2026-09-01T01:00:00Z",
+        url: null,
+        path: null,
+        reviewState: "COMMENTED",
+      },
+    ],
+  };
+  const hasNew = () =>
+    renderer.root.findAllByType("span").some((node) => node.children.includes("New"));
+  act(() => {
+    renderer = create(render());
+  });
+  expect(hasNew()).toBe(false);
+  act(() => renderer.update(render(newReview)));
+  expect(hasNew()).toBe(true);
+  act(() => renderer.update(render({ ...newReview })));
+  expect(hasNew()).toBe(true);
+  act(() => renderer.unmount());
+  act(() => {
+    renderer = create(render(newReview));
+  });
+  expect(hasNew()).toBe(false);
 });
 
 it("opens bot reports in pages without hiding human comments", () => {
