@@ -363,7 +363,7 @@ export function PullRequestReviewTrail(props: TrailProps) {
               <div
                 className={cn(
                   "space-y-2 rounded-2xl border bg-background p-3",
-                  status === "pending" && !props.checksStale
+                  status === "pending" && !props.checksStale && detail.state !== "merged"
                     ? "border-warning/40"
                     : "border-border/70",
                 )}

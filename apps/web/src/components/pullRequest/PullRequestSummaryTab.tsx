@@ -750,7 +750,13 @@ export function PullRequestSummaryTab({
         </div>
       </Section>
 
-      <div className="grid items-start gap-4 px-4 pb-4 @4xl:grid-cols-[18rem_minmax(0,1fr)]">
+      <div
+        className={cn(
+          "grid items-start gap-4 px-4 pb-4 @4xl:grid-cols-[18rem_minmax(0,1fr)]",
+          detail.state === "merged" &&
+            "[--contrast-border:var(--color-violet-600)] dark:[--contrast-border:var(--color-violet-300)]",
+        )}
+      >
         <PullRequestReviewChecks
           key={`checks:${detail.url}`}
           checks={detail.checks}
