@@ -6,6 +6,7 @@ import {
   ExternalLink,
   MousePointerClick,
   PictureInPicture2,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   type FormEvent,
@@ -48,6 +49,8 @@ interface Props {
    * state). Disabled in `pickDisabled` mode.
    */
   onPickElement?: (() => void) | undefined;
+  onLiveEdit?: (() => void) | undefined;
+  liveEditActive?: boolean | undefined;
   pickActive?: boolean | undefined;
   pickDisabled?: boolean | undefined;
   /** Optional reason string surfaced in the disabled tooltip. */
@@ -86,6 +89,8 @@ export function PreviewChromeRow({
   pictureInPicture,
   pictureInPictureDisabled,
   onPickElement,
+  onLiveEdit,
+  liveEditActive,
   pickActive,
   pickDisabled,
   pickDisabledReason,
@@ -255,6 +260,28 @@ export function PreviewChromeRow({
                 : pickActive
                   ? "Cancel annotation (Esc)"
                   : "Annotate elements, regions, and drawings"}
+            </TooltipPopup>
+          </Tooltip>
+        ) : null}
+        {onLiveEdit ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant={liveEditActive ? "secondary" : "ghost"}
+                  size="icon-xs"
+                  onClick={onLiveEdit}
+                  aria-label={liveEditActive ? "Close live edit" : "Live edit"}
+                  aria-pressed={liveEditActive ?? false}
+                  disabled={pickDisabled}
+                  type="button"
+                />
+              }
+            >
+              <SlidersHorizontal />
+            </TooltipTrigger>
+            <TooltipPopup>
+              {pickDisabledReason ?? "Live edit · select and adjust the page"}
             </TooltipPopup>
           </Tooltip>
         ) : null}

@@ -110,6 +110,7 @@ export function PreviewView({
   const sculpted = useClientSettings((settings) => settings.sculptedInterfaceEnabled);
   const [focusUrlNonce, setFocusUrlNonce] = useState<number | undefined>(undefined);
   const [pickActive, setPickActive] = useState(false);
+  const [pickMode, setPickMode] = useState<"annotate" | "live-edit">("annotate");
   const activeRecordingTabIds = useActiveBrowserRecordingTabIds();
   const pickActiveRef = useRef(false);
   const isMountedRef = useRef(true);
@@ -584,91 +585,100 @@ export function PreviewView({
     [recordingRuntimeTabId, runtimeTabId, tabId, threadRef],
   );
 
-  const handlePickElement = useCallback(() => {
-    if (!previewBridge || !runtimeTabId) return;
-    if (pickActiveRef.current) {
-      void previewBridge.cancelPickElement(runtimeTabId).catch(() => undefined);
-      return;
-    }
-    // Snapshot whatever the user was focused on (typically the chat
-    // composer textarea or the chrome-row pick button) BEFORE main steals
-    // focus into the guest webContents. We restore it when the pick
-    // resolves so the user's typing context isn't lost — otherwise after
-    // every pick they'd have to click back into the textarea.
-    const previouslyFocused =
-      typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null;
-    pickActiveRef.current = true;
-    setPickActive(true);
-    void (async () => {
-      try {
-        const result = await previewBridge.pickElement(runtimeTabId);
-        if (!result) return;
-        const { annotation: picked, submission, screenshotFailed = false } = result;
-        // The structured annotation is still sendable when its optional crop
-        // stalls or fails, so tell the user what they lost and keep going
-        // instead of holding the composer for an attachment that never lands.
-        // The stored copy drops the screenshot on failure, otherwise the prompt
-        // would tell the agent a crop is attached when none was sent.
-        const capture = capturePreviewAnnotationScreenshot(picked);
-        // Main reports a crop that failed or timed out on its side; the local
-        // conversion can fail too. Either way the user should hear about it.
-        const cropDropped = screenshotFailed || capture.status === "failed";
-        const annotation = capture.status === "failed" ? { ...picked, screenshot: null } : picked;
-        addPreviewAnnotation(threadRef, annotation);
-        if (cropDropped) {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not capture the picked element",
-              // The send path reports its own outcome, so only say what this
-              // handler knows: the crop was dropped.
-              description: "The annotation was kept without the screenshot.",
-            }),
-          );
-        }
-        const screenshotFile = capture.status === "captured" ? capture.file : null;
-        const image =
-          screenshotFile && annotation.screenshot
-            ? ({
-                type: "image",
-                id: annotation.id,
-                name: screenshotFile.name,
-                mimeType: screenshotFile.type,
-                sizeBytes: screenshotFile.size,
-                previewUrl: annotation.screenshot.dataUrl,
-                file: screenshotFile,
-              } satisfies ComposerImageAttachment)
-            : null;
-        if (image) {
-          addImage(threadRef, image);
-        }
-        if (submission === "send") {
-          onSendAnnotation?.(annotation, image);
-        }
-      } catch {
-        // Picker failed (e.g. webview navigated). Treat as silent cancel.
-      } finally {
-        pickActiveRef.current = false;
-        // Avoid `setState on unmounted component` if the panel/thread closed
-        // while the pick was in flight.
-        if (isMountedRef.current) setPickActive(false);
-        // Best-effort: restore focus to whatever the user had before the
-        // pick stole it into the guest webContents. Skip if the previously-
-        // focused element was unmounted or is no longer focusable.
-        if (
-          previouslyFocused &&
-          previouslyFocused.isConnected &&
-          typeof previouslyFocused.focus === "function"
-        ) {
-          try {
-            previouslyFocused.focus({ preventScroll: true });
-          } catch {
-            // Some elements throw on .focus() (detached iframes, etc.).
+  const handlePickElement = useCallback(
+    (mode: "annotate" | "live-edit" = "annotate") => {
+      if (!previewBridge || !runtimeTabId) return;
+      if (pickActiveRef.current) {
+        void previewBridge.cancelPickElement(runtimeTabId).catch(() => undefined);
+        return;
+      }
+      // Snapshot whatever the user was focused on (typically the chat
+      // composer textarea or the chrome-row pick button) BEFORE main steals
+      // focus into the guest webContents. We restore it when the pick
+      // resolves so the user's typing context isn't lost — otherwise after
+      // every pick they'd have to click back into the textarea.
+      const previouslyFocused =
+        typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null;
+      pickActiveRef.current = true;
+      setPickActive(true);
+      setPickMode(mode);
+      void (async () => {
+        try {
+          const result = await previewBridge.pickElement(runtimeTabId, mode);
+          if (!result) return;
+          const { annotation: picked, submission, screenshotFailed = false } = result;
+          // The structured annotation is still sendable when its optional crop
+          // stalls or fails, so tell the user what they lost and keep going
+          // instead of holding the composer for an attachment that never lands.
+          // The stored copy drops the screenshot on failure, otherwise the prompt
+          // would tell the agent a crop is attached when none was sent.
+          const capture = capturePreviewAnnotationScreenshot(picked);
+          // Main reports a crop that failed or timed out on its side; the local
+          // conversion can fail too. Either way the user should hear about it.
+          const cropDropped = screenshotFailed || capture.status === "failed";
+          const annotation = capture.status === "failed" ? { ...picked, screenshot: null } : picked;
+          addPreviewAnnotation(threadRef, annotation);
+          if (cropDropped) {
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: "Could not capture the picked element",
+                // The send path reports its own outcome, so only say what this
+                // handler knows: the crop was dropped.
+                description: "The annotation was kept without the screenshot.",
+              }),
+            );
+          }
+          const screenshotFile = capture.status === "captured" ? capture.file : null;
+          const image =
+            screenshotFile && annotation.screenshot
+              ? ({
+                  type: "image",
+                  id: annotation.id,
+                  name: screenshotFile.name,
+                  mimeType: screenshotFile.type,
+                  sizeBytes: screenshotFile.size,
+                  previewUrl: annotation.screenshot.dataUrl,
+                  file: screenshotFile,
+                } satisfies ComposerImageAttachment)
+              : null;
+          if (image) {
+            addImage(threadRef, image);
+          }
+          if (submission === "send") {
+            onSendAnnotation?.(annotation, image);
+          }
+        } catch (error) {
+          toastManager.add({
+            type: "error",
+            title:
+              mode === "live-edit" ? "Could not start live edit" : "Could not start annotation",
+            description: error instanceof Error ? error.message : "Reload the page and try again.",
+          });
+        } finally {
+          pickActiveRef.current = false;
+          // Avoid `setState on unmounted component` if the panel/thread closed
+          // while the pick was in flight.
+          if (isMountedRef.current) setPickActive(false);
+          // Best-effort: restore focus to whatever the user had before the
+          // pick stole it into the guest webContents. Skip if the previously-
+          // focused element was unmounted or is no longer focusable.
+          if (
+            previouslyFocused &&
+            previouslyFocused.isConnected &&
+            typeof previouslyFocused.focus === "function"
+          ) {
+            try {
+              previouslyFocused.focus({ preventScroll: true });
+            } catch {
+              // Some elements throw on .focus() (detached iframes, etc.).
+            }
           }
         }
-      }
-    })();
-  }, [addImage, addPreviewAnnotation, onSendAnnotation, runtimeTabId, threadRef]);
+      })();
+    },
+    [addImage, addPreviewAnnotation, onSendAnnotation, runtimeTabId, threadRef],
+  );
 
   // If the active tab changes mid-pick (close, thread switch, hot restart),
   // tell main to tear down the in-flight session AND reset our local toggle
@@ -734,8 +744,14 @@ export function PreviewView({
         onPictureInPicture={previewBridge && tabId ? handlePictureInPicture : undefined}
         pictureInPicture={miniPlayerTabId === tabId}
         pictureInPictureDisabled={!desktopOverlay?.hasWebContents || isUnreachable}
-        onPickElement={previewBridge && tabId ? handlePickElement : undefined}
-        pickActive={pickActive}
+        onPickElement={previewBridge && tabId ? () => handlePickElement() : undefined}
+        onLiveEdit={
+          previewBridge?.supportsLiveEdit && tabId
+            ? () => handlePickElement("live-edit")
+            : undefined
+        }
+        pickActive={pickActive && pickMode === "annotate"}
+        liveEditActive={pickActive && pickMode === "live-edit"}
         // Disable when there's no tab (nothing to pick on) OR the page
         // failed to load (a React overlay covers the webview, so the
         // user wouldn't be able to actually click anything underneath).

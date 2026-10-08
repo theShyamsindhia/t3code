@@ -192,3 +192,19 @@ agent to inspect the current page before acting again. Your page and signed-in s
 
 If the agent has already ended its turn, Resume does not start a new one; send a follow-up to
 continue. A disconnected browser host leaves its tabs paused until you resume them.
+
+In the desktop browser, **Live edit** lets you select an element and adjust its text, size,
+spacing, colors, and borders directly on the page. Drag an element or its **Move** handle
+to reposition it. **Shift-click** adds or removes elements from the selection; drag to move
+them together, with one undo for the gesture. Drag any corner dot to resize its element,
+or use the fields for precise values. The inset dot adjusts corner roundness. Drag the
+dials beside numeric fields to adjust their values; hold **Shift** for finer control, or
+focus a dial and use the arrow keys. **Parent** selects the containing element.
+**Play** lets you use the page with your edits visible; **Select** returns to editing.
+Undo, redo, and reset stay within the current preview session. Movement previews a visual
+offset; it does not reorder the page or automatically rewrite its layout.
+
+These are temporary previews: closing Live edit or reloading restores the page, and a page
+that replaces its elements can clear their edits. **Attach edits to chat** captures a screenshot
+and the changes, then restores the page. Send the attachment to ask the agent to apply them
+to your project's source. Editing another website only changes your local preview.

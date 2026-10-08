@@ -2789,7 +2789,10 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     );
   });
 
-  const pickElement = Effect.fn("PreviewManager.pickElement")(function* (tabId: string) {
+  const pickElement = Effect.fn("PreviewManager.pickElement")(function* (
+    tabId: string,
+    mode?: "annotate" | "live-edit",
+  ) {
     const wc = yield* requireWebContents(tabId);
     if (passwordPages.has(wc.id))
       return yield* new BrowserPasswordError({
@@ -2930,7 +2933,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
             wc.once("destroyed", onDestroyed);
             wc.on("did-start-navigation", onNavigated);
             if (!wc.isFocused()) wc.focus();
-            wc.send(START_PICK_CHANNEL, annotationTheme);
+            wc.send(START_PICK_CHANNEL, annotationTheme, mode);
           });
         });
         runFork(
@@ -5455,6 +5458,7 @@ export class PreviewManager extends Context.Service<
     ) => Effect.Effect<void, PreviewManagerError>;
     readonly pickElement: (
       tabId: string,
+      mode?: "annotate" | "live-edit",
     ) => Effect.Effect<PreviewAnnotationSubmissionResult | null, PreviewManagerError>;
     readonly cancelPickElement: (tabId: string) => Effect.Effect<void, PreviewManagerError>;
     readonly captureScreenshot: (

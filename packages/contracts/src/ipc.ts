@@ -1320,6 +1320,8 @@ export interface DesktopBridge {
 export const DESKTOP_PREVIEW_RECORDING_CAPTURE_TRIGGER = "__t3DesktopPreviewRecordingCapture";
 
 export interface DesktopPreviewBridge {
+  /** Older desktop shells only support annotation mode. */
+  supportsLiveEdit?: boolean;
   passwords?: import("./browserPasswords.ts").DesktopBrowserPasswords;
   createTab: (tabId: string, defaults?: DesktopPreviewTabDefaults) => Promise<void>;
   closeTab: (tabId: string) => Promise<void>;
@@ -1379,7 +1381,10 @@ export interface DesktopPreviewBridge {
    * user cancels (Escape / nav). The promise rejects if the picker can't be
    * activated (no webview, etc.).
    */
-  pickElement: (tabId: string) => Promise<PreviewAnnotationSubmissionResult | null>;
+  pickElement: (
+    tabId: string,
+    mode?: "annotate" | "live-edit",
+  ) => Promise<PreviewAnnotationSubmissionResult | null>;
   /** Cancel an in-flight preview annotation session. */
   cancelPickElement: (tabId: string) => Promise<void>;
   captureScreenshot: (tabId: string) => Promise<DesktopPreviewScreenshotArtifact>;

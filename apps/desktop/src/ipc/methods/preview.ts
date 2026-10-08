@@ -361,11 +361,14 @@ export const setAnnotationTheme = DesktopIpc.makeIpcMethod({
 
 export const pickElement = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_PICK_ELEMENT_CHANNEL,
-  payload: DesktopPreviewTabInputSchema,
+  payload: Schema.Struct({
+    ...DesktopPreviewTabInputSchema.fields,
+    mode: Schema.optional(Schema.Literals(["annotate", "live-edit"])),
+  }),
   result: Schema.NullOr(PreviewAnnotationSubmissionResultSchema),
-  handler: Effect.fn("desktop.ipc.preview.pickElement")(function* ({ tabId }) {
+  handler: Effect.fn("desktop.ipc.preview.pickElement")(function* ({ tabId, mode }) {
     const manager = yield* PreviewManager.PreviewManager;
-    return yield* manager.pickElement(tabId);
+    return yield* manager.pickElement(tabId, mode);
   }),
 });
 

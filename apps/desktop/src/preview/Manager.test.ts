@@ -3798,7 +3798,7 @@ describe("PreviewManager", () => {
     ),
   );
 
-  effectIt.effect("keeps element picking active during subframe navigation", () =>
+  effectIt.effect("starts live edit and keeps it active during subframe navigation", () =>
     withManager((manager) =>
       Effect.gen(function* () {
         const listeners = new Map<string, (...args: unknown[]) => void>();
@@ -3840,8 +3840,13 @@ describe("PreviewManager", () => {
 
         yield* manager.createTab("tab_1");
         yield* manager.registerWebview("tab_1", 42);
-        const pick = yield* manager.pickElement("tab_1").pipe(Effect.forkChild);
+        const pick = yield* manager.pickElement("tab_1", "live-edit").pipe(Effect.forkChild);
         yield* Effect.yieldNow;
+        expect(webviewSend).toHaveBeenCalledWith(
+          "preview:start-pick",
+          expect.any(Object),
+          "live-edit",
+        );
 
         listeners.get("did-start-navigation")?.({
           url: "about:blank",
