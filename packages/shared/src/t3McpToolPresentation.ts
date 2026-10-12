@@ -6,8 +6,6 @@ export interface T3McpToolPresentation {
 }
 
 export type T3McpToolSummaryAction =
-  | "interaction-present"
-  | "widget-present"
   | "capabilities"
   | "delegate"
   | "task-status"
@@ -23,6 +21,7 @@ export type T3McpToolSummaryAction =
   | "thread-send"
   | "thread-wait"
   | "thread-interrupt"
+  | "workflow-stop"
   | "thread-configuration"
   | "thread-configure"
   | "thread-fork"
@@ -60,6 +59,8 @@ export type T3McpToolSummaryAction =
   | "list-prs"
   | "watch-pr"
   | "unwatch-pr"
+  | "write-pr-guides"
+  | "read-pr-guide"
   | "browser"
   | "device"
   | "html-preview"
@@ -85,11 +86,6 @@ const T3_MCP_SERVER_ALIASES = new Set(["t3-code", "t3_code", "t3code"]);
 
 // Cards, activity rows, summaries, and provider identity recovery share this inventory.
 const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
-  t3_widget_present: tool(["Show", "Showing", "Showed", "a chat widget"], "widget-present"),
-  t3_interaction_present: tool(
-    ["Show", "Showing", "Shared", "a shared space"],
-    "interaction-present",
-  ),
   link_pull_request: tool(
     ["Link", "Linking", "Linked", "a pull request"],
     "link-pr",
@@ -113,6 +109,16 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   unwatch_pull_request: tool(
     ["Stop watching", "Stopping watching", "Stopped watching", "a pull request"],
     "unwatch-pr",
+    "pull-request",
+  ),
+  write_pull_request_guides: tool(
+    ["Write", "Writing", "Started", "review guides"],
+    "write-pr-guides",
+    "pull-request",
+  ),
+  read_pull_request_guide: tool(
+    ["Read", "Reading", "Read", "a review guide"],
+    "read-pr-guide",
     "pull-request",
   ),
   orchestrator_capabilities: tool(
@@ -145,6 +151,10 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_thread_read: tool(["Read", "Reading", "Read", "a T3 thread"], "thread-read"),
   t3_thread_send: tool(["Send", "Sending", "Sent", "to a T3 thread"], "thread-send"),
   t3_thread_wait: tool(["Wait", "Waiting", "Waited", "for a T3 thread"], "thread-wait"),
+  t3_workflow_stop: tool(
+    ["Stop", "Stopping", "Requested a stop for", "a workflow"],
+    "workflow-stop",
+  ),
   t3_thread_interrupt: tool(
     ["Interrupt", "Interrupting", "Requested an interrupt of", "a T3 thread"],
     "thread-interrupt",
@@ -165,6 +175,11 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "browser",
     "browser",
   ),
+  preview_dialog: tool(
+    ["Respond", "Responding", "Responded", "to a preview browser dialog"],
+    "browser",
+    "browser",
+  ),
   preview_snapshot: tool(
     ["Take a snapshot of", "Taking a snapshot of", "Took a snapshot of", "the preview page"],
     "browser",
@@ -182,8 +197,23 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "browser",
   ),
   preview_type: tool(["Type", "Typing", "Typed", "in the preview browser"], "browser", "browser"),
-  preview_sign_in: tool(
-    ["Sign in", "Signing in", "Requested sign-in", "in the preview browser"],
+  preview_hover: tool(
+    ["Hover", "Hovering", "Hovered", "in the preview browser"],
+    "browser",
+    "browser",
+  ),
+  preview_select: tool(
+    ["Choose", "Choosing", "Chose", "an option in the preview browser"],
+    "browser",
+    "browser",
+  ),
+  preview_drag: tool(
+    ["Drag", "Dragging", "Dragged", "in the preview browser"],
+    "browser",
+    "browser",
+  ),
+  preview_upload: tool(
+    ["Upload", "Uploading", "Uploaded", "files to the preview browser"],
     "browser",
     "browser",
   ),

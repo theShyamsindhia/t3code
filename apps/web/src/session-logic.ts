@@ -1,5 +1,3 @@
-import { chatWidgetPresentation } from "@t3tools/client-runtime/interaction";
-import { explainProviderConnectionError } from "@t3tools/client-runtime/provider-connection-error";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import {
   type AssetResource,
@@ -14,6 +12,8 @@ import {
   type ToolActivitySurface,
   type ToolActivityIcon,
   type ToolActivitySource,
+  type ThreadId,
+  type TurnItemId,
 } from "@t3tools/contracts";
 import { extractToolActivityPresentation } from "@t3tools/client-runtime/work-log/tool-presentation";
 import {
@@ -23,7 +23,9 @@ import {
   formatSearchToolLabel,
 } from "@t3tools/shared/toolActivity";
 import type { HtmlRenderReference } from "@t3tools/shared/htmlRender";
-import { htmlRenderFromToolItem } from "@t3tools/shared/toolOutput";
+import { turnItemDetailRevision } from "@t3tools/client-runtime/work-log/item-detail";
+import type { McpAppReference } from "@t3tools/shared/mcpApp";
+import { htmlRenderFromToolItem, mcpAppFromToolItem } from "@t3tools/shared/toolOutput";
 import {
   contextCompactionLabel,
   workEntryIndicatesToolFailure,
@@ -117,7 +119,7 @@ export interface LatestProposedPlanState {
 
 export type TimelineAttempt = Pick<
   OrchestrationV2RunAttempt,
-  "id" | "runId" | "attemptOrdinal" | "rootNodeId" | "status"
+  "id" | "runId" | "attemptOrdinal" | "rootNodeId" | "status" | "completedAt"
 >;
 
 export type TimelineEntry = (
@@ -141,6 +143,18 @@ export type TimelineEntry = (
       readonly createdAt: string;
       readonly runId: RunId | null;
       readonly htmlRender: HtmlRenderReference;
+    }
+  | {
+      /** An MCP App a completed tool call captured, hosted where the call happened. */
+      readonly id: string;
+      readonly kind: "mcp-app";
+      readonly createdAt: string;
+      readonly runId: RunId | null;
+      /** The thread and item that own the app; a fork's inherited app is its source's. */
+      readonly sourceThreadId: ThreadId;
+      readonly itemId: TurnItemId;
+      readonly revision: string;
+      readonly mcpApp: McpAppReference;
     }
   | {
       readonly id: string;
@@ -330,9 +344,7 @@ const PERSISTENT_RESOURCE_V2_ITEM_TYPES = new Set<OrchestrationV2TurnItem["type"
 
 export function timelineEntryIsPersistentResourceCard(entry: TimelineEntry): boolean {
   return (
-    entry.kind === "event" &&
-    (PERSISTENT_RESOURCE_V2_ITEM_TYPES.has(entry.projectedItem.item.type) ||
-      chatWidgetPresentation(entry.projectedItem.item) !== null)
+    entry.kind === "event" && PERSISTENT_RESOURCE_V2_ITEM_TYPES.has(entry.projectedItem.item.type)
   );
 }
 
@@ -382,16 +394,6 @@ function projectedWorkEntryTone(item: OrchestrationV2TurnItem): WorkLogEntry["to
 export function providerErrorPresentation(
   item: Extract<OrchestrationV2TurnItem, { readonly type: "error" }>,
 ): { readonly label: string; readonly detail: string } {
-  const connectionError = explainProviderConnectionError(item.failure.message, item.status);
-  if (connectionError) {
-    return {
-      label:
-        item.status === "running" && item.retry
-          ? `${connectionError.label} (${item.retry.attempt}${item.retry.maxAttempts === null ? "" : `/${item.retry.maxAttempts}`})`
-          : connectionError.label,
-      detail: `${connectionError.detail}\n\n${item.failure.message}`,
-    };
-  }
   if (item.retry === undefined) {
     return {
       label:
@@ -728,7 +730,26 @@ export function deriveTimelineEntriesFromVisibleTurnItems(
       continue;
     }
 
-    if (STANDALONE_V2_ITEM_TYPES.has(item.type) || chatWidgetPresentation(item) !== null) {
+    const mcpApp =
+      item.type === "dynamic_tool" && item.status === "completed"
+        ? mcpAppFromToolItem(item)
+        : undefined;
+    if (mcpApp !== undefined) {
+      entries.push({
+        id: item.id,
+        kind: "mcp-app",
+        createdAt,
+        runId: item.runId,
+        sourceThreadId: row.sourceThreadId,
+        itemId: row.sourceItemId,
+        revision: turnItemDetailRevision(item),
+        mcpApp,
+        ...attemptMetadata,
+      });
+      continue;
+    }
+
+    if (STANDALONE_V2_ITEM_TYPES.has(item.type)) {
       entries.push({
         id: item.id,
         kind: "event",

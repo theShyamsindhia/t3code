@@ -27,6 +27,14 @@ again.
 Providers and diagnostics are per machine: they show one environment at a time, the primary
 one until you pick another. Every other setting fans out to the selection.
 
+With a project selected, a provider's switch in **Settings → Providers** turns it on or off for
+that project only, in either direction: a provider off on the machine can be used in one project,
+and one on everywhere can be kept out of another. That project's model pickers follow the switch,
+and no new turn there can start on a provider it turned off, including queued messages and
+follow-ups from delegated tasks. A turn already running when the switch flips finishes. A delegated
+task's result still lands in its parent thread, which sees it on its next turn. Reset returns the project to the
+machine's setting. Every other provider setting stays per machine.
+
 On mobile, open **Settings** and use the filter in its header to choose connected environments
 and a project. The filter stays available in server-setting pages. With **All projects** selected,
 the **Server settings** categories and auto-settle controls in **Thread behavior** edit the
@@ -143,15 +151,22 @@ captures and log retention remain machine-wide.
 
 Worktrees can be removed after a chosen number of inactive days, after merging, or when they
 have no commits beyond the default branch. Only T3-managed worktrees are eligible. Active
-sessions, shared worktrees, uncommitted changes, and ignored files other than `node_modules`
-prevent removal. Branches and thread history stay; starting another turn recreates the checkout.
-Merge cleanup requires the commits to be included in the remote default branch, so squash merges
-may need the inactivity rule instead.
+sessions and shared worktrees prevent removal. **Keep worktrees with local changes** defaults
+to **Uncommitted changes**, which protects tracked edits and untracked files but deletes ignored
+files such as `.env` and build output. **Any local files** also protects ignored files other than
+`node_modules`. **Edited tracked files** protects only tracked edits and allows untracked and
+ignored files to be deleted. Branches and thread history stay; starting another turn recreates the checkout.
+Merge cleanup requires a merged pull request whose commits are included in the remote default
+branch. A squash or rebase merge on GitHub also counts when the pull request targeted the default
+branch and the worktree is still at the pull request's last commit.
 
 Enable **Delete worktrees with deleted threads** to remove safe worktrees after their last
 thread is deleted, including archived threads and worktrees left by earlier deletions. The
 server waits for sessions and terminals to stop and retries skipped worktrees after restart.
 Existing prompts for deleting a worktree manually remain available when this policy is off.
+
+Choose **Delete now** to run the enabled rules immediately. The latest results show which
+worktrees were removed or kept and why, plus any failures.
 
 Browser captures and rotated logs have separate retention periods. Expired capture links stop
 working. Current logs, message attachments, and browser profiles are kept.
@@ -177,34 +192,3 @@ On mobile, use **Settings → Source control** to change selected environment de
 T3 Code only pulls when it can fast-forward and the checkout has no changed files, untracked files,
 or local commits. It skips checkouts on another branch or without an upstream. If a checkout has
 local work, resolve it yourself before automatic pulls can resume.
-
-## Sharing the browser with an agent
-
-In the desktop app, local dev server links in chat and terminal output open in the Workbench.
-Opening the server's root link again reuses its tab and keeps the page you were testing;
-a link to a specific page navigates there. Hold **⌘** or **Ctrl** while clicking to use your
-default browser instead. Other website links follow **Settings → Integrations → Open links in**.
-
-With agent browser access enabled in **Settings → Integrations**, you and the agent use the same
-live tab in the desktop app. Click **Take over**, or click or type in the page, to pause the agent’s
-actions in that tab. Other tabs remain independent. **Resume** restores access and requires the
-agent to inspect the current page before acting again. Your page and signed-in session stay open.
-
-If the agent has already ended its turn, Resume does not start a new one; send a follow-up to
-continue. A disconnected browser host leaves its tabs paused until you resume them.
-
-In the desktop browser, **Live edit** lets you select an element and adjust its text, size,
-spacing, colors, and borders directly on the page. Drag an element or its **Move** handle
-to reposition it. **Shift-click** adds or removes elements from the selection; drag to move
-them together, with one undo for the gesture. Drag any corner dot to resize its element,
-or use the fields for precise values. The inset dot adjusts corner roundness. Drag the
-dials beside numeric fields to adjust their values; hold **Shift** for finer control, or
-focus a dial and use the arrow keys. **Parent** selects the containing element.
-**Play** lets you use the page with your edits visible; **Select** returns to editing.
-Undo, redo, and reset stay within the current preview session. Movement previews a visual
-offset; it does not reorder the page or automatically rewrite its layout.
-
-These are temporary previews: closing Live edit or reloading restores the page, and a page
-that replaces its elements can clear their edits. **Attach edits to chat** captures a screenshot
-and the changes, then restores the page. Send the attachment to ask the agent to apply them
-to your project's source. Editing another website only changes your local preview.

@@ -71,7 +71,7 @@ function AlertDialogHeader({ className, ...props }: React.ComponentProps<"div">)
   return (
     <div
       className={cn(
-        "flex shrink-0 flex-col gap-2 p-6 text-center max-sm:pb-4 sm:text-left",
+        "flex min-h-0 flex-col gap-2 p-6 text-center max-sm:pb-4 sm:text-left",
         className,
       )}
       data-slot="alert-dialog-header"
@@ -90,7 +90,7 @@ function AlertDialogFooter({
   return (
     <div
       className={cn(
-        "flex shrink-0 flex-col-reverse gap-2 px-6 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:rounded-b-[calc(var(--radius-2xl)-1px)]",
+        "flex flex-col-reverse gap-2 px-6 sm:flex-row sm:justify-end sm:rounded-b-[calc(var(--radius-2xl)-1px)]",
         variant === "default" && "border-t bg-muted/72 py-4",
         variant === "bare" && "pb-6",
         className,
@@ -104,7 +104,7 @@ function AlertDialogFooter({
 function AlertDialogTitle({ className, ...props }: AlertDialogPrimitive.Title.Props) {
   return (
     <AlertDialogPrimitive.Title
-      className={cn("wrap-anywhere font-semibold text-xl leading-none", className)}
+      className={cn("wrap-anywhere shrink-0 font-semibold text-xl leading-none", className)}
       data-slot="alert-dialog-title"
       {...props}
     />
@@ -114,7 +114,13 @@ function AlertDialogTitle({ className, ...props }: AlertDialogPrimitive.Title.Pr
 function AlertDialogDescription({ className, ...props }: AlertDialogPrimitive.Description.Props) {
   return (
     <AlertDialogPrimitive.Description
-      className={cn("text-muted-foreground text-sm", className)}
+      className={cn(
+        // A long description (say, the arguments of a tool call awaiting
+        // approval) scrolls in place instead of pushing the actions out of
+        // the popup, which the viewport already caps.
+        "wrap-anywhere max-h-[min(24rem,60dvh)] min-h-0 overflow-y-auto overscroll-contain text-muted-foreground text-sm select-text",
+        className,
+      )}
       data-slot="alert-dialog-description"
       {...props}
     />

@@ -8,11 +8,7 @@ import * as Ref from "effect/Ref";
 
 import * as Electron from "electron";
 
-import {
-  type DesktopGlassStyle,
-  type DesktopSnapShotEvent,
-  DEFAULT_CLIENT_SETTINGS,
-} from "@t3tools/contracts";
+import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
@@ -22,7 +18,6 @@ import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
-import { createMacosGlassController, loadMacosGlassApi } from "../electron/MacosGlass.ts";
 import {
   MENU_ACTION_CHANNEL,
   QUIT_SHORTCUT_CHANNEL,
@@ -30,18 +25,20 @@ import {
   TRACKPAD_SCROLL_END_CHANNEL,
   WINDOW_FULLSCREEN_STATE_CHANNEL,
 } from "../ipc/channels.ts";
+import { PASSKEY_BRIDGE_ARGUMENT } from "../preview/GuestProtocol.ts";
 import * as PreviewManager from "../preview/Manager.ts";
+import * as PreviewPasskeys from "../preview/Passkeys.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import { makeQuitShortcutHandler } from "./QuitHold.ts";
-import { forwardDockSwitcherShortcut } from "./dockSwitcherShortcut.ts";
+import { copyContextMenuImage } from "./ContextMenuImage.ts";
 
 const TITLEBAR_HEIGHT = 40;
 // Matches --workspace-topbar-height in apps/web/src/index.css. Native macOS
 // buttons are 14 points tall and do not scale with the renderer's zoom.
-const MACOS_WORKSPACE_TOPBAR_HEIGHT = 44;
+const MACOS_WORKSPACE_TOPBAR_HEIGHT = 52;
 const MACOS_WINDOW_BUTTON_RADIUS = 7;
 
 function syncMacosWindowButtons(window: Electron.BrowserWindow): void {
@@ -99,6 +96,7 @@ export type DesktopWindowError =
   | PreviewManager.PreviewManagerError;
 
 export type MainWindowZoomDirection = "in" | "out" | "reset";
+export type MainWindowContentsCommand = "reload" | "forceReload" | "toggleDevTools";
 
 export class DesktopWindow extends Context.Service<
   DesktopWindow,
@@ -143,6 +141,10 @@ export class DesktopWindow extends Context.Service<
     // guest page instead of the app UI. The menu routes here to always target
     // the main window.
     readonly zoomMain: (direction: MainWindowZoomDirection) => Effect.Effect<void>;
+    // Reload and DevTools for the main window's own webContents, for the same
+    // reason as zoomMain: the Electron roles act on the focused webContents,
+    // which is a preview guest whenever a browser page has focus.
+    readonly runMainContentsCommand: (command: MainWindowContentsCommand) => Effect.Effect<void>;
     readonly syncAppearance: Effect.Effect<void>;
   }
 >()("@t3tools/desktop/window/DesktopWindow") {}
@@ -283,38 +285,17 @@ function getWindowTitleBarOptions(
   };
 }
 
-export function syncWindowAppearance(
+function syncWindowAppearance(
   window: Electron.BrowserWindow,
   shouldUseDarkColors: boolean,
   platform: NodeJS.Platform,
-  useVibrancy = false,
-  nativeGlass?: ReturnType<typeof createMacosGlassController>,
-  glassStyle: DesktopGlassStyle = "regular",
 ): Effect.Effect<void> {
-  return Effect.gen(function* () {
+  return Effect.sync(() => {
     if (window.isDestroyed()) {
       return;
     }
 
-    const glass = platform === "darwin" && useVibrancy;
-    if (platform === "darwin") {
-      // Electron vibrancy must be removed before adding NSGlassEffectView.
-      window.setVibrancy(glass && !nativeGlass ? "under-window" : null);
-      if (nativeGlass) {
-        yield* Effect.try(() =>
-          nativeGlass.sync(window, glass, shouldUseDarkColors, glassStyle),
-        ).pipe(
-          Effect.catch((cause) =>
-            logWindowWarning("native glass failed; using vibrancy", { cause }).pipe(
-              Effect.andThen(Effect.sync(() => window.setVibrancy(glass ? "under-window" : null))),
-            ),
-          ),
-        );
-      }
-    }
-    window.setBackgroundColor(
-      glass ? "#00000000" : getInitialWindowBackgroundColor(shouldUseDarkColors),
-    );
+    window.setBackgroundColor(getInitialWindowBackgroundColor(shouldUseDarkColors));
     const { titleBarOverlay } = getWindowTitleBarOptions(shouldUseDarkColors, platform);
     if (typeof titleBarOverlay === "object") {
       window.setTitleBarOverlay(titleBarOverlay);
@@ -348,21 +329,10 @@ export const make = Effect.gen(function* () {
   const electronTheme = yield* ElectronTheme.ElectronTheme;
   const electronWindow = yield* ElectronWindow.ElectronWindow;
   const previewManager = yield* PreviewManager.PreviewManager;
+  const previewPasskeys = yield* PreviewPasskeys.PreviewPasskeys;
   const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
   const clientSettings = yield* DesktopClientSettings.DesktopClientSettings;
   const electronApp = yield* ElectronApp.ElectronApp;
-  const glassApi =
-    environment.platform === "darwin"
-      ? yield* Effect.tryPromise(loadMacosGlassApi).pipe(
-          Effect.catch((cause) =>
-            logWindowWarning("native glass unavailable; using vibrancy", { cause }).pipe(
-              Effect.as(null),
-            ),
-          ),
-        )
-      : null;
-  const nativeGlass = glassApi ? createMacosGlassController(glassApi) : undefined;
-  const glassWindows = new WeakSet<Electron.BrowserWindow>();
   const rendererHistory = yield* DesktopRendererHistory.DesktopRendererHistory;
   // Window-side latch for the primary backend's readiness. Set by
   // handleBackendReady (driven by the pool's onReady callback), cleared
@@ -442,16 +412,13 @@ export const make = Effect.gen(function* () {
       minHeight: 620,
       show: false,
       autoHideMenuBar: true,
-      ...(environment.platform === "darwin"
-        ? { disableAutoHideCursor: true, transparent: Boolean(nativeGlass) }
-        : {}),
+      ...(environment.platform === "darwin" ? { disableAutoHideCursor: true } : {}),
       backgroundColor: getInitialWindowBackgroundColor(shouldUseDarkColors),
       ...iconOption,
       title: environment.displayName,
       ...getWindowTitleBarOptions(shouldUseDarkColors, environment.platform),
       webPreferences: {
         preload: environment.preloadPath,
-        additionalArguments: nativeGlass ? ["--t3-native-glass"] : [],
         // The window boots hidden (show: false until ready-to-show), and
         // Chromium throttles hidden renderers: timers coalesce and rAF stops,
         // which stalls first paint. Boot unthrottled; the first-reveal trigger
@@ -462,14 +429,16 @@ export const make = Effect.gen(function* () {
         nodeIntegration: false,
         sandbox: true,
         webviewTag: true,
+        // A preview guest's fullscreen request is mirrored onto this embedder,
+        // which would otherwise put the whole window into OS fullscreen. With
+        // both sides opted out the page fills its webview and the window stays.
+        disableHtmlFullscreenWindowResize: true,
       },
     });
 
     yield* rendererHistory.register(window.webContents, { surface: "main" });
     if (environment.platform === "darwin") {
       window.setAutoHideCursor(false);
-      window.setWindowButtonVisibility(true);
-      if (nativeGlass) glassWindows.add(window);
     }
     let boundsPersistFiber: Fiber.Fiber<void, never> | undefined;
     let pendingBoundsPersistFiber: Fiber.Fiber<void, never> | undefined;
@@ -571,6 +540,13 @@ export const make = Effect.gen(function* () {
       webPreferences.nodeIntegration = false;
       webPreferences.nodeIntegrationInSubFrames = false;
       webPreferences.contextIsolation = false;
+      webPreferences.disableHtmlFullscreenWindowResize = true;
+      if (previewPasskeys.bridgeEnabled) {
+        webPreferences.additionalArguments = [
+          ...(webPreferences.additionalArguments ?? []),
+          PASSKEY_BRIDGE_ARGUMENT,
+        ];
+      }
     });
 
     const contextMenuContents = new WeakSet<Electron.WebContents>();
@@ -620,7 +596,11 @@ export const make = Effect.gen(function* () {
           menuTemplate.push({
             label: "Copy Image",
             click: () => {
-              if (!contents.isDestroyed()) contents.copyImageAt(params.x, params.y);
+              void runPromise(
+                Effect.tryPromise(() => copyContextMenuImage(contents, params)).pipe(
+                  Effect.catch(() => logWindowWarning("failed to copy context-menu image")),
+                ),
+              );
             },
           });
           menuTemplate.push({ type: "separator" });
@@ -649,15 +629,6 @@ export const make = Effect.gen(function* () {
     window.webContents.on("did-attach-webview", (_event, contents) => {
       installContextMenu(window, contents);
       void runPromise(previewManager.prepareWebview(contents));
-      // A focused browser guest owns its keyboard events. Return this app
-      // gesture to the host; subsequent Tab presses and Control-up reach it.
-      contents.on("before-input-event", (event, input) => {
-        forwardDockSwitcherShortcut(event, input, {
-          isGuestFocused: () => Electron.webContents.getFocusedWebContents() === contents,
-          focus: () => window.webContents.focus(),
-          send: (action) => window.webContents.send(MENU_ACTION_CHANNEL, action),
-        });
-      });
     });
 
     window.webContents.setWindowOpenHandler(({ url }) => {
@@ -738,11 +709,9 @@ export const make = Effect.gen(function* () {
 
     if (environment.platform === "darwin") {
       window.on("enter-full-screen", () => {
-        nativeGlass?.syncCorners(window);
         window.webContents.send(WINDOW_FULLSCREEN_STATE_CHANNEL, true);
       });
       window.on("leave-full-screen", () => {
-        nativeGlass?.syncCorners(window);
         syncMacosWindowButtons(window);
         window.webContents.send(WINDOW_FULLSCREEN_STATE_CHANNEL, false);
       });
@@ -1082,19 +1051,21 @@ export const make = Effect.gen(function* () {
       // own zoom, so put each guest back where the preview left it.
       yield* previewManager.reapplyZoom();
     }),
+    runMainContentsCommand: Effect.fn("desktop.window.runMainContentsCommand")(function* (command) {
+      yield* Effect.annotateCurrentSpan({ command });
+      // The registered main window, never the focused one: with an OAuth popup
+      // focused, Reload would otherwise reload the popup mid sign-in.
+      const window = yield* electronWindow.main;
+      if (Option.isNone(window) || window.value.isDestroyed()) return;
+      const webContents = window.value.webContents;
+      if (command === "reload") webContents.reload();
+      else if (command === "forceReload") webContents.reloadIgnoringCache();
+      else webContents.toggleDevTools();
+    }),
     syncAppearance: Effect.gen(function* () {
       const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;
-      const useVibrancy = yield* electronTheme.shouldUseVibrancy;
-      const glassStyle = yield* electronTheme.glassStyle;
       yield* electronWindow.syncAllAppearance((window) =>
-        syncWindowAppearance(
-          window,
-          shouldUseDarkColors,
-          environment.platform,
-          useVibrancy,
-          glassWindows.has(window) ? nativeGlass : undefined,
-          glassStyle,
-        ),
+        syncWindowAppearance(window, shouldUseDarkColors, environment.platform),
       );
     }).pipe(Effect.withSpan("desktop.window.syncAppearance")),
   });

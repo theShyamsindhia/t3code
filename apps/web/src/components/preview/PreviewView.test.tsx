@@ -7,7 +7,7 @@ import {
   FILL_PREVIEW_VIEWPORT,
   ThreadId,
 } from "@t3tools/contracts";
-import { act, createElement, Profiler, type ReactNode } from "react";
+import { act, createElement, Profiler } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(async (_tabId: string, _url: string): Promise<void> => undefined),
   rememberPreviewUrl: vi.fn(),
   readPreparedConnection: vi.fn(() => ({ httpBaseUrl: "http://172.25.85.75:3773" })),
+  readEnvironmentScope: vi.fn(() => true),
+  setAnnotationSendEnabled: vi.fn(async (): Promise<void> => undefined),
+  cancelPickElement: vi.fn(async () => undefined),
   submittedUrl: null as ((url: string) => void) | null,
   emptyStateUrl: null as ((url: string) => void) | null,
   togglePictureInPicture: null as (() => void) | null,
@@ -61,7 +64,16 @@ vi.mock("~/browserHistoryStore", () => ({
 vi.mock("~/state/session", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/state/session")>()),
   readPreparedConnection: mocks.readPreparedConnection,
+  readEnvironmentScope: mocks.readEnvironmentScope,
+  useEnvironmentScope: mocks.readEnvironmentScope,
 }));
+
+// File-preview errors share a module with asset hooks. Keep the pure URL resolver
+// without importing those hooks and their environment runtime into chrome tests.
+vi.mock("~/assets/assetUrls", async () => {
+  const { resolveAssetUrl } = await import("@t3tools/client-runtime/state/assets");
+  return { resolveAssetUrl };
+});
 
 // Stubbed at the direct dependency rather than letting the real module pull in
 // `useSettings` -> `state/server`, which would drag the whole settings and
@@ -139,10 +151,11 @@ vi.mock("~/previewStateStore", () => ({
 vi.mock("~/state/environments", () => ({
   useEnvironment: () => ({ label: "WSL" }),
   useEnvironmentHttpBaseUrl: () => "http://172.25.85.75:3773",
+  usePrimaryEnvironmentId: () => null,
 }));
 
 vi.mock("~/state/preview", () => ({
-  previewEnvironment: { open: {}, resize: {} },
+  previewEnvironment: { open: {}, close: {}, resize: {} },
 }));
 
 vi.mock("~/state/use-atom-command", () => ({
@@ -207,7 +220,8 @@ vi.mock("./previewBridge", () => ({
   previewBridge: {
     navigate: mocks.navigate,
     pickElement: mocks.pickElement,
-    passwords: {},
+    setAnnotationSendEnabled: mocks.setAnnotationSendEnabled,
+    cancelPickElement: mocks.cancelPickElement,
     pictureInPicture: {
       open: mocks.openPictureInPicture,
       close: mocks.closePictureInPicture,
@@ -221,21 +235,18 @@ vi.mock("./PreviewChromeRow", () => ({
     onPickElement?: () => void;
     onPictureInPicture?: () => void;
     pictureInPicture?: boolean;
-    trailingActions?: ReactNode;
+    trailingActions?: {
+      props: { actions?: { toggleNativePictureInPicture?: () => void } };
+    };
   }) => {
     mocks.submittedUrl = props.onSubmit;
     mocks.toggleAnnotation = props.onPickElement ?? null;
     mocks.togglePictureInPicture = props.onPictureInPicture ?? null;
+    mocks.toggleNativePictureInPicture =
+      props.trailingActions?.props.actions?.toggleNativePictureInPicture ?? null;
     mocks.pictureInPicturePressed = props.pictureInPicture ?? false;
-    return props.trailingActions ?? null;
+    return null;
   },
-}));
-
-vi.mock("./PreviewControlButton", () => ({
-  PreviewControlButton: () => createElement("browser-control"),
-}));
-vi.mock("./PreviewPasswords", () => ({
-  PreviewPasswords: () => createElement("saved-logins"),
 }));
 
 vi.mock("./PreviewEmptyState", () => ({
@@ -245,8 +256,8 @@ vi.mock("./PreviewEmptyState", () => ({
   },
 }));
 vi.mock("./PreviewMoreMenu", () => ({
-  PreviewMoreMenu: (props: { onNativePictureInPicture: () => void }) => {
-    mocks.toggleNativePictureInPicture = props.onNativePictureInPicture;
+  PreviewMoreMenu: (props: { actions: { toggleNativePictureInPicture?: () => void } }) => {
+    mocks.toggleNativePictureInPicture = props.actions.toggleNativePictureInPicture ?? null;
     return null;
   },
 }));
@@ -296,13 +307,6 @@ class TestNode {
     return child;
   }
 
-  insertBefore(child: TestNode, before: TestNode) {
-    if (child.parentNode) child.parentNode.removeChild(child);
-    child.parentNode = this;
-    this.childNodes.splice(this.childNodes.indexOf(before), 0, child);
-    return child;
-  }
-
   removeChild(child: TestNode) {
     this.childNodes.splice(this.childNodes.indexOf(child), 1);
     child.parentNode = null;
@@ -342,6 +346,9 @@ describe("PreviewView navigation", () => {
     mocks.navigate.mockClear();
     mocks.rememberPreviewUrl.mockClear();
     mocks.readPreparedConnection.mockClear();
+    mocks.readEnvironmentScope.mockReset().mockReturnValue(true);
+    mocks.setAnnotationSendEnabled.mockClear();
+    mocks.cancelPickElement.mockClear();
     mocks.submittedUrl = null;
     mocks.emptyStateUrl = null;
     mocks.togglePictureInPicture = null;
@@ -387,30 +394,6 @@ describe("PreviewView navigation", () => {
       });
       expect(hasCursor(container)).toBe(true);
       expect(mocks.recordingTabIds.has(TEST_RUNTIME_TAB_ID)).toBe(true);
-    } finally {
-      await act(() => root.unmount());
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("replaces browser controls without leaving stale buttons when the server epoch arrives", async () => {
-    const document = installTestDom();
-    const { createRoot } = await import("react-dom/client");
-    const container = document.createElement("div");
-    const root = createRoot(container as unknown as Element);
-    const count = (node: TestNode, name: string): number =>
-      Number(node.nodeName === name) +
-      node.childNodes.reduce((total, child) => total + count(child, name), 0);
-
-    try {
-      for (const epoch of [null, "connected-server", "restarted-server"]) {
-        mocks.serverEpoch = epoch;
-        await act(() => {
-          root.render(<PreviewView threadRef={TEST_THREAD_REF} tabId="tab-1" visible />);
-        });
-        expect(count(container, "BROWSER-CONTROL")).toBe(1);
-        expect(count(container, "SAVED-LOGINS")).toBe(1);
-      }
     } finally {
       await act(() => root.unmount());
       vi.unstubAllGlobals();
@@ -614,6 +597,94 @@ describe("PreviewView navigation", () => {
 
     await vi.waitFor(() => expect(onSendAnnotation).toHaveBeenCalledWith(annotation, null));
     expect(mocks.addPreviewAnnotation).toHaveBeenCalledWith(TEST_THREAD_REF, annotation);
+  });
+
+  it("retains the annotation locally when its own environment loses access during capture", async () => {
+    const annotation = {
+      id: "annotation-revoked",
+      pageUrl: "https://example.com/dashboard",
+      pageTitle: "Dashboard",
+      comment: "Tighten this spacing",
+      elements: [],
+      regions: [],
+      strokes: [],
+      styleChanges: [],
+      screenshot: null,
+      createdAt: "2026-09-05T00:00:00.000Z",
+    };
+    const onSendAnnotation = vi.fn();
+    let submitPick: (() => void) | undefined;
+    mocks.pickElement.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          submitPick = () => resolve({ annotation, submission: "send" });
+        }),
+    );
+    const document = installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    const view = () => (
+      <PreviewView
+        threadRef={TEST_THREAD_REF}
+        tabId="tab-1"
+        visible
+        onSendAnnotation={onSendAnnotation}
+      />
+    );
+    try {
+      await act(async () => root.render(view()));
+      await act(async () => mocks.toggleAnnotation?.());
+      expect(submitPick).toBeDefined();
+      expect(mocks.setAnnotationSendEnabled).toHaveBeenLastCalledWith(TEST_RUNTIME_TAB_ID, true);
+
+      mocks.readEnvironmentScope.mockImplementation(
+        (environmentId?: unknown) => environmentId !== TEST_THREAD_REF.environmentId,
+      );
+      await act(async () => root.render(view()));
+      expect(mocks.setAnnotationSendEnabled).toHaveBeenLastCalledWith(TEST_RUNTIME_TAB_ID, false);
+      await act(async () => submitPick!());
+      expect(mocks.addPreviewAnnotation).toHaveBeenCalledWith(TEST_THREAD_REF, annotation);
+      expect(onSendAnnotation).not.toHaveBeenCalled();
+
+      mocks.readEnvironmentScope.mockReturnValue(true);
+      mocks.pickElement.mockResolvedValue({ annotation, submission: "send" });
+      await act(async () => root.render(view()));
+      await act(async () => mocks.toggleAnnotation?.());
+      expect(mocks.setAnnotationSendEnabled).toHaveBeenLastCalledWith(TEST_RUNTIME_TAB_ID, true);
+      expect(onSendAnnotation).toHaveBeenCalledWith(annotation, null);
+    } finally {
+      await act(async () => root.unmount());
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not reopen a cancelled picker after the permission update finishes", async () => {
+    let finishUpdate: (() => void) | undefined;
+    mocks.setAnnotationSendEnabled.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishUpdate = resolve;
+        }),
+    );
+    const document = installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      await act(async () =>
+        root.render(<PreviewView threadRef={TEST_THREAD_REF} tabId="tab-1" visible />),
+      );
+      await act(async () => mocks.toggleAnnotation?.());
+      expect(finishUpdate).toBeDefined();
+      expect(mocks.pickElement).not.toHaveBeenCalled();
+      await act(async () => mocks.toggleAnnotation?.());
+      expect(mocks.cancelPickElement).toHaveBeenCalledWith(TEST_RUNTIME_TAB_ID);
+      await act(async () => finishUpdate!());
+      expect(mocks.pickElement).not.toHaveBeenCalled();
+      expect(mocks.addPreviewAnnotation).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => root.unmount());
+      vi.unstubAllGlobals();
+    }
   });
 
   it("warns when main dropped the crop before handing over the pick", async () => {

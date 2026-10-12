@@ -25,9 +25,9 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
-import type { ProviderAdapterV2Shape } from "./ProviderAdapter.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
+import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 
 const instanceId = ProviderInstanceId.make("codex");
 const modelSelection = { instanceId, model: "gpt-5.1-codex" };
@@ -37,7 +37,7 @@ const adapter = {
   getCapabilities: () => Effect.succeed(CodexProviderCapabilitiesV2),
   planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" as const }),
   openSession: () => Effect.die("No provider process needed for metadata controls"),
-} as ProviderAdapterV2Shape;
+} as ProviderAdapter.ProviderAdapterV2["Service"];
 const layerDatabase = SqlitePersistence.layerMemory;
 const layerTest = Layer.mergeAll(
   layerDatabase,
@@ -47,51 +47,6 @@ const layerTest = Layer.mergeAll(
     ProviderAdapterRegistry.layerFromAdapters([adapter]),
     { databaseLayer: layerDatabase, runEffectWorker: false },
   ),
-);
-
-it.effect("rejects sending commands to an external preview before takeover", () =>
-  Effect.gen(function* () {
-    const orchestrator = yield* Orchestrator.OrchestratorV2;
-    const projections = yield* ProjectionStore.ProjectionStoreV2;
-    const threadId = ThreadId.make("external:codex:codex:control-preview");
-    yield* orchestrator.dispatch({
-      type: "thread.create",
-      commandId: CommandId.make("create-external-preview"),
-      threadId,
-      projectId: ProjectId.make("project:external-preview"),
-      title: "External preview",
-      modelSelection,
-      runtimeMode: "full-access",
-      interactionMode: "default",
-      branch: null,
-      worktreePath: null,
-      createdBy: "system",
-      creationSource: "server",
-    });
-    const error = yield* orchestrator
-      .dispatch({
-        type: "message.dispatch",
-        commandId: CommandId.make("send-external-preview"),
-        threadId,
-        messageId: MessageId.make("external-preview-message"),
-        text: "Do not send before takeover",
-        attachments: [],
-        dispatchMode: { type: "start_immediately" },
-        createdBy: "user",
-        creationSource: "web",
-      })
-      .pipe(Effect.flip);
-    assert.equal(error._tag, "OrchestratorCommandRejectedError");
-    const projection = yield* projections.getThreadProjection(threadId);
-    assert.deepEqual(projection.messages, []);
-    assert.deepEqual(projection.runs, []);
-    yield* orchestrator.dispatch({
-      type: "thread.archive",
-      commandId: CommandId.make("archive-external-preview"),
-      threadId,
-    });
-    assert.ok((yield* projections.getThreadShell(threadId))?.archivedAt);
-  }).pipe(Effect.provide(Layer.fresh(layerTest))),
 );
 
 it.effect(

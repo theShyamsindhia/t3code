@@ -1,5 +1,4 @@
 import { SubagentStatusDot } from "./SubagentStatusDot";
-import { explainProviderConnectionError } from "@t3tools/client-runtime/provider-connection-error";
 import { ThreadSubagentGroup } from "./thread-subagent-group";
 import {
   WorkLogLabel,
@@ -86,6 +85,7 @@ import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/s
 import { notificationChildThreadId } from "@t3tools/client-runtime/state/thread-execution";
 import type { MarkdownImageRenderer } from "../../native/SelectableMarkdownText";
 import type { FilePreviewSource } from "../../components/FilePreviewModal";
+import { FilePreviewGallery } from "../../components/FilePreviewGallery";
 import { ThreadMarkdownImage } from "./ThreadMarkdownImage";
 import Animated, {
   cancelAnimation,
@@ -858,7 +858,6 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
   const failureItem = row.projectedItem.item;
   if (failureItem.type === "error" && failureItem.status === "failed") {
     const warning = failureItem.failure.class === "usage_limit";
-    const connectionError = explainProviderConnectionError(failureItem.failure.message);
     const timestamp = new Date(row.createdAt);
     const resetAt = failureItem.failure.resetAt;
     const resetTime = resetAt
@@ -874,18 +873,8 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
       : row.summary;
     return (
       <WorkLogPressable
-        accessibilityLabel={
-          warning
-            ? label
-            : `${row.summary}: ${connectionError?.detail ?? failureItem.failure.message}`
-        }
-        accessibilityHint={
-          connectionError
-            ? "Double tap to toggle technical details. Long press to copy."
-            : "Long press to copy."
-        }
-        accessibilityState={connectionError ? { expanded } : undefined}
-        onPress={connectionError ? () => props.onToggleRow(row.id, props.anchorKey) : undefined}
+        accessibilityLabel={warning ? label : `${row.summary}: ${failureItem.failure.message}`}
+        accessibilityHint="Long press to copy."
         onLongPress={() => props.onCopyRow(row.id, row.getCopyText())}
       >
         <View className="flex-1 py-1">
@@ -925,30 +914,8 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
           </View>
           {!warning ? (
             <Text selectable className="ml-7 text-sm text-foreground">
-              {connectionError?.detail ?? failureItem.failure.message}
+              {failureItem.failure.message}
             </Text>
-          ) : null}
-          {connectionError ? (
-            <View className="ml-7 mt-1 gap-1">
-              <Text className="text-xs text-foreground-subtle">
-                {expanded ? "Hide technical details" : "Show technical details"}
-              </Text>
-              {expanded ? (
-                <>
-                  <Text selectable className="text-xs text-foreground-subtle">
-                    {failureItem.failure.message}
-                  </Text>
-                  {failureItem.retry ? (
-                    <Text className="text-xs text-foreground-subtle">
-                      Retries: {failureItem.retry.attempt}
-                      {failureItem.retry.maxAttempts === null
-                        ? ""
-                        : `/${failureItem.retry.maxAttempts}`}
-                    </Text>
-                  ) : null}
-                </>
-              ) : null}
-            </View>
           ) : null}
           {failureItem.failure.code === ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE &&
           failureItem.runId !== null ? (
@@ -1179,16 +1146,24 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
               {props.renderImage({ href: viewedImagePath, alt: null, title: null })}
             </View>
           ) : null}
-          {outputImages.map((resource) => (
-            <View key={resource.index} className="pb-1.5">
-              <ThreadMarkdownImage
-                environmentId={props.environmentId}
-                resource={resource}
-                alt={null}
-                onPressPreview={props.onPressPreview}
-              />
-            </View>
-          ))}
+          <FilePreviewGallery
+            value={outputImages.map((resource) => ({
+              kind: "image",
+              environmentId: props.environmentId,
+              resource,
+            }))}
+          >
+            {outputImages.map((resource) => (
+              <View key={resource.index} className="pb-1.5">
+                <ThreadMarkdownImage
+                  environmentId={props.environmentId}
+                  resource={resource}
+                  alt={null}
+                  onPressPreview={props.onPressPreview}
+                />
+              </View>
+            ))}
+          </FilePreviewGallery>
           <ScrollView
             nestedScrollEnabled
             directionalLockEnabled
@@ -1256,11 +1231,11 @@ export function ThreadWorkGroupToggle(props: {
   readonly toolIcon?: ToolActivityIcon;
   readonly hasFailure: boolean;
   readonly shimmer: boolean;
+  readonly thought?: string | undefined;
   readonly onToggle: () => void;
 }) {
-  const accessibilityLabel = props.hasFailure
-    ? `${props.summary}, tool call failed`
-    : props.summary;
+  const statusLabel = props.hasFailure ? `${props.summary}, tool call failed` : props.summary;
+  const accessibilityLabel = props.thought ? `${props.thought} ${statusLabel}` : statusLabel;
   const icon =
     props.summaryToolIcon ??
     (props.toolSurface
@@ -1269,6 +1244,28 @@ export function ThreadWorkGroupToggle(props: {
 
   return (
     <WorkLogBlock layout="group-header">
+      {props.thought ? (
+        // The latest thought sits above the status line as an ordinary work-log
+        // row, wrapped up to four lines.
+        <Pressable
+          accessible={false}
+          onPress={props.onToggle}
+          className="flex-row items-start gap-1.5 rounded-md px-0.5 active:bg-subtle"
+        >
+          <WorkLogIconSlot>
+            <WorkLogIcon icon="brain" color={props.iconSubtleColor} />
+          </WorkLogIconSlot>
+          <Text
+            key={props.rowSizing.textSizeKey}
+            selectable={false}
+            numberOfLines={4}
+            ellipsizeMode="tail"
+            className="min-w-0 flex-1 py-0.5 text-sm text-foreground-muted"
+          >
+            {props.thought}
+          </Text>
+        </Pressable>
+      ) : null}
       <WorkLogPressable
         accessibilityRole="button"
         accessibilityState={{ expanded: props.expanded }}
@@ -1538,7 +1535,7 @@ function ToolActivityImage(props: {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   return (
-    <View className="h-4 w-4 items-center justify-center overflow-hidden rounded-[3px] bg-background">
+    <View className="h-4 w-4 items-center justify-center overflow-hidden rounded-[3px] bg-screen">
       {!loaded || failed ? <WorkLogIcon icon={props.fallback} color={props.color} /> : null}
       {!failed ? (
         <View

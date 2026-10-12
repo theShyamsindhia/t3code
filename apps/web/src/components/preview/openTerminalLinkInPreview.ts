@@ -1,22 +1,18 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
+import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
 import * as Schema from "effect/Schema";
 
 import {
-  isLocalServerUrl,
-  resolveLinkTarget,
-  resolveBrowserLinkTargetPreference,
-} from "~/browser/browserLinkTarget";
-import {
-  BrowserSettingsReadError,
-  openUrlInPreview,
-  type OpenPreviewMutation,
-} from "~/browser/openFileInPreview";
+  browserDefaultOpenProfileId,
+  browserDefaultOpenViewport,
+  resolveBrowserDefaults,
+} from "~/browser/browserDefaults";
+import { isWebUrl, resolveBrowserLinkTargetPreference } from "~/browser/browserLinkTarget";
+import type { OpenPreviewMutation } from "~/browser/openFileInPreview";
+import { isPreviewAvailableFor, previewRuntimeFor } from "~/browser/previewRuntime";
 import { recordVisitForThread } from "~/browserHistoryStore";
-import { isPreviewSupportedInRuntime } from "~/previewStateStore";
+import { applyPreviewServerSnapshot } from "~/previewStateStore";
+import { useRightPanelStore } from "~/rightPanelStore";
 
 const terminalLinkErrorContext = {
   environmentId: Schema.String,
@@ -44,23 +40,20 @@ interface OpenTerminalLinkInPreviewInput<E> {
 }
 
 /**
- * Local server links open beside the terminal; other URLs follow the saved
- * preference. Cmd/Ctrl-click explicitly requests the system browser.
+ * Opens a terminal hyperlink where the "Open links in" setting says, unless a
+ * Cmd/Ctrl-click explicitly requests the system browser.
  */
 export async function openTerminalLinkInPreview<E>(
   input: OpenTerminalLinkInPreviewInput<E>,
 ): Promise<void> {
-  if (input.forceBrowser || !isPreviewSupportedInRuntime() || !input.threadRef.threadId) {
-    input.fallbackToBrowser();
-    return;
-  }
-  const target = resolveLinkTarget({
-    url: input.url,
-    event: { metaKey: false, ctrlKey: false },
-    preference: await resolveBrowserLinkTargetPreference(),
-    canOpenInApp: true,
-  });
-  if (target === "system") {
+  const supportsPreview =
+    !input.forceBrowser &&
+    isWebUrl(input.url) &&
+    isPreviewAvailableFor(input.threadRef.environmentId) &&
+    input.threadRef.threadId.length > 0 &&
+    (await resolveBrowserLinkTargetPreference()) === "app";
+
+  if (!supportsPreview) {
     input.fallbackToBrowser();
     return;
   }
@@ -71,14 +64,24 @@ export async function openTerminalLinkInPreview<E>(
     targetOrigin: new URL(input.url).origin,
   };
 
-  const result = await openUrlInPreview(input);
+  const defaults = await resolveBrowserDefaults();
+  const runtime = previewRuntimeFor(input.threadRef.environmentId);
+  const result = await input.openPreview({
+    environmentId: input.threadRef.environmentId,
+    input: {
+      threadId: input.threadRef.threadId,
+      url: input.url,
+      // Same reason as `openUrlInPreview`: this path handles its own result
+      // mapping, so the configured defaults are applied explicitly.
+      viewport: browserDefaultOpenViewport(defaults),
+      profileId: browserDefaultOpenProfileId(defaults),
+      ...(runtime === undefined ? {} : { runtime }),
+    },
+  });
   if (result._tag === "Failure") {
     if (isAtomCommandInterrupted(result)) {
       return;
     }
-    const failure = squashAtomCommandFailure(result);
-    if (failure instanceof BrowserSettingsReadError) throw failure.cause;
-    if (isLocalServerUrl(input.url)) throw failure;
     console.error(
       new TerminalLinkPreviewOpenError({
         ...errorContext,
@@ -89,4 +92,6 @@ export async function openTerminalLinkInPreview<E>(
     return;
   }
   recordVisitForThread(input.threadRef, input.url);
+  applyPreviewServerSnapshot(input.threadRef, result.value);
+  useRightPanelStore.getState().openBrowser(input.threadRef, result.value.tabId);
 }

@@ -1,7 +1,3 @@
-import { useFrameHour } from "./sidebar/useFrameHour";
-import { useTheme } from "../hooks/useTheme";
-import { resolveThemeHalf } from "../themePalette";
-import { useIsMobile } from "../hooks/useMediaQuery";
 import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import {
@@ -15,7 +11,11 @@ import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 
 import { isElectron } from "../env";
 import { getLocalStorageItem, removeLocalStorageItem } from "../hooks/useLocalStorage";
-import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
+import {
+  isRichTextBoldShortcut,
+  resolveShortcutCommand,
+  shortcutLabelForCommand,
+} from "../keybindings";
 import { isEditableFocused } from "../lib/editableFocus";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
@@ -80,10 +80,10 @@ function readInitialThreadSidebarWidth(): number {
   }
 }
 
-function SidebarControl({ dock }: { dock: boolean }) {
+function SidebarControl() {
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const { toggleSidebar } = useSidebar();
+  const { toggleSidebar, isMobile, mobileSheetMounted } = useSidebar();
   const isSidebarVisible = useSidebarVisibility();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const stageBackdropVariant = useSidebarStageBackdropVariant(
@@ -103,6 +103,15 @@ function SidebarControl({ dock }: { dock: boolean }) {
         return;
       }
       if (
+        isRichTextBoldShortcut(event) &&
+        event.target instanceof HTMLElement &&
+        event.target.closest('[data-composer-rich-text="true"]')
+      ) {
+        // The rich-text composer claims Mod+B for bold; the toggle stays
+        // available everywhere else, including the plain-text composer.
+        return;
+      }
+      if (
         resolveShortcutCommand(event, keybindings, { context: { usagePageOpen } }) !==
         "sidebar.toggle"
       )
@@ -113,16 +122,28 @@ function SidebarControl({ dock }: { dock: boolean }) {
       toggleSidebar();
     };
 
-    // Capture before focused editors consume the chord: the rich-text composer
-    // binds Mod+B to bold, and the sidebar toggle wins there too.
+    // Capture before focused editors consume commands such as Mod+B for rich-text formatting.
     window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
+    // A focused desktop browser page forwards the chord as a menu action.
+    const unsubscribe = window.desktopBridge?.onMenuAction((action) => {
+      if (action === "sidebar.toggle") toggleSidebar();
+    });
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      unsubscribe?.();
+    };
   }, [keybindings, toggleSidebar, usagePageOpen]);
 
   return (
-    // Fixed controls include the frame inset; headers already sit inside it.
+    // The right-side layout controls carry mr-px (border compensation inside
+    // the panel), so the trigger mirrors it: both clusters sit one extra pixel
+    // off their edge and the titlebar reads symmetric.
+    // The sheet owns its trigger until its closing transition unmounts it.
     <div
-      className="pointer-events-none fixed left-[calc(var(--workspace-controls-left)+var(--conversation-workspace-inset,0px))] top-[var(--workspace-controls-top)] z-50 flex h-[var(--workspace-topbar-height)] items-center"
+      className={cn(
+        "pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 ml-px flex h-[var(--workspace-topbar-height)] items-center",
+        isMobile && mobileSheetMounted && "hidden",
+      )}
       data-sidebar-control=""
     >
       <Tooltip>
@@ -131,24 +152,17 @@ function SidebarControl({ dock }: { dock: boolean }) {
             <SidebarTrigger
               // Over the stage artwork the trigger is a control on imagery, like the media
               // viewer's arrows; that variant positions itself, so the layout is reset here.
-              variant={
-                !dock && isSidebarVisible && stageBackdropVariant ? "media-navigation" : "ghost"
-              }
+              variant={isSidebarVisible && stageBackdropVariant ? "media-navigation" : "ghost"}
               className={cn(
                 "pointer-events-auto",
-                !dock &&
-                  isSidebarVisible &&
-                  stageBackdropVariant &&
-                  "relative top-auto translate-y-0",
+                isSidebarVisible && stageBackdropVariant && "relative top-auto translate-y-0",
               )}
-              aria-label={dock ? "Toggle conversations" : "Toggle main sidebar"}
-              orientation={dock ? "horizontal" : "vertical"}
+              aria-label="Toggle main sidebar"
             />
           }
         />
         <TooltipPopup side="bottom">
-          {dock ? "Toggle conversations" : "Toggle main sidebar"}
-          {shortcutLabel ? ` (${shortcutLabel})` : ""}
+          Toggle main sidebar{shortcutLabel ? ` (${shortcutLabel})` : ""}
         </TooltipPopup>
       </Tooltip>
     </div>
@@ -205,7 +219,7 @@ function NavigationHistoryShortcuts() {
   return null;
 }
 
-// Mobile settings swaps the thread sidebar out of the tree. Keep the lightweight
+// Settings swaps the thread sidebar out of the tree. Keep the lightweight
 // project projection subscribed so returning to a draft never renders the
 // zero-project state while the environment snapshot reconnects.
 function ProjectProjectionRetention() {
@@ -213,45 +227,19 @@ function ProjectProjectionRetention() {
   return null;
 }
 
-function ConversationDock() {
-  const { open } = useSidebar();
-  return (
-    <nav aria-label="Conversations" data-conversation-dock="" hidden={!open}>
-      <ThreadSidebar dock />
-    </nav>
-  );
-}
-
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const legacySidebarEnabled = useLegacySidebarEnabled();
-  const isMobile = useIsMobile();
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
-  // Seeds server-side visited tracking from this browser's localStorage.
+  // Settings routes show the settings nav in place of whichever thread
+  // sidebar is active.
+  // Seeds server-side visited tracking from this browser's localStorage the
   useThreadVisitedMigration();
   const pathname = useLocation({ select: (location) => location.pathname });
   const panelAnimationsSuppressed = usePanelNavigationSuppression(pathname);
   const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
-  const useDock = !isMobile;
-  const { theme, themeHalves, resolvedTheme } = useTheme();
-  const isAfterglow = resolveThemeHalf(theme, themeHalves, resolvedTheme) === "afterglow";
-  const frameHour = useFrameHour(isAfterglow);
-  useEffect(() => {
-    if (!isAfterglow) return;
-    // Portalled dialogs need the same hourly palette as the workspace frame.
-    const style = document.documentElement.style;
-    style.setProperty(
-      "--conversation-frame-hue",
-      String(Math.round(Math.sin((frameHour * Math.PI) / 12) * 18)),
-    );
-    style.setProperty("--conversation-frame-angle", `${115 + frameHour * 15}deg`);
-    return () => {
-      style.removeProperty("--conversation-frame-hue");
-      style.removeProperty("--conversation-frame-angle");
-    };
-  }, [frameHour, isAfterglow]);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
   // Subscribed rather than read once: the clamp must track live window size,
@@ -275,18 +263,15 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       ? getWindowFullscreenState()
       : false;
   });
+  const windowControlsInsetStyle = (
+    isMacosDesktop && !isWindowFullscreen
+      ? { "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET }
+      : {}
+  ) as CSSProperties;
   const sidebarProviderStyle = {
     "--sidebar-width": `${clampThreadSidebarWidth(sidebarWidth, sidebarMinimumWidth, sidebarMaximumWidth)}px`,
     "--panel-animation-duration": `${panelAnimationDurationMs}ms`,
-    ...(isMacosDesktop && !isWindowFullscreen
-      ? {
-          "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET,
-          // Keep the native traffic lights and web controls on the same baseline.
-          "--workspace-titlebar-content-inset": "0px",
-          // Concentric with the 16px native window corners, inside the 6px frame.
-          "--conversation-workspace-radius": "10px",
-        }
-      : {}),
+    ...windowControlsInsetStyle,
   } as CSSProperties;
 
   useEffect(() => {
@@ -329,47 +314,45 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   return (
     <PanelAnimationSuppressionProvider value={panelAnimationsSuppressed}>
       <SidebarProvider
-        className={cn("h-dvh! min-h-0!", useDock && "flex-col")}
-        data-conversation-layout={useDock ? "dock" : undefined}
+        className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
         defaultOpen
         style={sidebarProviderStyle}
       >
         <SidebarBrandWidthProbe onWidthChange={setBrandWidth} />
         <ProjectProjectionRetention />
-        {useDock ? null : (
-          <Sidebar
-            side="left"
-            collapsible="offcanvas"
-            data-app-sidebar=""
-            role="navigation"
-            aria-label={isOnSettings ? "Settings" : "Threads"}
-            resizable={{
-              maxWidth: sidebarMaximumWidth,
-              minWidth: sidebarMinimumWidth,
-              shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
-                nextWidth <= currentWidth ||
-                wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
-              storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
-              onResize: setSidebarWidth,
-            }}
-          >
-            {isOnSettings ? (
-              <>
-                <SidebarChromeHeader isElectron={isElectron} />
-                <SettingsSidebarNav pathname={pathname} />
-              </>
-            ) : legacySidebarEnabled ? (
-              <LegacyThreadSidebar />
-            ) : (
-              <ThreadSidebar />
-            )}
-            <SidebarRail onDoubleClick={resetSidebarWidth} />
-          </Sidebar>
-        )}
-        {useDock ? <div data-conversation-workspace="">{children}</div> : children}
-        {useDock ? <ConversationDock /> : null}
-        <SidebarControl dock={useDock} />
+        <Sidebar
+          side="left"
+          collapsible="offcanvas"
+          data-app-sidebar=""
+          role="navigation"
+          aria-label={isOnSettings ? "Settings" : "Threads"}
+          resizable={{
+            maxWidth: sidebarMaximumWidth,
+            minWidth: sidebarMinimumWidth,
+            shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
+              nextWidth <= currentWidth ||
+              wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
+            storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+            onResize: setSidebarWidth,
+          }}
+          // The narrow-window sidebar is a sheet, portaled outside the provider's styles.
+          style={windowControlsInsetStyle}
+        >
+          {isOnSettings ? (
+            <>
+              <SidebarChromeHeader isElectron={isElectron} />
+              <SettingsSidebarNav pathname={pathname} />
+            </>
+          ) : legacySidebarEnabled ? (
+            <LegacyThreadSidebar />
+          ) : (
+            <ThreadSidebar />
+          )}
+          <SidebarRail onDoubleClick={resetSidebarWidth} />
+        </Sidebar>
+        {children}
+        <SidebarControl />
         <NavigationHistoryShortcuts />
         <MainAppLocationTracker />
       </SidebarProvider>

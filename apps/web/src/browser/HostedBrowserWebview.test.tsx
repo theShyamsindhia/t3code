@@ -129,7 +129,6 @@ describe("HostedBrowserWebview settings hydration", () => {
           pictureInPicture={false}
           profileId="work"
           zoomFactor={1.25}
-          loading={false}
         />,
         {
           createNodeMock: (element) =>
@@ -175,7 +174,7 @@ describe("HostedBrowserWebview settings hydration", () => {
       await retry;
     });
 
-    expect(acquire).toHaveBeenCalledExactlyOnceWith(runtimeTabId);
+    expect(acquire).toHaveBeenCalledExactlyOnceWith(runtimeTabId, undefined);
     expect(mocks.getPreviewConfig).toHaveBeenCalledExactlyOnceWith(threadRef.environmentId, "work");
     expect(createGuest).toHaveBeenCalledOnce();
     expect(createGuest).toHaveBeenCalledWith(

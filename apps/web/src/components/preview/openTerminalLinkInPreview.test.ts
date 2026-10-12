@@ -8,21 +8,14 @@ import {
   TerminalLinkPreviewOpenError,
 } from "./openTerminalLinkInPreview";
 
-vi.mock("~/state/session", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("~/state/session")>()),
-  readPreparedConnection: () => ({ httpBaseUrl: "http://localhost:3773" }),
-}));
-
 vi.mock("~/previewStateStore", () => ({
   applyPreviewServerSnapshot: vi.fn(),
-  rememberPreviewUrl: vi.fn(),
-  readThreadPreviewState: () => ({ sessions: {} }),
   isPreviewSupportedInRuntime: () => true,
 }));
 
 vi.mock("~/rightPanelStore", () => ({
   useRightPanelStore: {
-    getState: () => ({ openBrowser: vi.fn(), getUserActionRevision: () => 0 }),
+    getState: () => ({ openBrowser: vi.fn() }),
   },
 }));
 
@@ -40,9 +33,9 @@ const linkTargetMocks = vi.hoisted(() => ({
   preference: vi.fn<() => "system" | "app">(),
 }));
 
-vi.mock("~/browser/browserLinkTarget", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("~/browser/browserLinkTarget")>()),
+vi.mock("~/browser/browserLinkTarget", () => ({
   resolveBrowserLinkTargetPreference: async () => linkTargetMocks.preference(),
+  isWebUrl: (url: string) => /^https?:/u.test(url),
 }));
 
 const hydratedDefaults = {
@@ -103,7 +96,7 @@ describe("openTerminalLinkInPreview", () => {
     },
   );
 
-  it("opens local links in the Workbench even with the system browser preference", async () => {
+  it("opens in the system browser while that is the configured target", async () => {
     linkTargetMocks.preference.mockReturnValue("system");
     const fallbackToBrowser = vi.fn();
     const openPreview = vi.fn(async () => AsyncResult.success(snapshot));
@@ -116,21 +109,6 @@ describe("openTerminalLinkInPreview", () => {
       forceBrowser: false,
     });
 
-    expect(fallbackToBrowser).not.toHaveBeenCalled();
-    expect(openPreview).toHaveBeenCalledOnce();
-  });
-
-  it("keeps public links in the configured system browser", async () => {
-    linkTargetMocks.preference.mockReturnValue("system");
-    const fallbackToBrowser = vi.fn();
-    const openPreview = vi.fn(async () => AsyncResult.success(snapshot));
-    await openTerminalLinkInPreview({
-      url: "https://example.com/docs",
-      threadRef,
-      openPreview,
-      fallbackToBrowser,
-      forceBrowser: false,
-    });
     expect(fallbackToBrowser).toHaveBeenCalledOnce();
     expect(openPreview).not.toHaveBeenCalled();
   });
@@ -192,7 +170,7 @@ describe("openTerminalLinkInPreview", () => {
     const reportError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     await openTerminalLinkInPreview({
-      url: "https://example.com/docs",
+      url: "http://127.0.0.1:5173/",
       threadRef,
       openPreview: async () => AsyncResult.failure(cause),
       fallbackToBrowser,
@@ -206,25 +184,10 @@ describe("openTerminalLinkInPreview", () => {
     expect(error).toMatchObject({
       environmentId: "local",
       threadId: "thread-1",
-      targetOrigin: "https://example.com",
+      targetOrigin: "http://127.0.0.1:5173",
       cause,
     });
     expect(error.message).not.toContain("preview unavailable");
-  });
-
-  it("reports a local preview failure without unexpectedly launching another browser", async () => {
-    const failure = new Error("Server cannot be reached");
-    const fallbackToBrowser = vi.fn();
-    await expect(
-      openTerminalLinkInPreview({
-        url: "http://localhost:5173/",
-        threadRef,
-        openPreview: async () => AsyncResult.failure(Cause.fail(failure)),
-        fallbackToBrowser,
-        forceBrowser: false,
-      }),
-    ).rejects.toBe(failure);
-    expect(fallbackToBrowser).not.toHaveBeenCalled();
   });
 
   it("does not report or fall back when opening the preview is interrupted", async () => {
@@ -243,22 +206,19 @@ describe("openTerminalLinkInPreview", () => {
     expect(fallbackToBrowser).not.toHaveBeenCalled();
   });
 
-  it.each(["https://example.com/docs", "http://localhost:5173/"])(
-    "opens %s in the system browser when Ctrl or Command is held",
-    async (url) => {
-      const fallbackToBrowser = vi.fn();
-      const openPreview = vi.fn(async () => AsyncResult.success(snapshot));
+  it("opens in the system browser when Ctrl or Command is held", async () => {
+    const fallbackToBrowser = vi.fn();
+    const openPreview = vi.fn(async () => AsyncResult.success(snapshot));
 
-      await openTerminalLinkInPreview({
-        url,
-        threadRef,
-        openPreview,
-        fallbackToBrowser,
-        forceBrowser: true,
-      });
+    await openTerminalLinkInPreview({
+      url: "https://example.com/docs",
+      threadRef,
+      openPreview,
+      fallbackToBrowser,
+      forceBrowser: true,
+    });
 
-      expect(fallbackToBrowser).toHaveBeenCalledOnce();
-      expect(openPreview).not.toHaveBeenCalled();
-    },
-  );
+    expect(fallbackToBrowser).toHaveBeenCalledOnce();
+    expect(openPreview).not.toHaveBeenCalled();
+  });
 });

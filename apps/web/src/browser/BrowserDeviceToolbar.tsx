@@ -6,11 +6,7 @@ import {
   PREVIEW_VIEWPORT_MIN_DIMENSION,
   type PreviewViewportSetting,
 } from "@t3tools/contracts";
-import {
-  PREVIEW_VIEWPORT_PRESETS,
-  PREVIEW_VIEWPORT_PRESET_GROUPS,
-  resolvePreviewViewport,
-} from "@t3tools/shared/previewViewport";
+import { PREVIEW_VIEWPORT_PRESETS, resolvePreviewViewport } from "@t3tools/shared/previewViewport";
 import { Link2, Unlink2, X } from "lucide-react";
 import { useState } from "react";
 
@@ -200,21 +196,19 @@ export function BrowserDeviceToolbar({
         </SelectTrigger>
         <SelectPopup align="start" alignItemWithTrigger={false}>
           <SelectItem value={RESPONSIVE_VALUE}>Responsive</SelectItem>
-          {PREVIEW_VIEWPORT_PRESET_GROUPS.map((group) => (
-            <SelectGroup key={group.label}>
-              <SelectGroupLabel>{group.label}</SelectGroupLabel>
-              {group.presets.map((preset) => (
-                <SelectItem key={preset.id} value={preset.id}>
-                  <span className="flex w-full items-center justify-between gap-5">
-                    <span>{preset.label}</span>
-                    <span className="text-xs tabular-nums text-muted-foreground">
-                      {preset.detail}
-                    </span>
+          <SelectGroup>
+            <SelectGroupLabel>Standard</SelectGroupLabel>
+            {PREVIEW_VIEWPORT_PRESETS.map((preset) => (
+              <SelectItem key={preset.id} value={preset.id}>
+                <span className="flex w-full items-center justify-between gap-5">
+                  <span>{preset.label}</span>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {preset.detail}
                   </span>
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          ))}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectGroup>
         </SelectPopup>
       </Select>
 

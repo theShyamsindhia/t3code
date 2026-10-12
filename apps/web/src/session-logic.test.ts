@@ -188,24 +188,6 @@ describe("V2 session presentation", () => {
         completedAt: now,
       }),
     ).toMatchObject({ label: "Provider error after 10/10 retries" });
-
-    const connectionFailure = {
-      ...retryItem,
-      failure: { ...retryItem.failure, message: "workspace routing discovery failed" },
-      retry: { ...retryItem.retry, attempt: 5, maxAttempts: 5 },
-    };
-    expect(providerErrorPresentation(connectionFailure).label).toBe("Codex is reconnecting (5/5)");
-    expect(providerErrorPresentation({ ...connectionFailure, status: "failed" })).toEqual({
-      label: "Codex couldn't connect",
-      detail:
-        "Codex couldn't reach ChatGPT to continue. Check your connection, then retry. If it keeps happening, try again shortly.\n\nworkspace routing discovery failed",
-    });
-    expect(providerErrorPresentation({ ...connectionFailure, status: "completed" }).label).toBe(
-      "Codex reconnected",
-    );
-    expect(providerErrorPresentation({ ...connectionFailure, status: "cancelled" }).label).toBe(
-      "Codex reconnection stopped",
-    );
   });
 
   it("selects the latest proposed plan for a run", () => {
@@ -1125,51 +1107,6 @@ describe("native provider presentation in the v2 timeline", () => {
     expect(workEntryIndicatesToolSuccess(entry.entry)).toBe(false);
   });
 
-  it("keeps completed widgets inline after surrounding work folds, but not failed calls", () => {
-    const widget = {
-      ...base,
-      type: "dynamic_tool" as const,
-      toolName: "t3_widget_present",
-      runId: RunId.make("widget-run"),
-      input: {
-        title: "Try it",
-        description: "Find a balance",
-        html: "<input type='range'>",
-        height: 200,
-      },
-    } satisfies OrchestrationV2TurnItem;
-    const entries = deriveTimelineEntriesFromVisibleTurnItems({
-      visibleTurnItems: [
-        visible({
-          ...base,
-          id: TurnItemId.make("before-widget"),
-          runId: widget.runId,
-          type: "command_execution",
-          input: "echo ready",
-          output: "ready",
-          exitCode: 0,
-        }),
-        visible(widget),
-      ],
-      optimisticMessages: [],
-    });
-    expect(entries[1]?.kind).toBe("event");
-    const rows = deriveMessagesTimelineRows({
-      timelineEntries: entries,
-      isWorking: false,
-      turnDiffSummaries: [],
-      supportsConversationRollback: false,
-    });
-    expect(rows.some((row) => row.kind === "turn-fold")).toBe(true);
-    expect(rows.some((row) => row.kind === "work")).toBe(false);
-    expect(rows).toContainEqual(expect.objectContaining({ kind: "event", id: widget.id }));
-    const failed = deriveTimelineEntriesFromVisibleTurnItems({
-      visibleTurnItems: [visible({ ...widget, output: { isError: true } })],
-      optimisticMessages: [],
-    });
-    expect(failed[0]?.kind).toBe("work");
-  });
-
   it("retains Claude Read image previews without tool output", () => {
     const item = {
       ...base,
@@ -1380,6 +1317,25 @@ describe("HTML renders in the timeline", () => {
       "work",
       "message",
     ]);
+  });
+
+  it("hosts a captured MCP app in place, from any provider's tool", () => {
+    const mcpApp = {
+      attachmentId: "render-thread-app-html",
+      server: "weather",
+      tool: "get_weather",
+      resourceUri: "ui://weather/dashboard",
+    };
+    const call = renderCall("completed", { t3McpApp: mcpApp, result: { content: [] } });
+    const entries = turn(
+      call.type === "dynamic_tool" ? { ...call, toolName: "weather.get_weather" } : call,
+    );
+    expect(entries.find((entry) => entry.kind === "mcp-app")).toMatchObject({
+      id: "render",
+      itemId: "render",
+      mcpApp,
+    });
+    expect(rowsFor(entries, false)).toEqual(["message", "turn-fold", "mcp-app", "message"]);
   });
 
   it("keeps a render visible when its superseded attempt folds", () => {

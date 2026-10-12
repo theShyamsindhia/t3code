@@ -12,6 +12,23 @@ becomes an attachment when inserting it would exceed the message limit. On a
 hardware keyboard, use `Cmd+Shift+V` on Apple devices or `Ctrl+Shift+V` elsewhere
 to keep a large paste editable in the composer instead.
 
+## Formatting
+
+The composer writes Markdown and shows it styled as you type. Markers such as
+`**` stay in the text and show beside the styled words when your cursor is on
+them. Lines starting with `- `, `1. `, `- [ ] `, `> `, `# ` or `---` become lists,
+task lists, quotes, headings and rules; ` ``` ` followed by Enter opens a code
+block. What you typed is what the agent receives, markers and numbering
+included, and `#1234` without a space still looks up a pull request.
+
+Enter sends. In a list or quote, **Shift+Enter** continues it, and Shift+Enter
+on an empty line leaves it; **Tab** nests a list item. In a code block, Enter
+starts a new line at the current indentation, **Tab** and **Shift+Tab** indent
+the selected lines, and a closing ` ``` ` followed by Enter, or two blank lines
+at the end, leave the block. **Backspace** at the start of a code block turns it
+back into plain lines. Choose the language in a code block's corner to change
+it. Very large code blocks are shown without syntax highlighting.
+
 ## Attach files
 
 Attach up to 100 files per message. Each image can be up to 10 MiB, with at most
@@ -146,6 +163,13 @@ Later transcription works offline for that language. Recordings can be up to fiv
 minutes long. Canceling, leaving the screen, or an audio interruption discards the
 recording and preserves your existing draft. While recording, the screen stays
 awake; it can sleep normally once recording stops.
+
+Voice input records from the first connected microphone in **Settings → Microphone**.
+The list mixes kinds (built-in, other wired, other Bluetooth, CarPlay) with wired and
+Bluetooth devices you have dictated with, listed by name. Drag to rank them together:
+for example, put **Other Bluetooth** above your AirPods so a new headset is preferred
+while the AirPods microphone stays low. By default, CarPlay comes after the built-in
+microphone.
 
 Transcription runs on your device. T3 Code deletes the temporary audio after
 transcription or cancellation; only the message text is sent when you submit.
@@ -292,19 +316,3 @@ including filenames or folders containing `#` or `?`.
 
 On mobile, select a PDF attachment or link to open it. iOS uses the native viewer;
 Android opens a compatible installed file viewer.
-
-## Compare and arrange ideas
-
-Ask your agent to use **Shared space** to compare a few directions or help you express a preference. When it offers a space, open it above the composer, move items into groups, and add notes about what matters. **Send arrangement** sends your choices back to that conversation without replacing your composer draft. You can undo edits or reset to the agent’s original arrangement.
-
-This experiment is available on web and desktop. Mobile can respond to the agent’s accompanying text summary. Unsent arrangements are saved only on the device where you edit them; sent replies remain in the chat. Earlier presentations are available while their messages are loaded in the conversation.
-
-### Interactive widgets
-
-Ask the agent for an interactive explanation or a way to explore a choice. On web and desktop,
-widgets appear inside the conversation: adjust their controls, review the reply below, then choose
-**Send reply** to continue. Exploring a widget does not send a message by itself.
-
-You can close or restart a widget. Its controls reset when reopened or reloaded; your prepared
-reply is saved locally on this device. The widget itself remains in the conversation history.
-Mobile clients receive the agent's accompanying explanation and can answer in text.

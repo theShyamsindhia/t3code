@@ -129,7 +129,6 @@ export function shouldPublishAgentAwarenessEvent(
     case "provider-turn.updated":
     case "turn-item.updated":
       return isTurnItemPayload(event.payload) && turnItemUpdateCanEndBackgroundWork(event.payload);
-    case "thread.external-history.synced":
     case "message.updated":
     case "plan.updated":
     case "checkpoint-scope.created":

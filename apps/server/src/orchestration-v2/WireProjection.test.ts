@@ -1,6 +1,4 @@
 import {
-  ChatWidgetPresentation,
-  InteractionPresentation,
   MessageId,
   ContextHandoffId,
   ProviderThreadId,
@@ -27,7 +25,6 @@ import {
 import { threadShellFromProjection } from "./ProjectionStore.ts";
 import { MAX_TOOL_OUTPUT_IMAGES, toolOutputImages } from "@t3tools/shared/toolOutput";
 
-const isInteractionPresentation = Schema.is(InteractionPresentation);
 const decodeTurnItem = Schema.decodeUnknownSync(OrchestrationV2TurnItem);
 const encodeTurnItemJson = Schema.encodeSync(OrchestrationV2TurnItemJson);
 const decodeTurnItemJson = Schema.decodeUnknownSync(OrchestrationV2TurnItemJson);
@@ -145,6 +142,7 @@ describe("orchestration V2 wire projection", () => {
         deletedAt: null,
       },
       runs: [],
+      attempts: [],
       runtimeRequests: [],
       messages: [
         {
@@ -402,52 +400,4 @@ describe("orchestration V2 wire projection", () => {
     };
     expect(projectTurnItemForWire({ ...base, output })).not.toHaveProperty("output");
   });
-});
-
-it("retains valid shared spaces through JSON-string and Cursor argument envelopes", () => {
-  const input = {
-    title: "Compare",
-    prompt: "What matters?",
-    groups: [{ id: "keep", label: "Keep" }],
-    items: Array.from({ length: 6 }, (_, index) => ({
-      id: String(index),
-      label: `Option ${index}`,
-      detail: "\\".repeat(400),
-      groupId: null,
-      emphasis: false,
-    })),
-  };
-  expect(isInteractionPresentation(input)).toBe(true);
-  for (const value of [
-    input,
-    JSON.stringify(input),
-    { toolName: "t3_interaction_present", args: input },
-  ]) {
-    const result = projectTurnItemForWire({
-      ...base,
-      toolName: "t3_interaction_present",
-      input: value,
-    });
-    expect(result.type === "dynamic_tool" ? result.input : null).toEqual(value);
-  }
-});
-
-it("retains bounded widget documents through provider envelopes and wire serialization", () => {
-  const input = { title: "Widget", description: "Try it", html: "\\".repeat(2900), height: 240 };
-  expect(Schema.is(ChatWidgetPresentation)(input)).toBe(true);
-  for (const value of [
-    input,
-    JSON.stringify(input),
-    { toolName: "t3_widget_present", args: input },
-  ]) {
-    const projected = projectTurnItemForWire({
-      ...base,
-      toolName: "t3_widget_present",
-      input: value,
-    });
-    const decoded = decodeTurnItem(
-      decodeTurnItemJson(encodeTurnItemJson(decodeTurnItem(projected))),
-    );
-    expect(decoded.type === "dynamic_tool" ? decoded.input : null).toEqual(value);
-  }
 });

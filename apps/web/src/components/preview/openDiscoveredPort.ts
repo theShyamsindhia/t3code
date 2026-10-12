@@ -4,24 +4,30 @@ import {
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
 
-import {
-  openUrlInPreview,
-  type BrowserSettingsReadError,
-  type OpenPreviewMutation,
-} from "~/browser/openFileInPreview";
+import { resolveDiscoveredServerUrl } from "~/browser/browserTargetResolver";
+import type { BrowserSettingsReadError, OpenPreviewMutation } from "~/browser/openFileInPreview";
 import { recordVisitForThread } from "~/browserHistoryStore";
+import { useRightPanelStore } from "~/rightPanelStore";
+import { openPreviewSession } from "./openPreviewSession";
+import { previewRuntimeFor } from "~/browser/previewRuntime";
 
 export async function openDiscoveredPort<E>(input: {
   readonly threadRef: ScopedThreadRef;
   readonly port: DiscoveredLocalServer;
   readonly openPreview: OpenPreviewMutation<E>;
 }): Promise<AtomCommandResult<void, E | BrowserSettingsReadError>> {
-  const result = await openUrlInPreview({
+  // A server tab runs on the environment, where loopback is already right.
+  const resolvedUrl =
+    previewRuntimeFor(input.threadRef.environmentId) === "server"
+      ? input.port.url
+      : resolveDiscoveredServerUrl(input.threadRef.environmentId, input.port.url);
+  const result = await openPreviewSession({
     openPreview: input.openPreview,
     threadRef: input.threadRef,
-    url: input.port.url,
+    url: resolvedUrl,
   });
-  return mapAtomCommandResult(result, () => {
+  return mapAtomCommandResult(result, (snapshot) => {
     recordVisitForThread(input.threadRef, input.port.url);
+    useRightPanelStore.getState().openBrowser(input.threadRef, snapshot.tabId);
   });
 }

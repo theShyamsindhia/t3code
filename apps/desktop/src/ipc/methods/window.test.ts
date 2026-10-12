@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Effect from "effect/Effect";
@@ -24,8 +24,6 @@ import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
-import * as ElectronTheme from "../../electron/ElectronTheme.ts";
-import * as DesktopWindow from "../../window/DesktopWindow.ts";
 import * as DesktopAppSettings from "../../settings/DesktopAppSettings.ts";
 import {
   getLocalEnvironmentBootstraps,
@@ -33,7 +31,6 @@ import {
   pasteAsText,
   pickProjectFavicon,
   probeRemoteEditors,
-  setTheme,
 } from "./window.ts";
 
 const readyWslConfig: DesktopBackendManager.DesktopBackendStartConfig = {
@@ -290,7 +287,7 @@ describe("pickProjectFavicon", () => {
             filters: [
               {
                 name: "Images",
-                extensions: ["avif", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"],
+                extensions: ["avif", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp", "icns"],
               },
             ],
           },
@@ -317,7 +314,7 @@ describe("pickProjectFavicon", () => {
   );
 });
 
-it.effect.skipIf(HostProcessPlatform.defaultValue() === "win32")(
+it.effect.skipIf(HostProcess.Platform.defaultValue() === "win32")(
   "finds remote editors installed without PATH launchers",
   () =>
     Effect.gen(function* () {
@@ -336,50 +333,14 @@ it.effect.skipIf(HostProcessPlatform.defaultValue() === "win32")(
         yield* fs.chmod(executable, 0o755);
       }
       const editors = yield* probeRemoteEditors.handler(undefined).pipe(
-        Effect.provideService(HostProcessEnvironment, {
+        Effect.provideService(HostProcess.Environment, {
           HOME: home,
           PATH: path.join(home, "empty"),
         }),
-        Effect.provideService(HostProcessPlatform, "darwin"),
+        Effect.provideService(HostProcess.Platform, "darwin"),
       );
       assert.include(editors, "cursor");
       assert.include(editors, "vscode");
-      assert.notInclude(editors, "webstorm");
+      assert.include(editors, "webstorm");
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
-
-describe("setTheme payload", () => {
-  it.effect("accepts legacy themes and glass styles without accepting a style as the theme", () => {
-    const setSource = vi.fn(() => Effect.void);
-    return Effect.gen(function* () {
-      yield* setTheme.handler("dark");
-      yield* setTheme.handler({ theme: "system", vibrancy: true });
-      yield* setTheme.handler({ theme: "light", vibrancy: true, glassStyle: "clear" });
-      assert.deepEqual(setSource.mock.calls, [
-        ["dark", false, "regular"],
-        ["system", true, undefined],
-        ["light", true, "clear"],
-      ]);
-      const invalidTheme = yield* Effect.flip(setTheme.handler("clear").pipe(Effect.asVoid));
-      const invalidStyle = yield* Effect.flip(
-        setTheme
-          .handler({
-            theme: "dark",
-            vibrancy: true,
-            glassStyle: "unknown",
-          })
-          .pipe(Effect.asVoid),
-      );
-      assert.strictEqual(invalidTheme._tag, "SchemaError");
-      assert.strictEqual(invalidStyle._tag, "SchemaError");
-      assert.lengthOf(setSource.mock.calls, 3);
-    }).pipe(
-      Effect.provide(
-        Layer.merge(
-          Layer.mock(ElectronTheme.ElectronTheme, { setSource }),
-          Layer.mock(DesktopWindow.DesktopWindow, { syncAppearance: Effect.void }),
-        ),
-      ),
-    );
-  });
-});

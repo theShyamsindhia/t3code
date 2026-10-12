@@ -12,18 +12,20 @@ import {
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
 import {
+  effectiveShortcutsForCommand,
   formatShortcutLabel,
   isDiffToggleShortcut,
+  isRichTextBoldShortcut,
   modelPickerJumpCommandForIndex,
   modelPickerJumpIndexFromCommand,
   isOpenFavoriteEditorShortcut,
   isTerminalClearShortcut,
-  listNavigationKeyFromEvent,
   isTerminalCloseShortcut,
   isTerminalNewShortcut,
   isTerminalSplitShortcut,
   isTerminalSplitVerticalShortcut,
   isTerminalToggleShortcut,
+  resolveChatShortcutCommand,
   resolveShortcutCommand,
   shouldShowThreadJumpHintsForModifiers,
   shortcutLabelForCommand,
@@ -141,6 +143,14 @@ const DEFAULT_BINDINGS = compile([
     command: "themeEditor.toggle",
   },
   {
+    shortcut: modShortcut("f"),
+    command: "chat.find",
+    whenAst: whenAnd(
+      whenNot(whenIdentifier("terminalFocus")),
+      whenNot(whenIdentifier("previewFocus")),
+    ),
+  },
+  {
     shortcut: modShortcut("m", { shiftKey: true }),
     command: "modelPicker.toggle",
     whenAst: whenNot(whenIdentifier("terminalFocus")),
@@ -179,6 +189,40 @@ const DEFAULT_BINDINGS = compile([
     whenAst: whenIdentifier("modelPickerOpen"),
   },
 ]);
+
+describe("effectiveShortcutsForCommand", () => {
+  it("passes only effective preview shortcuts to the desktop bridge", () => {
+    const reopen = modShortcut("t", { shiftKey: true });
+    const second = modShortcut("y", { shiftKey: true });
+    const keybindings = compile([
+      { shortcut: reopen, command: "view.reopenClosed" },
+      {
+        shortcut: second,
+        command: "view.reopenClosed",
+        whenAst: whenIdentifier("previewFocus"),
+      },
+      {
+        shortcut: reopen,
+        command: "preview.toggle",
+        whenAst: whenIdentifier("previewFocus"),
+      },
+    ]);
+    assert.deepEqual(
+      effectiveShortcutsForCommand(keybindings, "view.reopenClosed", {
+        platform: "MacIntel",
+        context: { previewFocus: true, previewOpen: true },
+      }),
+      [second],
+    );
+    assert.deepEqual(
+      effectiveShortcutsForCommand(keybindings, "view.reopenClosed", {
+        platform: "MacIntel",
+        context: { previewFocus: false },
+      }),
+      [reopen],
+    );
+  });
+});
 
 describe("isTerminalToggleShortcut", () => {
   it("matches Cmd+J on macOS", () => {
@@ -704,16 +748,52 @@ describe("chat/editor shortcuts", () => {
     );
   });
 
-  it("resolves a user-configured thread panel shortcut without assigning a default", () => {
-    const bindings = compile([
-      { shortcut: modShortcut("b", { shiftKey: true }), command: "threadPanel.toggle" },
-    ]);
+  it("toggles the thread panel by default without taking terminal keystrokes", () => {
+    for (const platform of ["MacIntel", "Win32", "Linux"]) {
+      const input = event({
+        key: "b",
+        metaKey: platform === "MacIntel",
+        ctrlKey: platform !== "MacIntel",
+        shiftKey: true,
+      });
+      assert.strictEqual(
+        resolveShortcutCommand(input, DEFAULT_RESOLVED_KEYBINDINGS, {
+          platform,
+          context: { terminalFocus: false, editableFocus: true },
+        }),
+        "threadPanel.toggle",
+      );
+      assert.isNull(
+        resolveShortcutCommand(input, DEFAULT_RESOLVED_KEYBINDINGS, {
+          platform,
+          context: { terminalFocus: true },
+        }),
+      );
+    }
+  });
+
+  it("preserves a user-configured thread panel shortcut instead of its default", () => {
+    const bindings = mergeWithDefaultKeybindings(
+      compile([
+        {
+          shortcut: modShortcut("b", { altKey: true, shiftKey: true }),
+          command: "threadPanel.toggle",
+        },
+      ]),
+    );
 
     assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: "b", metaKey: true, altKey: true, shiftKey: true }),
+        bindings,
+        { platform: "MacIntel" },
+      ),
+      "threadPanel.toggle",
+    );
+    assert.isNull(
       resolveShortcutCommand(event({ key: "b", metaKey: true, shiftKey: true }), bindings, {
         platform: "MacIntel",
       }),
-      "threadPanel.toggle",
     );
   });
 
@@ -849,6 +929,102 @@ describe("cross-command precedence", () => {
       "chat.new",
     );
   });
+});
+
+describe("resolveChatShortcutCommand", () => {
+  it("runs the active environment's script shortcut instead of the primary environment's", () => {
+    const primary = compile([{ shortcut: modShortcut("r"), command: "script.setup.run" }]);
+    const active = compile([{ shortcut: modShortcut("t"), command: "script.setup.run" }]);
+
+    assert.strictEqual(
+      resolveChatShortcutCommand(event({ key: "t", ctrlKey: true }), primary, active, {
+        platform: "Linux",
+      }),
+      "script.setup.run",
+    );
+    assert.isNull(
+      resolveChatShortcutCommand(event({ key: "r", ctrlKey: true }), primary, active, {
+        platform: "Linux",
+      }),
+    );
+  });
+
+  it("resolves shared chords to the active environment's script ID", () => {
+    const primary = compile([{ shortcut: modShortcut("r"), command: "script.setup.run" }]);
+    const active = compile([{ shortcut: modShortcut("r"), command: "script.deploy.run" }]);
+
+    assert.strictEqual(
+      resolveChatShortcutCommand(event({ key: "r", metaKey: true }), primary, active, {
+        platform: "MacIntel",
+      }),
+      "script.deploy.run",
+    );
+  });
+
+  it("does not run primary scripts before the active environment's bindings arrive", () => {
+    const primary = compile([{ shortcut: modShortcut("r"), command: "script.setup.run" }]);
+
+    assert.isNull(
+      resolveChatShortcutCommand(event({ key: "r", ctrlKey: true }), primary, [], {
+        platform: "Linux",
+      }),
+    );
+  });
+
+  it("keeps primary app commands ahead of conflicting active script shortcuts", () => {
+    const primary = compile([{ shortcut: modShortcut("k"), command: "commandPalette.toggle" }]);
+    const active = compile([{ shortcut: modShortcut("k"), command: "script.setup.run" }]);
+
+    assert.strictEqual(
+      resolveChatShortcutCommand(event({ key: "k", ctrlKey: true }), primary, active, {
+        platform: "Linux",
+      }),
+      "commandPalette.toggle",
+    );
+  });
+
+  it("keeps app shortcuts on the primary environment when the active environment remaps them", () => {
+    const primary = compile([{ shortcut: modShortcut("j"), command: "terminal.toggle" }]);
+    const active = compile([{ shortcut: modShortcut("t"), command: "terminal.toggle" }]);
+
+    assert.strictEqual(
+      resolveChatShortcutCommand(event({ key: "j", ctrlKey: true }), primary, active, {
+        platform: "Linux",
+      }),
+      "terminal.toggle",
+    );
+    assert.isNull(
+      resolveChatShortcutCommand(event({ key: "t", ctrlKey: true }), primary, active, {
+        platform: "Linux",
+      }),
+    );
+  });
+
+  it.each([false, true])(
+    "preserves active binding precedence with terminalFocus=%s",
+    (terminalFocus) => {
+      const primary = compile([{ shortcut: modShortcut("r"), command: "script.setup.run" }]);
+      const active = compile([
+        { shortcut: modShortcut("r"), command: "script.deploy.run" },
+        {
+          shortcut: modShortcut("r"),
+          command: "terminal.new",
+          whenAst: whenIdentifier("terminalFocus"),
+        },
+      ]);
+      const options = { platform: "Linux", context: { terminalFocus } };
+      const shortcut = event({ key: "r", ctrlKey: true });
+
+      assert.strictEqual(
+        resolveChatShortcutCommand(shortcut, primary, active, options),
+        terminalFocus ? null : "script.deploy.run",
+      );
+      assert.strictEqual(
+        resolveChatShortcutCommand(shortcut, active, active, options),
+        resolveShortcutCommand(shortcut, active, options),
+      );
+    },
+  );
 });
 
 describe("resolveShortcutCommand", () => {
@@ -1073,46 +1249,6 @@ describe("formatShortcutLabel", () => {
   });
 });
 
-describe("listNavigationKeyFromEvent", () => {
-  it("maps Ctrl+J and Ctrl+K to down and up on macOS", () => {
-    assert.strictEqual(
-      listNavigationKeyFromEvent(event({ key: "j", ctrlKey: true }), "MacIntel"),
-      "ArrowDown",
-    );
-    assert.strictEqual(
-      listNavigationKeyFromEvent(event({ key: "k", ctrlKey: true }), "MacIntel"),
-      "ArrowUp",
-    );
-  });
-
-  it("matches the J key on non-Latin macOS layouts", () => {
-    assert.strictEqual(
-      listNavigationKeyFromEvent(event({ key: "о", code: "KeyJ", ctrlKey: true }), "MacIntel"),
-      "ArrowDown",
-    );
-  });
-
-  it("leaves Ctrl+J and Ctrl+K to the terminal and palette where mod is Ctrl", () => {
-    assert.isNull(listNavigationKeyFromEvent(event({ key: "j", ctrlKey: true }), "Win32"));
-    assert.isNull(listNavigationKeyFromEvent(event({ key: "k", ctrlKey: true }), "Linux x86_64"));
-  });
-
-  it("ignores Cmd, extra modifiers, bare letters, and keyup", () => {
-    const mac = "MacIntel";
-    assert.isNull(listNavigationKeyFromEvent(event({ key: "j", metaKey: true }), mac));
-    assert.isNull(
-      listNavigationKeyFromEvent(event({ key: "j", ctrlKey: true, shiftKey: true }), mac),
-    );
-    assert.isNull(
-      listNavigationKeyFromEvent(event({ key: "k", ctrlKey: true, altKey: true }), mac),
-    );
-    assert.isNull(listNavigationKeyFromEvent(event({ key: "j" }), mac));
-    assert.isNull(
-      listNavigationKeyFromEvent(event({ type: "keyup", key: "j", ctrlKey: true }), mac),
-    );
-  });
-});
-
 describe("isTerminalClearShortcut", () => {
   it("matches Ctrl+L on all platforms", () => {
     assert.isTrue(isTerminalClearShortcut(event({ key: "l", ctrlKey: true }), "Linux"));
@@ -1127,6 +1263,35 @@ describe("isTerminalClearShortcut", () => {
     assert.isFalse(
       isTerminalClearShortcut(event({ type: "keyup", key: "l", ctrlKey: true }), "Linux"),
     );
+  });
+});
+
+describe("isRichTextBoldShortcut", () => {
+  it("matches Mod+B without extra modifiers", () => {
+    assert.isTrue(isRichTextBoldShortcut(event({ key: "b", metaKey: true })));
+    assert.isTrue(isRichTextBoldShortcut(event({ key: "B", ctrlKey: true })));
+  });
+
+  it("matches the B key on non-Latin layouts, like the sidebar toggle does", () => {
+    const cyrillicB = event({ key: "и", code: "KeyB", ctrlKey: true });
+    assert.isTrue(isRichTextBoldShortcut(cyrillicB));
+    assert.strictEqual(
+      resolveShortcutCommand(cyrillicB, DEFAULT_BINDINGS, { platform: "Win32" }),
+      "sidebar.toggle",
+    );
+  });
+
+  it("follows the letter a Latin layout types, not the physical key", () => {
+    assert.isFalse(isRichTextBoldShortcut(event({ key: "x", code: "KeyB", ctrlKey: true })));
+    assert.isTrue(isRichTextBoldShortcut(event({ key: "b", code: "KeyN", ctrlKey: true })));
+  });
+
+  it("ignores shifted, alted, bare, and non-keydown presses", () => {
+    assert.isFalse(isRichTextBoldShortcut(event({ key: "b", metaKey: true, shiftKey: true })));
+    assert.isFalse(isRichTextBoldShortcut(event({ key: "b", metaKey: true, altKey: true })));
+    assert.isFalse(isRichTextBoldShortcut(event({ key: "b" })));
+    assert.isFalse(isRichTextBoldShortcut(event({ key: "i", metaKey: true })));
+    assert.isFalse(isRichTextBoldShortcut(event({ type: "keyup", key: "b", metaKey: true })));
   });
 });
 

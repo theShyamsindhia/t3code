@@ -3,7 +3,6 @@ import {
   DesktopAppBrandingSchema,
   DesktopEnvironmentBootstrapSchema,
   DesktopThemeSchema,
-  DesktopGlassStyleSchema,
   EDITORS,
   EditorId,
   PickedThemeFileSchema,
@@ -14,10 +13,9 @@ import {
   type DesktopEnvironmentBootstrap,
   type PickedThemeFile,
 } from "@t3tools/contracts";
-import { WORKSPACE_IMAGE_PREVIEW_EXTENSIONS } from "@t3tools/shared/filePreview";
+import { PROJECT_FAVICON_EXTENSIONS } from "@t3tools/shared/projectFavicon";
 import { resolveEditorCommand } from "@t3tools/shared/editor";
-import * as HostProcess from "@t3tools/shared/hostProcess";
-import * as NodeOS from "node:os";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Effect from "effect/Effect";
@@ -37,7 +35,6 @@ import * as ElectronMenu from "../../electron/ElectronMenu.ts";
 import * as ElectronShell from "../../electron/ElectronShell.ts";
 import * as ElectronTheme from "../../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
-import * as DesktopWindow from "../../window/DesktopWindow.ts";
 import * as Electron from "electron";
 import * as MacPermissions from "../../permissions/MacPermissions.ts";
 import { safariPermissionCheck } from "../../preview/BrowserImport/SafariPermission.ts";
@@ -273,7 +270,7 @@ export const pickProjectFavicon = DesktopIpc.makeIpcMethod({
       filters: [
         {
           name: "Images",
-          extensions: WORKSPACE_IMAGE_PREVIEW_EXTENSIONS.map((extension) => extension.slice(1)),
+          extensions: PROJECT_FAVICON_EXTENSIONS.map((extension) => extension.slice(1)),
         },
       ],
     });
@@ -283,25 +280,11 @@ export const pickProjectFavicon = DesktopIpc.makeIpcMethod({
 
 export const setTheme = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.SET_THEME_CHANNEL,
-  payload: Schema.Union([
-    DesktopThemeSchema,
-    Schema.Struct({
-      theme: DesktopThemeSchema,
-      vibrancy: Schema.Boolean,
-      glassStyle: Schema.optional(DesktopGlassStyleSchema),
-    }),
-  ]),
+  payload: DesktopThemeSchema,
   result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.window.setTheme")(function* (input) {
+  handler: Effect.fn("desktop.ipc.window.setTheme")(function* (theme) {
     const electronTheme = yield* ElectronTheme.ElectronTheme;
-    const desktopWindow = yield* DesktopWindow.DesktopWindow;
-    const theme = typeof input === "string" ? input : input.theme;
-    yield* electronTheme.setSource(
-      theme,
-      typeof input === "string" ? false : input.vibrancy,
-      typeof input === "string" ? "regular" : input.glassStyle,
-    );
-    yield* desktopWindow.syncAppearance;
+    yield* electronTheme.setSource(theme);
   }),
 });
 
@@ -361,7 +344,7 @@ export const probeRemoteEditors = DesktopIpc.makeIpcMethod({
   result: Schema.Array(EditorId),
   handler: Effect.fn("desktop.ipc.window.probeRemoteEditors")(function* () {
     const available: Array<EditorId> = [];
-    const env = yield* HostProcess.HostProcessEnvironment;
+    const env = yield* HostProcess.Environment;
     for (const editorId of REMOTE_CAPABLE_EDITOR_IDS) {
       const editor = EDITORS.find((editor) => editor.id === editorId);
       if (editor && Option.isSome(yield* resolveEditorCommand(editor, env))) {
@@ -414,7 +397,7 @@ export const pickThemeFiles = DesktopIpc.makeIpcMethod({
     // The VS Code extensions directory is the same dotfolder on Windows,
     // macOS, and Linux; when it is missing the picker opens wherever the
     // platform would by default.
-    const extensionsDir = path.join(NodeOS.homedir(), ".vscode", "extensions");
+    const extensionsDir = path.join(yield* HostProcess.HomeDirectory, ".vscode", "extensions");
     const defaultPath = yield* fileSystem
       .exists(extensionsDir)
       .pipe(Effect.orElseSucceed(() => false));

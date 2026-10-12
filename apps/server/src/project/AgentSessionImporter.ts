@@ -1,7 +1,4 @@
 import {
-  externalSessionIdentity,
-  AgentSessionTakeoverError,
-  CommandId,
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -26,7 +23,6 @@ import {
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
-import { randomUuidV4 } from "../orchestration-v2/RandomUuid.ts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -36,7 +32,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import * as EventSink from "../orchestration-v2/EventSink.ts";
-import * as IdAllocator from "../orchestration-v2/IdAllocator.ts";
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ProviderSessionRuntime from "../persistence/ProviderSessionRuntime.ts";
 import * as AgentSessionScanner from "./AgentSessionScanner.ts";
@@ -90,7 +86,7 @@ function dateTime(value: string): DateTime.Utc {
   return DateTime.makeUnsafe(value);
 }
 
-export function messageEvents(input: {
+function messageEvents(input: {
   readonly threadId: ThreadId;
   readonly index: number;
   readonly message: AgentSessionScanner.AgentSessionThreadMessage;
@@ -196,24 +192,6 @@ const make = Effect.gen(function* () {
     ) {
       return yield* new AgentSessionImportProjectChangedError({ projectId: input.projectId });
     }
-    const takeover =
-      input.takeOverThreadId === undefined ? null : externalSessionIdentity(input.takeOverThreadId);
-    if (input.takeOverThreadId !== undefined) {
-      const preview = yield* Effect.option(
-        orchestrator.getThreadRecords(input.takeOverThreadId, []),
-      );
-      if (
-        !takeover ||
-        Option.isNone(preview) ||
-        preview.value.thread.projectId !== input.projectId ||
-        preview.value.thread.deletedAt !== null
-      ) {
-        return yield* new AgentSessionTakeoverError({
-          detail: "This external conversation is no longer available.",
-        });
-      }
-      yield* scanner.scan;
-    }
     const runtimeRows = yield* runtimes
       .list()
       .pipe(
@@ -233,12 +211,7 @@ const make = Effect.gen(function* () {
       }
       return payload.value.importedTranscripts ?? [];
     });
-    const outcomes = scanner.recentThreads(
-      project.workspaceRoot,
-      completedSources,
-      takeover ? true : undefined,
-      takeover ? [`${takeover.providerInstanceId}\0${takeover.providerSessionId}`] : undefined,
-    );
+    const outcomes = scanner.recentThreads(project.workspaceRoot, completedSources);
     const importedThreadIds = new Set<ThreadId>();
     let importedCount = 0;
     let skippedCount = 0;
@@ -250,13 +223,6 @@ const make = Effect.gen(function* () {
           return;
         }
         const source = outcome.source;
-        if (
-          takeover &&
-          (source.provider !== takeover.provider ||
-            source.providerInstanceId !== takeover.providerInstanceId ||
-            source.providerSessionId !== takeover.providerSessionId)
-        )
-          return;
         const threadId = ThreadId.make(
           `import:${source.providerInstanceId}:${source.providerSessionId}`,
         );
@@ -427,36 +393,6 @@ const make = Effect.gen(function* () {
       }),
     );
 
-    if (takeover && input.takeOverThreadId) {
-      const threadId = ThreadId.make(
-        `import:${takeover.providerInstanceId}:${takeover.providerSessionId}`,
-      );
-      if (!importedThreadIds.has(threadId))
-        return yield* new AgentSessionTakeoverError({
-          detail: "Could not load this conversation. Try syncing it again.",
-        });
-      yield* Effect.gen(function* () {
-        yield* orchestrator.dispatch({
-          type: "thread.unsettle",
-          reason: "user",
-          commandId: CommandId.make(yield* randomUuidV4),
-          threadId,
-        });
-        yield* orchestrator.dispatch({
-          type: "thread.archive",
-          commandId: CommandId.make(yield* randomUuidV4),
-          threadId: input.takeOverThreadId!,
-        });
-      }).pipe(
-        Effect.mapError(
-          () =>
-            new AgentSessionTakeoverError({
-              detail: "The conversation was imported, but the handoff could not finish. Try again.",
-            }),
-        ),
-      );
-      return { importedCount, skippedCount, threadId } satisfies AgentSessionImportResult;
-    }
     return { importedCount, skippedCount } satisfies AgentSessionImportResult;
   });
 

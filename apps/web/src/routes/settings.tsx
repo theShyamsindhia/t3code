@@ -5,13 +5,11 @@ import { Button } from "../components/ui/button";
 import { useSettingsRestore } from "../components/settings/SettingsPanels";
 
 import { SettingsBreadcrumb } from "../components/settings/SettingsBreadcrumb";
-import { SettingsSidebarNav } from "../components/settings/SettingsSidebarNav";
 import { SidebarInset } from "../components/ui/sidebar";
 import { useNavigateToMainApp } from "../components/sidebar/mainAppLocation";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
 import { isElectron } from "../env";
 import { useEscapeToGoBack } from "../hooks/useNavigateBack";
-import { useIsMobile } from "../hooks/useMediaQuery";
 import {
   SettingsScopeProvider,
   useSettingsScope,
@@ -114,10 +112,13 @@ function SettingsScopeBoundary({ pathname, children }: { pathname: string; child
 
 function SettingsContentLayout() {
   const location = useLocation();
-  const isMobile = useIsMobile();
   const navigateToMainApp = useNavigateToMainApp();
   useEscapeToGoBack(navigateToMainApp);
-  const { search } = useSettingsScope();
+  const { search, environment } = useSettingsScope();
+  const contentScopeKey =
+    location.pathname === "/settings/diagnostics" || location.pathname === "/settings/providers"
+      ? environment?.environmentId
+      : JSON.stringify(search);
   const [restoreSignal, setRestoreSignal] = useState(0);
 
   return (
@@ -136,23 +137,10 @@ function SettingsContentLayout() {
           </div>
         </WorkspacePageHeader>
 
-        <div className="flex min-h-0 flex-1">
-          {!isMobile ? (
-            <nav
-              aria-label="Settings"
-              className="flex w-52 shrink-0 flex-col border-r border-border"
-            >
-              <SettingsSidebarNav pathname={location.pathname} embedded />
-            </nav>
-          ) : null}
-          <div
-            key={`${JSON.stringify(search)}:${restoreSignal}`}
-            className="flex min-h-0 min-w-0 flex-1 flex-col"
-          >
-            <SettingsScopeBoundary pathname={location.pathname}>
-              <Outlet />
-            </SettingsScopeBoundary>
-          </div>
+        <div key={`${contentScopeKey}:${restoreSignal}`} className="min-h-0 flex flex-1 flex-col">
+          <SettingsScopeBoundary pathname={location.pathname}>
+            <Outlet />
+          </SettingsScopeBoundary>
         </div>
       </div>
     </SidebarInset>

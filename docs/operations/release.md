@@ -4,29 +4,6 @@
 
 This document covers the unified release workflow for stable and nightly desktop releases.
 
-## Community fork previews
-
-This fork restricts the inherited publishing and deployment jobs to `pingdotgg/t3code`.
-Publish fork previews manually from a verified commit instead of dispatching the upstream
-release workflow, which depends on upstream runners, package ownership, and cloud credentials.
-
-For an Apple Silicon Mac preview, start from a clean checkout and run the following with a new
-preview version and an output directory outside the checkout. Stamp the package versions too:
-the bundled server reads its package version, while `APP_VERSION` sets the renderer version.
-
-```sh
-node scripts/update-release-package-versions.ts 0.0.46-preview.20261006.7
-APP_VERSION=0.0.46-preview.20261006.7 vp run dist:desktop:artifact -- \
-  --platform mac --target zip --arch arm64 \
-  --build-version 0.0.46-preview.20261006.7 --output-dir /tmp/t3-fork-release
-git restore apps/server/package.json apps/desktop/package.json apps/web/package.json packages/contracts/package.json
-```
-
-Verify the packaged app before tagging that commit and attaching the archive and its SHA-256
-checksum to a GitHub prerelease on `theShyamsindhia/t3code`. Describe the signing status and
-tested platforms in the release notes. Preview builds have no automatic update feed.
-Keep chat data, browser profiles, credentials, and local settings out of release assets.
-
 ## What the workflow does
 
 - Workflow: `.github/workflows/release.yml`
@@ -314,6 +291,18 @@ and `VERCEL_ORG_ID` secrets. It also respects the optional `VERCEL_TEAM_SLUG`
 variable. The Vercel project's root directory must be `apps/marketing`.
 Git deployments remain disabled in `apps/marketing/vercel.ts`.
 
+## Android APK mirror
+
+`.github/workflows/mobile-android-apk.yml` checks Google Play hourly and publishes the newest
+build on the `v2` closed testing track to the rolling `android-nightly` prerelease, for nightly
+users who can't join the Play testing group. Those v2-preview builds are the only Android builds that can
+connect to a nightly server. The APK is the universal APK Play generates and signs from the
+uploaded bundle, so no signing key lives in GitHub. The job skips itself until
+`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` holds a Play service account key with the "Release to
+production, exclude devices, and use Play App Signing" permission, which downloading generated
+APKs requires. The job reads tracks without opening a Play edit, so it can share the service
+account EAS Submit uses.
+
 ## Hosted web app release deployment
 
 The hosted app is intentionally not deployed by Vercel's Git integration. The
@@ -576,6 +565,16 @@ Notes:
 - The workflow writes it to a temporary `AuthKey_<id>.p8` file at runtime.
 - The workflow decodes `MACOS_PROVISIONING_PROFILE`, validates it with `security cms`, and passes it
   to the desktop packager.
+- In-app browser passkeys depend on the same profile. The packager adds each entitlement only when
+  the profile grants it, because macOS will not launch an app that claims more than its profile
+  allows. The build log reports which ones it enabled.
+  - `keychain-access-groups` (`<TEAM_ID>.com.t3tools.t3code.webauthn`) enables Touch ID passkeys.
+    Profiles that grant the team's keychain groups (`<TEAM_ID>.*`) cover it.
+  - `com.apple.developer.web-browser.public-key-credential` lets the system passkey sheet (iCloud
+    Keychain, password managers, phones, security keys) serve any site. Apple grants it as a
+    managed capability: the Account Holder requests it through the
+    [macOS Browsers Passkeys form](https://developer.apple.com/contact/request/macos-browsers-passkeys/).
+    After approval, regenerate the profile and update `MACOS_PROVISIONING_PROFILE`.
 
 ## 3) Azure Trusted Signing setup (Windows)
 

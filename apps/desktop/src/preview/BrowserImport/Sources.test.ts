@@ -3,11 +3,7 @@
 import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
-import {
-  HostProcessEnvironment,
-  HostProcessHostname,
-  HostProcessPlatform,
-} from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -80,8 +76,8 @@ const withSourceHome = Effect.fnUntraced(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3code-sources-" });
   const context = yield* sourcePathContext.pipe(
-    Effect.provideService(HostProcessEnvironment, { HOME: home }),
-    Effect.provideService(HostProcessPlatform, "darwin"),
+    Effect.provideService(HostProcess.Environment, { HOME: home }),
+    Effect.provideService(HostProcess.Platform, "darwin"),
   );
   yield* fileSystem.makeDirectory(userDataDirectory(context), { recursive: true });
   return context;
@@ -126,42 +122,6 @@ const writeFirefoxCookieDatabase = (
     database.close();
   });
 
-describe("Aside on macOS", () => {
-  it.effect.skipIf(!symlinksSupported)(
-    "discovers both profiles and respects the running browser",
-    () =>
-      run(
-        Effect.gen(function* () {
-          const aside = BROWSER_IMPORT_SOURCES.find((source) => source.id === "aside")!;
-          const fileSystem = yield* FileSystem.FileSystem;
-          const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3code-aside-mac-" });
-          const context = yield* sourcePathContext.pipe(
-            Effect.provideService(HostProcessEnvironment, { HOME: home }),
-            Effect.provideService(HostProcessPlatform, "darwin"),
-          );
-          const root = `${home}/Library/Application Support/Aside`;
-          yield* fileSystem.makeDirectory(`${root}/Default/Network`, { recursive: true });
-          yield* fileSystem.makeDirectory(`${root}/Profile 1`, { recursive: true });
-          yield* writeCookieDatabase(`${root}/Default/Network/Cookies`, 2);
-          yield* writeCookieDatabase(`${root}/Profile 1/Cookies`, 3);
-          yield* fileSystem.writeFileString(
-            `${root}/Local State`,
-            '{"profile":{"info_cache":{"Default":{"name":"Personal"},"Profile 1":{"name":"Work"}}}}',
-          );
-
-          assert.isTrue(yield* isSourceInstalled(aside, context));
-          assert.deepEqual(yield* listSourceProfiles(aside, context), [
-            { directory: "Default", name: "Personal", cookieCount: 2 },
-            { directory: "Profile 1", name: "Work", cookieCount: 3 },
-          ]);
-          assert.isFalse(yield* isSourceRunning(aside, context));
-          yield* fileSystem.symlink("foreign-host-4242", `${root}/SingletonLock`);
-          assert.isTrue(yield* isSourceRunning(aside, context));
-        }),
-      ),
-  );
-});
-
 describe("Helium on Linux", () => {
   it.effect.skipIf(!symlinksSupported)("discovers its profiles and checks the user-data lock", () =>
     run(
@@ -169,8 +129,8 @@ describe("Helium on Linux", () => {
         const fileSystem = yield* FileSystem.FileSystem;
         const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3code-helium-linux-" });
         const context = yield* sourcePathContext.pipe(
-          Effect.provideService(HostProcessEnvironment, { HOME: home }),
-          Effect.provideService(HostProcessPlatform, "linux"),
+          Effect.provideService(HostProcess.Environment, { HOME: home }),
+          Effect.provideService(HostProcess.Platform, "linux"),
         );
         const root = `${home}/.config/net.imput.helium`;
         yield* fileSystem.makeDirectory(`${root}/Default`, { recursive: true });
@@ -198,11 +158,11 @@ describe("Helium on Windows", () => {
     run(
       Effect.gen(function* () {
         const context = yield* sourcePathContext.pipe(
-          Effect.provideService(HostProcessEnvironment, {
+          Effect.provideService(HostProcess.Environment, {
             USERPROFILE: "C:\\Users\\browser-user",
             LOCALAPPDATA: "C:\\Users\\browser-user\\AppData\\Local",
           }),
-          Effect.provideService(HostProcessPlatform, "win32"),
+          Effect.provideService(HostProcess.Platform, "win32"),
         );
 
         assert.include(helium.platforms, "win32");
@@ -234,11 +194,11 @@ describe("isSourceRunning", () => {
           prefix: "t3code-helium-windows-lock-",
         });
         const context = yield* sourcePathContext.pipe(
-          Effect.provideService(HostProcessEnvironment, {
+          Effect.provideService(HostProcess.Environment, {
             HOME: home,
             LOCALAPPDATA: home,
           }),
-          Effect.provideService(HostProcessPlatform, "win32"),
+          Effect.provideService(HostProcess.Platform, "win32"),
         );
         const profile = context.path.join(helium.userDataDirectory(context)!, "Default");
         const database = context.path.join(profile, "Network", "Cookies");
@@ -295,12 +255,12 @@ describe("isSourceRunning", () => {
 
           assert.isTrue(
             yield* isSourceRunning(helium, paths).pipe(
-              Effect.provideService(HostProcessHostname, "another-host"),
+              Effect.provideService(HostProcess.Hostname, "another-host"),
             ),
           );
           assert.isFalse(
             yield* isSourceRunning(helium, paths).pipe(
-              Effect.provideService(HostProcessHostname, "lock-owner"),
+              Effect.provideService(HostProcess.Hostname, "lock-owner"),
             ),
           );
         }),
@@ -692,8 +652,8 @@ describe("cookieDatabaseCandidatePaths", () => {
       Effect.gen(function* () {
         const path = yield* Path.Path;
         const context = yield* sourcePathContext.pipe(
-          Effect.provideService(HostProcessEnvironment, { HOME: "/tmp/test" }),
-          Effect.provideService(HostProcessPlatform, "darwin"),
+          Effect.provideService(HostProcess.Environment, { HOME: "/tmp/test" }),
+          Effect.provideService(HostProcess.Platform, "darwin"),
         );
         const candidates = cookieDatabaseCandidatePaths(firefox, context, "Profiles/abc.default");
         assert.deepEqual(candidates, [
@@ -720,8 +680,8 @@ describe("Firefox Snap profiles", () => {
             prefix: "t3code-firefox-snap-",
           });
           const context = yield* sourcePathContext.pipe(
-            Effect.provideService(HostProcessEnvironment, { HOME: home }),
-            Effect.provideService(HostProcessPlatform, "linux"),
+            Effect.provideService(HostProcess.Environment, { HOME: home }),
+            Effect.provideService(HostProcess.Platform, "linux"),
           );
           const root = context.path.join(home, "snap", "firefox", "common", ".mozilla", "firefox");
           const directory = context.path.join(root, "abcd.default");
@@ -760,8 +720,8 @@ describe("Firefox Snap profiles", () => {
         const fileSystem = yield* FileSystem.FileSystem;
         const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3code-firefox-snap-" });
         const context = yield* sourcePathContext.pipe(
-          Effect.provideService(HostProcessEnvironment, { HOME: home }),
-          Effect.provideService(HostProcessPlatform, "linux"),
+          Effect.provideService(HostProcess.Environment, { HOME: home }),
+          Effect.provideService(HostProcess.Platform, "linux"),
         );
         const native = context.path.join(home, ".mozilla", "firefox");
         const snap = context.path.join(home, "snap", "firefox", "common", ".mozilla", "firefox");
@@ -811,11 +771,11 @@ describe("listSourceProfiles Firefox fallback", () => {
           });
           const appData = path.join(home, "AppData", "Roaming");
           const context = yield* sourcePathContext.pipe(
-            Effect.provideService(HostProcessEnvironment, {
+            Effect.provideService(HostProcess.Environment, {
               HOME: home,
               APPDATA: appData,
             }),
-            Effect.provideService(HostProcessPlatform, platform),
+            Effect.provideService(HostProcess.Platform, platform),
           );
           const root = firefox.userDataDirectory(context)!;
           const scanRoot = platform === "linux" ? root : path.join(root, "Profiles");
@@ -848,8 +808,8 @@ describe("listSourceProfiles Firefox fallback", () => {
           prefix: "t3code-firefox-stale-ini-",
         });
         const context = yield* sourcePathContext.pipe(
-          Effect.provideService(HostProcessEnvironment, { HOME: home }),
-          Effect.provideService(HostProcessPlatform, "darwin"),
+          Effect.provideService(HostProcess.Environment, { HOME: home }),
+          Effect.provideService(HostProcess.Platform, "darwin"),
         );
         const root = firefox.userDataDirectory(context)!;
         // `profiles.ini` names a profile that was never launched (no cookie
@@ -887,8 +847,8 @@ describe("listSourceProfiles Firefox fallback", () => {
           prefix: "t3code-firefox-counts-",
         });
         const context = yield* sourcePathContext.pipe(
-          Effect.provideService(HostProcessEnvironment, { HOME: home }),
-          Effect.provideService(HostProcessPlatform, "darwin"),
+          Effect.provideService(HostProcess.Environment, { HOME: home }),
+          Effect.provideService(HostProcess.Platform, "darwin"),
         );
         const root = firefox.userDataDirectory(context)!;
         const declaredDirectory = path.join(root, "Profiles", "declared.default");
@@ -938,8 +898,8 @@ describe("isSourceRunning for Firefox", () => {
         const fileSystem = yield* FileSystem.FileSystem;
         const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3code-firefox-" });
         const context = yield* sourcePathContext.pipe(
-          Effect.provideService(HostProcessEnvironment, { HOME: home }),
-          Effect.provideService(HostProcessPlatform, "darwin"),
+          Effect.provideService(HostProcess.Environment, { HOME: home }),
+          Effect.provideService(HostProcess.Platform, "darwin"),
         );
         const root = firefox.userDataDirectory(context)!;
         const profile = `${root}/Profiles/abcd.default-release`;
@@ -988,7 +948,7 @@ describe("isSourceRunning for Firefox", () => {
   );
 
   // Holds the lock with python3's fcntl, which does not exist on Windows.
-  it.effect.skipIf(HostProcessPlatform.defaultValue() === "win32")(
+  it.effect.skipIf(HostProcess.Platform.defaultValue() === "win32")(
     "detects a live fcntl lock on .parentlock, as macOS Firefox leaves it",
     () =>
       run(
@@ -997,8 +957,8 @@ describe("isSourceRunning for Firefox", () => {
           const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
           const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3code-firefox-" });
           const context = yield* sourcePathContext.pipe(
-            Effect.provideService(HostProcessEnvironment, { HOME: home }),
-            Effect.provideService(HostProcessPlatform, "darwin"),
+            Effect.provideService(HostProcess.Environment, { HOME: home }),
+            Effect.provideService(HostProcess.Platform, "darwin"),
           );
           const root = firefox.userDataDirectory(context)!;
           const profile = `${root}/Profiles/abcd.default-release`;
@@ -1069,11 +1029,11 @@ describe("isSourceRunning for Firefox", () => {
         const context = yield* sourcePathContext.pipe(
           // Firefox's win32 root hangs off %APPDATA%; without it the root is
           // undefined and the fixture would escape the sandbox into the repo.
-          Effect.provideService(HostProcessEnvironment, {
+          Effect.provideService(HostProcess.Environment, {
             HOME: home,
             APPDATA: `${home}/AppData/Roaming`,
           }),
-          Effect.provideService(HostProcessPlatform, "win32"),
+          Effect.provideService(HostProcess.Platform, "win32"),
         );
         const root = firefox.userDataDirectory(context)!;
         const profile = `${root}/Profiles/gx7x7fqx.default-release`;

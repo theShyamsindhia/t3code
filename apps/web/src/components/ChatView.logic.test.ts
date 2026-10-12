@@ -24,7 +24,7 @@ import {
   type OrchestrationV2ProjectedTurnItem,
   type WorktreeSetupSnapshot,
 } from "@t3tools/contracts";
-import type { CodexArtifactTemplate } from "@t3tools/client-runtime/codex-artifact-templates";
+import type { CodexArtifactTemplate } from "@t3tools/shared/codexArtifactTemplates";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -40,7 +40,6 @@ import {
   getAntigravitySendBlockReason,
   resolveBackgroundDraftWorkspaceOptions,
   resolveComposerInteractionMode,
-  resolveFollowUpInteractionMode,
   restorePlanFollowUpComposer,
   resolveComposerProviderSelection,
   resolveProactiveTurnDiffAction,
@@ -1787,6 +1786,26 @@ describe("proactive completed diff guard", () => {
       }),
     ).toBe("ignore");
   });
+
+  it("leaves an already open diff and its chosen scope alone", () => {
+    const largeCheckpoint = {
+      status: "ready",
+      files: Array.from({ length: 3 }, (_, index) => ({
+        path: `src/app-${index}.ts`,
+        kind: "modified" as const,
+        additions: 20,
+        deletions: 0,
+      })),
+    } satisfies Pick<TurnDiffSummary, "status" | "files">;
+
+    expect(
+      resolveProactiveTurnDiffAction({
+        checkpoint: largeCheckpoint,
+        isGitRepo: true,
+        activeSurfaceKind: "diff",
+      }),
+    ).toBe("ignore");
+  });
 });
 
 describe("shouldRefocusComposerOnWindowFocus", () => {
@@ -2159,58 +2178,5 @@ describe("waitForRevertedMessage", () => {
     await vi.advanceTimersByTimeAsync(50);
     await settled;
     vi.useRealTimers();
-  });
-});
-
-describe("shared-space follow-up modes", () => {
-  it("sends ordinary replies when the optional plan-mode setting is off", () => {
-    const mode = resolveComposerInteractionMode({
-      planModeEnabled: false,
-      provider: { showInteractionModeToggle: true },
-      interactionMode: "default",
-    });
-    expect(
-      resolveFollowUpInteractionMode({
-        source: "interaction",
-        interactionMode: mode.interactionMode,
-        planModeEnabled: mode.enabled,
-      }),
-    ).toBe("default");
-    expect(
-      resolveFollowUpInteractionMode({
-        source: "plan",
-        interactionMode: mode.interactionMode,
-        planModeEnabled: mode.enabled,
-      }),
-    ).toBeNull();
-  });
-
-  it("supports providers without plan mode and preserves supported plan conversations", () => {
-    const mode = resolveComposerInteractionMode({
-      planModeEnabled: true,
-      provider: { showInteractionModeToggle: false },
-      interactionMode: "plan",
-    });
-    expect(
-      resolveFollowUpInteractionMode({
-        source: "interaction",
-        interactionMode: mode.interactionMode,
-        planModeEnabled: mode.enabled,
-      }),
-    ).toBe("default");
-    expect(
-      resolveFollowUpInteractionMode({
-        source: "interaction",
-        interactionMode: "plan",
-        planModeEnabled: true,
-      }),
-    ).toBe("plan");
-    expect(
-      resolveFollowUpInteractionMode({
-        source: "plan",
-        interactionMode: "default",
-        planModeEnabled: true,
-      }),
-    ).toBe("default");
   });
 });

@@ -7,8 +7,6 @@ import type {
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { mediaFileReference } from "@t3tools/client-runtime/media-reference";
-import { DEFAULT_BROWSER_PROFILE_ID } from "@t3tools/contracts";
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   type AtomCommandResult,
   mapAtomCommandResult,
@@ -18,17 +16,15 @@ import * as Data from "effect/Data";
 import { AsyncResult } from "effect/reactivity";
 
 import { resolveAssetUrl } from "~/assets/assetUrls";
+import { isPreviewAvailableFor, previewRuntimeFor } from "~/browser/previewRuntime";
 import {
   applyPreviewServerSnapshot,
-  isPreviewSupportedInRuntime,
-  rememberPreviewUrl,
   readThreadPreviewState,
+  rememberPreviewUrl,
+  setActivePreviewTab,
+  updatePreviewServerSnapshot,
 } from "~/previewStateStore";
-import { useRightPanelStore } from "~/rightPanelStore";
-import { previewBridge } from "~/components/preview/previewBridge";
-import { previewRuntimeTabId } from "./previewRuntimeTabId";
-import { isLocalServerUrl } from "./browserLinkTarget";
-import { resolveLocalServerUrl } from "./browserTargetResolver";
+import { selectSelectedRightPanelSurface, useRightPanelStore } from "~/rightPanelStore";
 
 import {
   browserDefaultOpenProfileId,
@@ -58,110 +54,59 @@ export type OpenPreviewMutation<E = unknown> = (input: {
   readonly input: PreviewOpenInput;
 }) => Promise<AtomCommandResult<PreviewSessionSnapshot, E>>;
 
-interface OpenUrlInPreviewInput<E> {
+export async function openUrlInPreview<E>(input: {
   readonly threadRef: ScopedThreadRef;
   readonly url: string;
   readonly openPreview: OpenPreviewMutation<E>;
-}
-
-// A second click can arrive before the first open RPC publishes its tab.
-const pendingLocalPreviews = new Map<string, Promise<void>>();
-
-export async function openUrlInPreview<E>(
-  input: OpenUrlInPreviewInput<E>,
-): Promise<AtomCommandResult<void, E | BrowserSettingsReadError>> {
-  if (!isLocalServerUrl(input.url)) return openUrlInPreviewOnce(input, false);
-  const key = scopedThreadKey(input.threadRef);
-  while (pendingLocalPreviews.has(key)) await pendingLocalPreviews.get(key);
-  const opening = openUrlInPreviewOnce(input, true);
-  pendingLocalPreviews.set(
-    key,
-    opening.then(
-      () => undefined,
-      () => undefined,
-    ),
-  );
-  try {
-    return await opening;
-  } finally {
-    pendingLocalPreviews.delete(key);
-  }
-}
-
-async function openUrlInPreviewOnce<E>(
-  input: OpenUrlInPreviewInput<E>,
-  localServer: boolean,
-): Promise<AtomCommandResult<void, E | BrowserSettingsReadError>> {
-  const panelRevision = useRightPanelStore.getState().getUserActionRevision(input.threadRef);
-  const showTab = (tabId: string) => {
-    const panel = useRightPanelStore.getState();
-    // A slow open must not replace a surface the user selected while waiting.
-    if (panel.getUserActionRevision(input.threadRef) === panelRevision) {
-      panel.openBrowser(input.threadRef, tabId);
-    }
-  };
+  /** Profile to open under; omit for the configured default. */
+  readonly profileId?: PreviewOpenInput["profileId"];
+  /** Open the tab without switching the thread to it. */
+  readonly background?: boolean;
+}): Promise<AtomCommandResult<void, E | BrowserSettingsReadError>> {
   const defaults = await resolveBrowserDefaults().catch(
     (cause: unknown) => new BrowserSettingsReadError({ cause }),
   );
   if (defaults instanceof BrowserSettingsReadError) {
     return AsyncResult.failure(Cause.fail(defaults));
   }
-  const profileId = browserDefaultOpenProfileId(defaults);
-  let url = input.url;
-  try {
-    if (localServer) url = resolveLocalServerUrl(input.threadRef.environmentId, input.url);
-  } catch (cause) {
-    return AsyncResult.failure(Cause.die(cause));
-  }
-  if (localServer && previewBridge) {
-    const state = readThreadPreviewState(input.threadRef);
-    const target = new URL(url);
-    const existing = [state.snapshot, ...Object.values(state.sessions)].find(
-      (session) =>
-        session !== null &&
-        (session.profileId ?? DEFAULT_BROWSER_PROFILE_ID) === profileId &&
-        session.navStatus._tag !== "Idle" &&
-        new URL(session.navStatus.url).origin === target.origin,
-    );
-    if (existing && existing.navStatus._tag !== "Idle") {
-      const runtimeTabId = previewRuntimeTabId(input.threadRef, state.serverEpoch, existing.tabId);
-      // A server's root link brings back the page being tested. A deep link
-      // explicitly requests navigation; failed pages can retry in the same tab.
-      const isRoot =
-        target.pathname === "/" &&
-        !target.search &&
-        !target.hash &&
-        !target.username &&
-        !target.password;
-      try {
-        if (!isRoot && existing.navStatus.url !== url) {
-          await previewBridge.navigate(runtimeTabId, url);
-        } else if (existing.navStatus._tag === "LoadFailed") {
-          await previewBridge.refresh(runtimeTabId);
-        }
-      } catch (cause) {
-        return AsyncResult.failure(Cause.die(cause));
-      }
-      showTab(existing.tabId);
-      return AsyncResult.success(undefined);
-    }
-  }
+  const runtime = previewRuntimeFor(input.threadRef.environmentId);
+  const previousActiveTabId = readThreadPreviewState(input.threadRef).activeTabId;
+  // The server's "opened" event switches the preview tab but not the panel's
+  // selection, so a changed selection means the user picked a tab themselves.
+  const selectedSurface = () =>
+    selectSelectedRightPanelSurface(useRightPanelStore.getState().byThreadKey, input.threadRef)
+      ?.id ?? null;
+  const surfaceBeforeOpen = selectedSurface();
   const result = await input.openPreview({
     environmentId: input.threadRef.environmentId,
     input: {
       threadId: input.threadRef.threadId,
-      url,
+      url: input.url,
       // Built here rather than via `openPreviewSession` because this path
       // maps the result differently, so the configured defaults have to be
       // applied explicitly or file/link opens would ignore them.
       viewport: browserDefaultOpenViewport(defaults),
-      profileId,
+      profileId: input.profileId ?? browserDefaultOpenProfileId(defaults),
+      ...(runtime === undefined ? {} : { runtime }),
     },
   });
   return mapAtomCommandResult(result, (snapshot) => {
+    rememberPreviewUrl(input.threadRef, input.url);
+    if (input.background) {
+      updatePreviewServerSnapshot(input.threadRef, snapshot);
+      // The server's "opened" event activates the new tab; hand focus back,
+      // unless the user picked a tab, this one included, while the open was in flight.
+      if (
+        previousActiveTabId &&
+        readThreadPreviewState(input.threadRef).activeTabId === snapshot.tabId &&
+        selectedSurface() === surfaceBeforeOpen
+      ) {
+        setActivePreviewTab(input.threadRef, previousActiveTabId);
+      }
+      return;
+    }
     applyPreviewServerSnapshot(input.threadRef, snapshot);
-    rememberPreviewUrl(input.threadRef, url);
-    showTab(snapshot.tabId);
+    useRightPanelStore.getState().openBrowser(input.threadRef, snapshot.tabId);
   });
 }
 
@@ -185,7 +130,7 @@ export async function openFileInPreview<AssetError, PreviewError>(input: {
     AssetError | PreviewError | BrowserPreviewUnavailableError | BrowserSettingsReadError
   >
 > {
-  if (!isPreviewSupportedInRuntime()) {
+  if (!isPreviewAvailableFor(input.threadRef.environmentId)) {
     return AsyncResult.failure(
       Cause.fail(
         new BrowserPreviewUnavailableError({
@@ -215,9 +160,9 @@ export async function openFileInPreview<AssetError, PreviewError>(input: {
       Cause.die(new Error("The environment returned an invalid asset URL.")),
     );
   }
-  // Documents served by the local T3 server are independent tabs, not dev apps.
-  return openUrlInPreviewOnce(
-    { threadRef: input.threadRef, url: assetUrl, openPreview: input.openPreview },
-    false,
-  );
+  return openUrlInPreview({
+    threadRef: input.threadRef,
+    url: assetUrl,
+    openPreview: input.openPreview,
+  });
 }

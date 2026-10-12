@@ -16,7 +16,6 @@ permissions:
 jobs:
   forward:
     name: POST to Cursor
-    if: github.repository == 'pingdotgg/t3code'
     runs-on: ubuntu-24.04
     steps:
       - name: POST to Cursor

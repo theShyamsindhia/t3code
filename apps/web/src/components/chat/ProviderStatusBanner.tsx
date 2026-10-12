@@ -1,6 +1,4 @@
 import { type ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
-import { explainProviderConnectionError } from "@t3tools/client-runtime/provider-connection-error";
-import { ProviderConnectionErrorDetails } from "./ProviderConnectionErrorDetails";
 import { memo } from "react";
 import { InfoIcon, XIcon } from "lucide-react";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "../ui/alert";
@@ -106,14 +104,12 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   const providerName = status.displayName?.trim() || formatProviderDriverKindLabel(status.driver);
   const isUnauthenticated = status.status === "error" && status.auth.status === "unauthenticated";
   const incompatible = getIncompatibleVersion(status);
-  const message = incompatible?.message ?? getProviderStatusMessage(status);
-  const connectionError =
-    !isUnauthenticated && !incompatible ? explainProviderConnectionError(message) : null;
   const title = isUnauthenticated
     ? `${providerName} is unauthenticated`
     : incompatible
       ? `${providerName} ${status.version ?? ""} is ${incompatible.status === "broken" ? "known to be broken" : "unsupported"}`
-      : (connectionError?.label ?? `${providerName} provider status`);
+      : `${providerName} provider status`;
+  const message = incompatible?.message ?? getProviderStatusMessage(status);
   const isWarning =
     incompatible?.status !== "broken" && (status.status === "warning" || incompatible !== null);
 
@@ -128,19 +124,12 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
         <InfoIcon />
         <AlertTitle>{title}</AlertTitle>
         <AlertDescription>
-          {connectionError ? (
-            <ProviderConnectionErrorDetails
-              description={connectionError.detail}
-              message={message}
-            />
-          ) : (
-            <Tooltip>
-              <TooltipTrigger render={<div className="line-clamp-3" />}>{message}</TooltipTrigger>
-              <TooltipPopup side="top" className="whitespace-pre-wrap">
-                {message}
-              </TooltipPopup>
-            </Tooltip>
-          )}
+          <Tooltip>
+            <TooltipTrigger render={<div className="line-clamp-3" />}>{message}</TooltipTrigger>
+            <TooltipPopup side="top" className="whitespace-pre-wrap">
+              {message}
+            </TooltipPopup>
+          </Tooltip>
           {onOpenProviderSetup && hasProviderSetup(status) ? (
             <InlineButton onClick={() => onOpenProviderSetup(status.instanceId)}>
               Open provider setup

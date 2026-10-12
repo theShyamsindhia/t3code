@@ -2,7 +2,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "../../lib/utils";
 
-/** Settings rows use dividers; elevation is reserved for floating surfaces. */
+/** Shared settings card surface, with optional separators between rows. */
 export function SettingsGroup({
   variant = "grouped",
   divided = true,
@@ -17,7 +17,9 @@ export function SettingsGroup({
       {...props}
       className={cn(
         "relative overflow-visible text-foreground",
-        variant === "grouped" ? "border-y border-border/60" : "space-y-1",
+        variant === "grouped"
+          ? "rounded-xl border border-border/60 bg-card/40 shadow-xs/5"
+          : "space-y-1",
         variant === "grouped" &&
           divided &&
           "[&>*+*]:border-t [&>*+*]:border-border/50 [&>[data-slot=settings-row]]:rounded-none",

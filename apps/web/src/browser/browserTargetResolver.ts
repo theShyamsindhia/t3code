@@ -6,6 +6,10 @@ import type {
 import { isLoopbackHost, normalizePreviewUrl } from "@t3tools/shared/preview";
 import { isLocalLoopbackHost, isPrivateNetworkHost } from "@t3tools/shared/hostClassification";
 
+import type { ConnectionTarget } from "@t3tools/client-runtime/connection";
+
+import { isDesktopLocalConnectionTarget } from "~/connection/desktopLocal";
+import { isElectron } from "~/env";
 import { readPreparedConnection } from "~/state/session";
 
 export {
@@ -75,29 +79,37 @@ export function resolveBrowserNavigationTarget(
   return resolveEnvironmentPortTarget(environmentId, target, readEnvironmentUrl(environmentId));
 }
 
+/**
+ * Whether a discovered loopback server is reachable as-is from this client's
+ * own browser tabs. The desktop app draws tabs on the machine that runs its
+ * primary backend and any desktop-local backend (WSL). Its connection URL can
+ * still be a LAN address (WSL NAT mode binds the distro IP), but a dev server
+ * bound to loopback only answers on `localhost` there.
+ */
+const reachesEnvironmentLoopback = (target: ConnectionTarget): boolean =>
+  isElectron &&
+  (target._tag === "PrimaryConnectionTarget" || isDesktopLocalConnectionTarget(target));
+
 export function resolveDiscoveredServerUrl(environmentId: EnvironmentId, rawUrl: string): string {
   try {
-    return resolveLocalServerUrl(environmentId, rawUrl);
+    const normalizedUrl = normalizePreviewUrl(rawUrl);
+    const parsed = new URL(normalizedUrl);
+    if (!isLoopbackHost(parsed.hostname)) return normalizedUrl;
+    const target = readPreparedConnection(environmentId)?.target;
+    if (target && reachesEnvironmentLoopback(target)) return normalizedUrl;
+    return resolveEnvironmentPortTarget(
+      environmentId,
+      {
+        kind: "environment-port",
+        port: Number(parsed.port || (parsed.protocol === "https:" ? 443 : 80)),
+        protocol: parsed.protocol === "https:" ? "https" : "http",
+        path: `${parsed.pathname}${parsed.search}${parsed.hash}`,
+      },
+      readEnvironmentUrl(environmentId),
+      rawUrl,
+      parsed,
+    ).resolvedUrl;
   } catch {
     return rawUrl;
   }
-}
-
-/** An explicit open must report an unreachable environment, never open the client's localhost. */
-export function resolveLocalServerUrl(environmentId: EnvironmentId, rawUrl: string): string {
-  const normalizedUrl = normalizePreviewUrl(rawUrl);
-  const parsed = new URL(normalizedUrl);
-  if (!isLoopbackHost(parsed.hostname)) return normalizedUrl;
-  return resolveEnvironmentPortTarget(
-    environmentId,
-    {
-      kind: "environment-port",
-      port: Number(parsed.port || (parsed.protocol === "https:" ? 443 : 80)),
-      protocol: parsed.protocol === "https:" ? "https" : "http",
-      path: `${parsed.pathname}${parsed.search}${parsed.hash}`,
-    },
-    readEnvironmentUrl(environmentId),
-    rawUrl,
-    parsed,
-  ).resolvedUrl;
 }
