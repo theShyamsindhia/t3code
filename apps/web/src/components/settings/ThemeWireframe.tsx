@@ -1,9 +1,8 @@
+import type { CSSProperties } from "react";
 import { cn } from "../../lib/utils";
 import type { ThemeCardPreviewColors } from "./ThemePreviewCircles";
 
-// A simple miniature of the app: sidebar, a short conversation, the
-// composer, and the orchestrator panel floating over the interface as an
-// island with horizontal agent rows.
+/** The actual workspace silhouette: one reading area above a slim chat dock. */
 function ThemeWireframePane({
   colors,
   clip,
@@ -11,102 +10,57 @@ function ThemeWireframePane({
   colors: ThemeCardPreviewColors;
   clip?: "left" | "right" | undefined;
 }) {
-  const line = "rgb(127 127 127 / 0.25)";
+  const line = "rgb(127 127 127 / 0.3)";
   return (
     <span
       className="absolute inset-0"
+      data-frame-theme={colors.frameTheme ?? "default"}
       style={
-        clip === undefined
-          ? undefined
-          : {
-              clipPath:
-                clip === "left"
-                  ? "polygon(0 0, calc(50% - 1px) 0, calc(50% - 1px) 100%, 0 100%)"
-                  : "polygon(calc(50% + 1px) 0, 100% 0, 100% 100%, calc(50% + 1px) 100%)",
-            }
+        {
+          "--conversation-frame": colors.sidebar,
+          colorScheme: colors.appearance,
+          background: "var(--frame-paint, var(--conversation-frame))",
+          ...(clip ? { clipPath: clip === "left" ? "inset(0 50% 0 0)" : "inset(0 0 0 50%)" } : {}),
+        } as CSSProperties
       }
     >
-      <span className="absolute inset-0" style={{ backgroundColor: colors.canvas }} />
       <span
-        className="absolute inset-y-0 left-0 w-[22%]"
-        style={{ backgroundColor: colors.sidebar, boxShadow: `inset -1px 0 0 ${line}` }}
-      />
-
-      {/* Sidebar: search, then thread rows */}
-      <span
-        className="absolute left-[3%] top-[8%] h-[8%] w-[16%] rounded-md"
-        style={{ backgroundColor: colors.surface, boxShadow: `inset 0 0 0 1px ${line}` }}
-      />
-      <span
-        className="absolute left-[3%] top-[22%] h-[7%] w-[16%] rounded-md"
-        style={{ backgroundColor: colors.accentSurface }}
-      />
-      <span
-        className="absolute left-[3%] top-[32%] h-[7%] w-[16%] rounded-md"
-        style={{ backgroundColor: colors.messageSurface, opacity: 0.7 }}
-      />
-      <span
-        className="absolute left-[3%] top-[42%] h-[7%] w-[16%] rounded-md"
-        style={{ backgroundColor: colors.messageSurface, opacity: 0.5 }}
-      />
-
-      {/* Conversation */}
-      <span
-        className="absolute right-[28%] top-[11%] h-[9%] w-[24%] rounded-lg"
-        style={{ backgroundColor: colors.messageSurface }}
-      />
-      <span
-        className="absolute left-[27%] top-[28%] h-[5%] w-[34%] rounded-sm"
-        style={{ backgroundColor: line }}
-      />
-      <span
-        className="absolute left-[27%] top-[38%] h-[5%] w-[26%] rounded-sm"
-        style={{ backgroundColor: line }}
-      />
-
-      {/* Composer */}
-      <span
-        className="absolute bottom-[8%] left-[26%] right-[6%] flex h-[15%] items-center justify-between rounded-md px-1"
-        style={{
-          backgroundColor: colors.surface,
-          boxShadow: `inset 0 0 0 1px ${line}`,
-        }}
+        className="absolute inset-x-[2%] top-[3%] bottom-[18%] overflow-hidden rounded-sm"
+        style={{ background: colors.canvas }}
       >
         <span
-          className="block h-[26%] w-[34%] rounded-full"
-          style={{ backgroundColor: line, opacity: 0.7 }}
+          className="absolute right-[16%] top-[14%] h-[14%] w-[34%] rounded-sm"
+          style={{ background: colors.messageSurface }}
         />
         <span
-          className="block aspect-square h-[58%] rounded-full"
-          style={{ backgroundColor: colors.messageAction }}
+          className="absolute left-[15%] top-[40%] h-[4%] w-[55%] rounded-sm"
+          style={{ background: line }}
         />
-      </span>
-
-      {/* Orchestrator island floating over the composer */}
-      <span
-        className="absolute right-[5%] top-[8%] h-[46%] w-[20%] rounded-lg"
-        style={{
-          backgroundColor: colors.surface,
-          boxShadow: `inset 0 0 0 1px ${line}, 0 2px 5px rgb(0 0 0 / 0.14)`,
-        }}
-      >
-        {[0, 1, 2].map((row) => (
+        <span
+          className="absolute left-[15%] top-[50%] h-[4%] w-[40%] rounded-sm"
+          style={{ background: line }}
+        />
+        <span
+          className="absolute inset-x-[14%] bottom-[8%] flex h-[23%] items-end justify-end rounded-md p-1"
+          style={{ background: colors.surface, boxShadow: `inset 0 0 0 1px ${line}` }}
+        >
           <span
-            className="absolute left-[11%] right-[11%] flex items-center gap-1"
-            key={row}
-            style={{ top: `${10 + row * 30}%`, height: "20%" }}
+            className="block aspect-square h-[60%] rounded-full"
+            style={{ background: colors.messageAction }}
+          />
+        </span>
+      </span>
+      <span className="absolute inset-x-[4%] bottom-[4%] flex h-[10%] gap-1">
+        {[0, 1, 2].map((index) => (
+          <span
+            key={index}
+            className="flex h-full w-[26%] items-center rounded-sm px-1"
+            style={{ background: index === 0 ? colors.surface : undefined }}
           >
-            <span
-              className="block aspect-square h-[26%] rounded-full"
-              style={{
-                backgroundColor:
-                  row === 0 ? "#34d399" : row === 1 ? colors.messageAction : "#fbbf24",
-                opacity: 0.55,
-              }}
-            />
-            <span className="block h-[30%] w-[52%] rounded-sm" style={{ backgroundColor: line }} />
+            <span className="h-[25%] w-full rounded-full" style={{ background: line }} />
           </span>
         ))}
+        <span className="ml-auto aspect-square h-full rounded-full" style={{ background: line }} />
       </span>
     </span>
   );
@@ -116,7 +70,6 @@ export function ThemeWireframe({
   className,
   panes,
 }: {
-  /** Sizing (height) for the frame; the pane geometry is percentage based. */
   className?: string;
   panes: ReadonlyArray<{ colors: ThemeCardPreviewColors; clip?: "left" | "right" }>;
 }) {

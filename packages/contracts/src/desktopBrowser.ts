@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { BrowserSignInResult } from "./browserPasswords.ts";
 
 /**
  * The desktop app renders browser tabs for the server it launched, and the
@@ -25,6 +26,13 @@ export const DesktopBrowserEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("detached"), ...TabKey }),
   /** One CDP message from the tab's relay. */
   Schema.Struct({ type: Schema.Literal("cdp"), ...TabKey, message: Schema.String }),
+  /** Result of a saved-login request made by the server's browser engine. */
+  Schema.Struct({
+    type: Schema.Literal("passwordResult"),
+    requestId: TrimmedNonEmptyString,
+    result: Schema.optional(BrowserSignInResult),
+    error: Schema.optional(Schema.String),
+  }),
 ]);
 export type DesktopBrowserEvent = typeof DesktopBrowserEvent.Type;
 
@@ -41,6 +49,13 @@ export const DesktopBrowserCommand = Schema.Union([
     phase: Schema.Literals(["move", "click"]),
     x: Schema.Finite,
     y: Schema.Finite,
+  }),
+  /** Ask the desktop's encrypted browser vault to fill a permitted login. */
+  Schema.Struct({
+    type: Schema.Literal("passwordSignIn"),
+    ...TabKey,
+    requestId: TrimmedNonEmptyString,
+    username: Schema.optional(Schema.String),
   }),
 ]);
 export type DesktopBrowserCommand = typeof DesktopBrowserCommand.Type;

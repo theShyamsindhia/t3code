@@ -387,6 +387,7 @@ export function applyServerSettingsPatch(
   const patch = translateLegacyProjectOverridePatch(current, rawPatch);
   const selectionPatch = patch.textGenerationModelSelection;
   const {
+    externalSessionThreadIds,
     migrateModelPreferences,
     setModelFavorites,
     setModelsHidden,
@@ -497,6 +498,7 @@ export function applyServerSettingsPatch(
     ...next,
     favorites,
     providerModelPreferences: nextModelPreferences,
+    ...(externalSessionThreadIds === undefined ? {} : { externalSessionThreadIds }),
     ...(worktreeCleanupPatch === undefined
       ? {}
       : {

@@ -1,5 +1,9 @@
 import { ThreadFind, ThreadFindCanvas, type ThreadFindControls } from "./chat/ThreadFindProvider";
 import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
+import { interactionPresentations } from "@t3tools/client-runtime/interaction";
+import { InteractionPanel } from "./InteractionPanel";
+import { externalSessionSource } from "@t3tools/contracts";
+import { ExternalConversationNotice } from "./chat/ExternalConversationNotice";
 import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
 import {
   resolveBackgroundDraftWorkspaceOptions,
@@ -93,7 +97,6 @@ import {
   wasBootstrapThreadNotCreated,
 } from "@t3tools/client-runtime/errors";
 import { readPastedComposerContext } from "./composerInlineTokenPaste";
-import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
 import { effectiveSnoozed, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
 import { useAcknowledgeThreadWoke, useThreadActions } from "../hooks/useThreadActions";
 import {
@@ -264,7 +267,6 @@ import {
   useThreadPreviewState,
 } from "../previewStateStore";
 import { BrowserSettingsReadError, openUrlInPreview } from "../browser/openFileInPreview";
-import { resolveDiscoveredServerUrl } from "../browser/browserTargetResolver";
 import { previewRuntimeTabId } from "../browser/previewRuntimeTabId";
 import { addBrowserSurface } from "./preview/addBrowserSurface";
 import { closePreviewSession } from "./preview/closePreviewSession";
@@ -301,6 +303,7 @@ import { resolveChatShortcutCommand, shortcutLabelForCommand } from "../keybindi
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import {
   AlarmClockIcon,
+  ArrowDownToLineIcon,
   CheckCircle2Icon,
   MessageCircleIcon,
   PaperclipIcon,
@@ -546,6 +549,7 @@ import {
   waitForRevertedMessage,
   reconcileMountedTerminalThreadIds,
   resolveComposerInteractionMode,
+  resolveFollowUpInteractionMode,
   resolveComposerProviderSelection,
   getAntigravitySendBlockReason,
   observeProactivePanelUserChoice,
@@ -1728,6 +1732,10 @@ export default function ChatView(props: ChatViewProps) {
     [serverProjection?.providerTurns],
   );
   const serverVisibleTurnItems = useThreadVisibleTurnItems(routeThreadDetailRef);
+  const sharedPresentations = useMemo(
+    () => interactionPresentations(serverVisibleTurnItems),
+    [serverVisibleTurnItems],
+  );
   const serverThreadHistory = useThreadHistory(routeThreadDetailRef);
   const threadHistoryControls = useMemo<MessagesTimelineHistoryControls | undefined>(() => {
     if (routeThreadDetailRef === null || !shouldShowLoadEarlierControl(serverThreadHistory)) {
@@ -1842,7 +1850,6 @@ export default function ChatView(props: ChatViewProps) {
   const localComposerRef = useRef<ChatComposerHandle | null>(null);
   const composerRef = useComposerHandleContext() ?? localComposerRef;
   const branchToolbarRef = useRef<BranchToolbarHandle>(null);
-  const pasteAsTextShortcutUntilRef = useRef(0);
   const [restingComposerControlsHost, setRestingComposerControlsHost] =
     useState<HTMLDivElement | null>(null);
   const [restingComposerControlsVisible, setRestingComposerControlsVisible] = useState(false);
@@ -5074,7 +5081,7 @@ export default function ChatView(props: ChatViewProps) {
       if (script.autoOpenPreview && script.previewUrl && isPreviewSupportedInRuntime()) {
         const previewResult = await openUrlInPreview({
           threadRef: activeThreadRef,
-          url: resolveDiscoveredServerUrl(activeThreadRef.environmentId, script.previewUrl),
+          url: script.previewUrl,
           openPreview,
         });
         if (previewResult._tag === "Failure" && !isAtomCommandInterrupted(previewResult)) {
@@ -7715,6 +7722,50 @@ export default function ChatView(props: ChatViewProps) {
     isUnsnoozing,
     nowMinute,
   ]);
+  const parkedThreadBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
+    if (!activeThreadSnoozed && !activeThreadSettled) {
+      return null;
+    }
+    const isSnoozed = activeThreadSnoozed;
+    return {
+      id: `thread-${isSnoozed ? "snoozed" : "settled"}:${activeThread?.id ?? "unknown"}`,
+      variant: "info",
+      icon: isSnoozed ? <AlarmClockIcon /> : <ArrowDownToLineIcon />,
+      title: `This thread is ${isSnoozed ? "snoozed" : "settled"}`,
+      description: `Send a message to ${isSnoozed ? "wake" : "unsettle"}`,
+      actions: (
+        <Button
+          size="xs"
+          variant="ghost"
+          disabled={isSnoozed ? isUnsnoozing : isUnsettling}
+          onClick={() =>
+            void (isSnoozed ? handleUnsnoozeActiveThread() : handleUnsettleActiveThread())
+          }
+        >
+          {isSnoozed
+            ? isUnsnoozing
+              ? "Waking..."
+              : "Wake now"
+            : isUnsettling
+              ? "Moving..."
+              : "Move to Working"}
+        </Button>
+      ),
+    };
+  }, [
+    acknowledgeActiveThreadWoke,
+    activeThreadSettled,
+    activeThreadShell?.settledAt,
+    activeThreadShell?.snoozedUntil,
+    activeThreadSnoozed,
+    activeThreadWokeVisible,
+    canOperateThread,
+    handleUnsettleActiveThread,
+    handleUnsnoozeActiveThread,
+    isUnsettling,
+    isUnsnoozing,
+    nowMinute,
+  ]);
   const activeThreadHasCompactableConversation = serverVisibleTurnItems.some(
     ({ item }) =>
       item.type === "user_message" &&
@@ -8402,14 +8453,6 @@ export default function ChatView(props: ChatViewProps) {
   // so a paste that follows has no editable target and would be dropped.
   // Route it to the composer like a typed key, which also expands it.
   useEffect(() => {
-    const keyHandler = (event: KeyboardEvent) => {
-      if (
-        shouldRedirectInputToComposer(event) &&
-        isPasteAsTextShortcut(event, isMacPlatform(navigator.platform))
-      ) {
-        pasteAsTextShortcutUntilRef.current = Date.now() + 1_000;
-      }
-    };
     const handler = (event: ClipboardEvent) => {
       if (!activeThreadId || isCommandPaletteOpen()) return;
       if (getTerminalFocusOwner() !== null) return;
@@ -8417,21 +8460,17 @@ export default function ChatView(props: ChatViewProps) {
       const text = pasteTextToFocusComposer(event);
       const clipboardData = event.clipboardData;
       if (text === null || clipboardData === null) return;
-      const bypassAutoAttachment = Date.now() <= pasteAsTextShortcutUntilRef.current;
-      pasteAsTextShortcutUntilRef.current = 0;
       if (
         ((readPastedComposerContext(clipboardData)?.records.length ?? 0) === 0 &&
-          composerRef.current?.pasteTextAtEnd(text, { bypassAutoAttachment })) ||
+          composerRef.current?.pasteTextAtEnd(text)) ||
         composerRef.current?.insertTextAtEnd(text, { clipboardData })
       ) {
         event.preventDefault();
         event.stopPropagation();
       }
     };
-    window.addEventListener("keydown", keyHandler, true);
     window.addEventListener("paste", handler, true);
     return () => {
-      window.removeEventListener("keydown", keyHandler, true);
       window.removeEventListener("paste", handler, true);
     };
   }, [activeThreadId, composerRef]);
@@ -9189,7 +9228,7 @@ export default function ChatView(props: ChatViewProps) {
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
-      const followUpSent = await onSubmitPlanFollowUp({
+      const followUpSent = await onSubmitFollowUp({
         text: followUp.text,
         context: buildMessageContext({
           terminalContexts: sendableComposerTerminalContexts,
@@ -10441,14 +10480,16 @@ export default function ChatView(props: ChatViewProps) {
     setActivePendingUserInputQuestionIndex(Math.max(activePendingProgress.questionIndex - 1, 0));
   }, [activePendingProgress, setActivePendingUserInputQuestionIndex]);
 
-  async function onSubmitPlanFollowUp({
+  async function onSubmitFollowUp({
     text,
     context,
-    interactionMode: nextInteractionMode,
+    interactionMode: requestedInteractionMode,
+    source = "plan",
   }: {
     text: string;
     context?: ReturnType<typeof buildMessageContext>;
     interactionMode: "default" | "plan";
+    source?: "plan" | "interaction";
   }) {
     if (
       !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
@@ -10467,9 +10508,13 @@ export default function ChatView(props: ChatViewProps) {
     }
 
     const sendCtx = composerRef.current?.getSendContext();
-    if (!sendCtx?.providerAvailable || !sendCtx.interactionModeEnabled) {
-      return false;
-    }
+    if (!sendCtx?.providerAvailable) return false;
+    const nextInteractionMode = resolveFollowUpInteractionMode({
+      source,
+      interactionMode: requestedInteractionMode,
+      planModeEnabled: sendCtx.interactionModeEnabled,
+    });
+    if (nextInteractionMode === null) return false;
     const {
       selectedProvider: ctxSelectedProvider,
       selectedModel: ctxSelectedModel,
@@ -10554,7 +10599,7 @@ export default function ChatView(props: ChatViewProps) {
           titleSeed: activeThread.title,
           runtimeMode,
           interactionMode: nextInteractionMode,
-          ...(nextInteractionMode === "default" && activeProposedPlan
+          ...(source === "plan" && nextInteractionMode === "default" && activeProposedPlan
             ? {
                 sourceProposedPlan: {
                   threadId: activeThread.id,
@@ -10581,7 +10626,7 @@ export default function ChatView(props: ChatViewProps) {
       const error = squashAtomCommandFailure(failure);
       setThreadError(
         threadIdForSend,
-        error instanceof Error ? error.message : "Failed to send plan follow-up.",
+        error instanceof Error ? error.message : "Failed to send follow-up.",
       );
     }
     sendInFlightRef.current = false;
@@ -11078,8 +11123,19 @@ export default function ChatView(props: ChatViewProps) {
     return <NoActiveThreadState />;
   }
 
+  const submitInteractionReply = (text: string) =>
+    onSubmitFollowUp({ text, interactionMode, source: "interaction" });
+
   const rightPanelContent = activeThreadRef ? (
-    renderedRightPanelSurface?.kind === "preview" ? (
+    renderedRightPanelSurface?.kind === "interaction" ? (
+      <InteractionPanel
+        key={activeThreadKey}
+        threadKey={activeThreadKey!}
+        presentations={sharedPresentations}
+        disabled={isSendBusy || isConnecting || !isServerThread}
+        onSubmit={submitInteractionReply}
+      />
+    ) : renderedRightPanelSurface?.kind === "preview" ? (
       <Suspense fallback={null}>
         <PreviewPanel
           mode="embedded"
@@ -11325,7 +11381,7 @@ export default function ChatView(props: ChatViewProps) {
       className={cn(
         // Keep one viewport anchor inside the header's no-drag region. The
         // header can shrink behind the right panel without moving the controls.
-        "pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
+        "pointer-events-none fixed top-[var(--workspace-controls-top)] right-[calc(var(--workspace-controls-right)+var(--conversation-workspace-inset,0px))] z-50 flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
       )}
       data-workspace-titlebar-controls
     >
@@ -11363,6 +11419,7 @@ export default function ChatView(props: ChatViewProps) {
   const content = (
     <div
       ref={setWorkspaceLayoutElement}
+      data-chat-workspace-layout
       className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
     >
       <Dialog
@@ -11401,7 +11458,7 @@ export default function ChatView(props: ChatViewProps) {
           ref={threadPanelPopoverAnchorRef}
           data-chat-header
           className={cn(
-            "relative bg-background [[data-panel-animations=true]_&]:motion-safe:transition-[padding-left] [[data-panel-animations=true]_&]:motion-safe:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:motion-safe:ease-out",
+            "relative bg-background pt-(--workspace-titlebar-content-inset) [[data-panel-animations=true]_&]:motion-safe:transition-[padding-left] [[data-panel-animations=true]_&]:motion-safe:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:motion-safe:ease-out",
             isElectron
               ? cn(
                   "drag-region flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center px-3 sm:px-5",
@@ -11416,7 +11473,7 @@ export default function ChatView(props: ChatViewProps) {
           {isElectron && rightPanelControlsAtRoot ? (
             <span
               aria-hidden
-              className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
+              className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[calc(var(--workspace-controls-right)+var(--conversation-workspace-inset,0px))] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
             />
           ) : null}
           {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
@@ -11550,6 +11607,11 @@ export default function ChatView(props: ChatViewProps) {
                 displayThreadKey={displayedTimelineKey}
                 paintOnly={paintOnlyDisplayedTimeline}
                 onOpenTurnDiff={paintOnlyDisplayedTimeline ? noopHeldTurnDiff : onOpenTurnDiff}
+                onSubmitWidgetReply={
+                  !paintOnlyDisplayedTimeline && !isSendBusy && !isConnecting && isServerThread
+                    ? submitInteractionReply
+                    : undefined
+                }
                 onOpenThread={onOpenRelatedThread}
                 parentThreadLink={paintOnlyDisplayedTimeline ? null : parentThreadLink}
                 onForkFromRun={paintOnlyDisplayedTimeline ? async () => {} : onForkFromRun}
@@ -11642,6 +11704,19 @@ export default function ChatView(props: ChatViewProps) {
                   data-chat-composer-stack="true"
                   className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)"
                 >
+                  {sharedPresentations.length > 0 && activeThreadRef && (
+                    <div className="mb-2 flex justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          useRightPanelStore.getState().open(activeThreadRef, "interaction")
+                        }
+                      >
+                        Open shared space
+                      </Button>
+                    </div>
+                  )}
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full">
                       <div
@@ -11697,7 +11772,13 @@ export default function ChatView(props: ChatViewProps) {
                               }
                             />
                           ) : null}
-                          {!composerMounted ? null : (
+                          {externalSessionSource(activeThread.id) !== null ? (
+                            <ExternalConversationNotice
+                              environmentId={activeThread.environmentId}
+                              projectId={activeThread.projectId}
+                              threadId={activeThread.id}
+                            />
+                          ) : !composerMounted ? null : (
                             <ChatComposer
                               canOperateThread={canOperateThread}
                               reportedModelSelection={reportedModelSelection}
@@ -12087,14 +12168,8 @@ export default function ChatView(props: ChatViewProps) {
             keybindings={keybindings}
             getShortcutContext={getShortcutContext}
             inlineSize={previewPanelInlineSize}
-            // Same effective inset as the closed-state titlebar controls
-            // (pr-3 in the tab bar plus this pixel equals the absolute
-            // right inset plus mr-px), so the cluster does not creep when
-            // the sheet opens.
             layoutControls={
-              rightPanelOpen ? (
-                <div className="mr-px flex items-center">{panelToggleControls}</div>
-              ) : null
+              rightPanelOpen ? <div className="flex items-center">{panelToggleControls}</div> : null
             }
             surfaces={renderedRightPanelSurfaces}
             environmentId={activeThreadRef.environmentId}

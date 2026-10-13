@@ -1,5 +1,7 @@
 export const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
 export const SET_NOTIFICATION_BADGE_CHANNEL = "desktop:set-notification-badge";
+export const SET_ACTIVITY_SNAPSHOT_CHANNEL = "desktop:set-activity-snapshot";
+export const ACTIVITY_OPEN_THREAD_CHANNEL = "desktop:activity-open-thread";
 export const PICK_PROJECT_FAVICON_CHANNEL = "desktop:pick-project-favicon";
 export const PICK_THEME_FILES_CHANNEL = "desktop:pick-theme-files";
 export const SET_THEME_CHANNEL = "desktop:set-theme";
@@ -121,5 +123,24 @@ export const PREVIEW_RECORDING_INPUT_CHANNEL = "desktop:preview-recording-input"
 
 export const RECEIVE_PROVIDER_AUTH_CALLBACK_CHANNEL = "desktop:receive-provider-auth-callback";
 export const CANCEL_PROVIDER_AUTH_CALLBACK_CHANNEL = "desktop:cancel-provider-auth-callback";
+
+export const PREVIEW_AUTOMATION_STATUS_CHANNEL = "desktop:preview-automation-status";
+export const PREVIEW_AUTOMATION_SNAPSHOT_CHANNEL = "desktop:preview-automation-snapshot";
+export const PREVIEW_AUTOMATION_CLICK_CHANNEL = "desktop:preview-automation-click";
+export const PREVIEW_AUTOMATION_TYPE_CHANNEL = "desktop:preview-automation-type";
+export const PREVIEW_AUTOMATION_PRESS_CHANNEL = "desktop:preview-automation-press";
+export const PREVIEW_AUTOMATION_SCROLL_CHANNEL = "desktop:preview-automation-scroll";
+export const PREVIEW_AUTOMATION_EVALUATE_CHANNEL = "desktop:preview-automation-evaluate";
+export const PREVIEW_AUTOMATION_WAIT_FOR_CHANNEL = "desktop:preview-automation-wait-for";
+
+export const PREVIEW_AUTOMATION_SET_PAUSED_CHANNEL = "desktop:preview-automation-set-paused";
+export const PREVIEW_AUTOMATION_CHECK_CONTROL_CHANNEL = "desktop:preview-automation-check-control";
+export const PREVIEW_PASSWORD_LIST_CHANNEL = "desktop:preview-password-list";
+export const PREVIEW_PASSWORD_IMPORT_CHANNEL = "desktop:preview-password-import";
+export const PREVIEW_PASSWORD_REMOVE_CHANNEL = "desktop:preview-password-remove";
+export const PREVIEW_PASSWORD_SET_AGENT_ACCESS_CHANNEL =
+  "desktop:preview-password-set-agent-access";
+export const PREVIEW_PASSWORD_FILL_CHANNEL = "desktop:preview-password-fill";
+export const PREVIEW_PASSWORD_SIGN_IN_CHANNEL = "desktop:preview-password-sign-in";
 export const TAKE_LEGACY_LOCAL_STORAGE_CHANNEL = "desktop:take-legacy-local-storage";
 export const COMPLETE_LEGACY_LOCAL_STORAGE_CHANNEL = "desktop:complete-legacy-local-storage";

@@ -1,6 +1,10 @@
 import { ThreadFindTimelineContext } from "./ThreadFindProvider";
 import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
 import { MarkdownFindContext, useFindRevealRef } from "./markdownFindContext";
+import { chatWidgetPresentation } from "@t3tools/client-runtime/interaction";
+import { explainProviderConnectionError } from "@t3tools/client-runtime/provider-connection-error";
+import { ProviderConnectionErrorDetails } from "./ProviderConnectionErrorDetails";
+import { ChatWidget } from "./ChatWidget";
 import { ComputerUseAppIcon } from "~/components/Icons";
 import { useChatCanvas } from "./ChatCanvasContext";
 import { WorkLogBlock, WorkLogButton, WorkLogDetails, WorkLogList, WorkLogRow } from "./WorkLog";
@@ -342,6 +346,7 @@ interface TimelineRowSharedState {
   onImageExpand: (preview: ExpandedImagePreview) => void;
   displayThreadKey?: string;
   onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
+  onSubmitWidgetReply?: ((text: string) => Promise<boolean>) | undefined;
   onOpenThread: (threadId: OrchestrationV2TurnItem["threadId"]) => void;
   onForkFromRun: (input: {
     readonly sourceThreadId: ThreadId;
@@ -485,6 +490,7 @@ interface MessagesTimelineProps {
   /** The rows are a held snapshot of the previous thread while the next one loads. */
   paintOnly?: boolean;
   onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
+  onSubmitWidgetReply?: ((text: string) => Promise<boolean>) | undefined;
   onOpenThread: (threadId: OrchestrationV2TurnItem["threadId"]) => void;
   parentThreadLink?: {
     readonly threadId: ThreadId;
@@ -601,6 +607,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   paintOnly = false,
   onOpenTurnDiff,
   onOpenThread,
+  onSubmitWidgetReply,
   parentThreadLink = null,
   onForkFromRun,
   onRollbackCheckpoint,
@@ -1374,6 +1381,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
       openPullRequest,
       onOpenTurnDiff,
       onOpenThread,
+      onSubmitWidgetReply,
       onForkFromRun,
       onRollbackCheckpoint,
       onToggleTurnFold,
@@ -1412,6 +1420,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
       openPullRequest,
       onOpenTurnDiff,
       onOpenThread,
+      onSubmitWidgetReply,
       onForkFromRun,
       onRollbackCheckpoint,
       onToggleTurnFold,
@@ -3167,6 +3176,19 @@ function v2EventPresentation(item: OrchestrationV2TurnItem): {
 function V2EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event" }> }) {
   const ctx = use(TimelineRowCtx);
   const { item, visibility, sourceThreadId } = row.projectedItem;
+  const widget = useMemo(() => chatWidgetPresentation(item), [item]);
+  if (widget) {
+    const storageKey = `t3-widget:${ctx.routeThreadKey}:${sourceThreadId}:${row.projectedItem.sourceItemId}`;
+    return (
+      <ChatWidget
+        key={storageKey}
+        widget={widget}
+        storageKey={storageKey}
+        theme={ctx.resolvedTheme}
+        onSubmit={ctx.onSubmitWidgetReply}
+      />
+    );
+  }
   if (item.type === "subagent" && (row.subagents?.length ?? 1) > 1) {
     return <V2SubagentGroup key={row.id} row={row} />;
   }
@@ -5508,11 +5530,12 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
   const failureItem = workEntry.projectedItem?.item;
   if (failureItem?.type === "error" && failureItem.status === "failed") {
     const warning = failureItem.failure.class === "usage_limit";
+    const connectionError = explainProviderConnectionError(failureItem.failure.message);
     const resetAt = failureItem.failure.resetAt;
     const resetTime = resetAt ? formatUpcomingTimestamp(resetAt, timestampFormat) : null;
     const label = warning
       ? `Usage limit reached.${resetTime ? ` Retry after ${resetTime}.` : ""}`
-      : workEntry.label;
+      : (connectionError?.label ?? workEntry.label);
     const retryRunId =
       failureItem.runId !== null &&
       retryableWorkspacePreparationRunIds.has(failureItem.runId) &&
@@ -5545,9 +5568,17 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         }
       >
         {!warning ? (
-          <p className="ms-7 whitespace-pre-wrap break-words py-1 text-sm leading-relaxed text-foreground/80">
-            {failureItem.failure.message}
-          </p>
+          <div className="ms-7 whitespace-pre-wrap break-words py-1 text-sm leading-relaxed text-foreground/80">
+            {connectionError ? (
+              <ProviderConnectionErrorDetails
+                description={connectionError.detail}
+                message={failureItem.failure.message}
+                retry={failureItem.retry}
+              />
+            ) : (
+              <p>{failureItem.failure.message}</p>
+            )}
+          </div>
         ) : null}
         {retryRunId !== null && onRetryWorkspacePreparation ? (
           <div className="ms-7 pb-1">

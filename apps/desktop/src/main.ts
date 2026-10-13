@@ -66,6 +66,7 @@ import * as DesktopLegacyLocalStorage from "./app/DesktopLegacyLocalStorage.ts";
 import * as DesktopTelemetryPublisher from "./telemetry/DesktopTelemetryPublisher.ts";
 import * as DesktopRendererHistory from "./telemetry/DesktopRendererHistory.ts";
 import * as DesktopUpdates from "./updates/DesktopUpdates.ts";
+import * as BrowserPasswords from "./preview/BrowserPasswords.ts";
 import * as BrowserImport from "./preview/BrowserImport/BrowserImport.ts";
 import * as LinuxBrowserSecret from "./preview/BrowserImport/LinuxBrowserSecret.ts";
 import * as BrowserSession from "./preview/BrowserSession.ts";
@@ -164,7 +165,8 @@ const layerDesktopServerExposure = DesktopServerExposure.layer.pipe(
   Layer.provideMerge(layerDesktopFoundation),
 );
 
-const layerDesktopPreview = PreviewManager.layer.pipe(
+const layerDesktopPreview = BrowserPasswords.layer.pipe(
+  Layer.provideMerge(PreviewManager.layer),
   Layer.provideMerge(DesktopBrowserHost.layer),
   // Merged rather than provided so the IPC handlers can reach the import
   // service alongside the manager; both sit on the same BrowserSession.

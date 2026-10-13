@@ -1,6 +1,17 @@
 import {
   DesktopPreviewAnnotationSendEnabledInputSchema,
   DesktopPreviewAnnotationThemeInputSchema,
+  DesktopPreviewAutomationControlInputSchema,
+  DesktopPreviewAutomationCheckInputSchema,
+  DesktopPreviewAutomationSnapshotInputSchema,
+  DesktopPreviewAutomationStatusSchema,
+  DesktopPreviewAutomationClickInputSchema,
+  DesktopPreviewAutomationTypeInputSchema,
+  DesktopPreviewAutomationPressInputSchema,
+  DesktopPreviewAutomationScrollInputSchema,
+  DesktopPreviewAutomationEvaluateInputSchema,
+  DesktopPreviewAutomationWaitForInputSchema,
+  PreviewAutomationSnapshot,
   DesktopPreviewArtifactInputSchema,
   DesktopPreviewConfigInputSchema,
   DesktopPreviewNavigateInputSchema,
@@ -108,9 +119,9 @@ export const navigate = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_NAVIGATE_CHANNEL,
   payload: DesktopPreviewNavigateInputSchema,
   result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.preview.navigate")(function* ({ tabId, url }) {
+  handler: Effect.fn("desktop.ipc.preview.navigate")(function* ({ tabId, url, controlEpoch }) {
     const manager = yield* PreviewManager.PreviewManager;
-    yield* manager.navigate(tabId, url);
+    yield* manager.navigate(tabId, url, controlEpoch);
   }),
 });
 
@@ -180,9 +191,13 @@ export const setColorScheme = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_SET_COLOR_SCHEME_CHANNEL,
   payload: DesktopPreviewSetColorSchemeInputSchema,
   result: Schema.Void,
-  handler: Effect.fn("desktop.ipc.preview.setColorScheme")(function* ({ tabId, colorScheme }) {
+  handler: Effect.fn("desktop.ipc.preview.setColorScheme")(function* ({
+    tabId,
+    colorScheme,
+    controlEpoch,
+  }) {
     const manager = yield* PreviewManager.PreviewManager;
-    yield* manager.setColorScheme(tabId, colorScheme);
+    yield* manager.setColorScheme(tabId, colorScheme, controlEpoch);
   }),
 });
 export const setAudioMuted = DesktopIpc.makeIpcMethod({
@@ -373,11 +388,14 @@ export const setAnnotationTheme = DesktopIpc.makeIpcMethod({
 
 export const pickElement = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_PICK_ELEMENT_CHANNEL,
-  payload: DesktopPreviewTabInputSchema,
+  payload: Schema.Struct({
+    ...DesktopPreviewTabInputSchema.fields,
+    mode: Schema.optional(Schema.Literals(["annotate", "live-edit"])),
+  }),
   result: Schema.NullOr(PreviewAnnotationSubmissionResultSchema),
-  handler: Effect.fn("desktop.ipc.preview.pickElement")(function* ({ tabId }) {
+  handler: Effect.fn("desktop.ipc.preview.pickElement")(function* ({ tabId, mode }) {
     const manager = yield* PreviewManager.PreviewManager;
-    return yield* manager.pickElement(tabId);
+    return yield* manager.pickElement(tabId, mode);
   }),
 });
 
@@ -424,6 +442,134 @@ export const copyArtifactToClipboard = DesktopIpc.makeIpcMethod({
   }),
 });
 
+export const setAutomationPaused = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_AUTOMATION_SET_PAUSED_CHANNEL,
+  payload: DesktopPreviewAutomationControlInputSchema,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.preview.setAutomationPaused")(function* ({ tabId, paused }) {
+    const manager = yield* PreviewManager.PreviewManager;
+    yield* manager.setAutomationPaused(tabId, paused);
+  }),
+});
+
+export const checkAutomationControl = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_AUTOMATION_CHECK_CONTROL_CHANNEL,
+  payload: DesktopPreviewAutomationCheckInputSchema,
+  result: Schema.Int,
+  handler: Effect.fn("desktop.ipc.preview.checkAutomationControl")(function* ({
+    tabId,
+    operation,
+    controlEpoch,
+  }) {
+    const manager = yield* PreviewManager.PreviewManager;
+    return yield* manager.checkAutomationControl(tabId, operation, controlEpoch);
+  }),
+});
+
+export const automationStatus = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_AUTOMATION_STATUS_CHANNEL,
+  payload: DesktopPreviewTabInputSchema,
+  result: DesktopPreviewAutomationStatusSchema,
+  handler: Effect.fn("desktop.ipc.preview.automationStatus")(function* ({ tabId }) {
+    const manager = yield* PreviewManager.PreviewManager;
+    return yield* manager.automationStatus(tabId);
+  }),
+});
+
+export const automationSnapshot = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_AUTOMATION_SNAPSHOT_CHANNEL,
+  payload: DesktopPreviewAutomationSnapshotInputSchema,
+  result: PreviewAutomationSnapshot,
+  handler: Effect.fn("desktop.ipc.preview.automationSnapshot")(function* ({ tabId, controlEpoch }) {
+    const manager = yield* PreviewManager.PreviewManager;
+    return yield* manager.automationSnapshot(tabId, controlEpoch);
+  }),
+});
+
+export const automationClick = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_AUTOMATION_CLICK_CHANNEL,
+  payload: DesktopPreviewAutomationClickInputSchema,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.preview.automationClick")(function* ({
+    tabId,
+    input,
+    controlEpoch,
+  }) {
+    const manager = yield* PreviewManager.PreviewManager;
+    yield* manager.automationClick(tabId, input, controlEpoch);
+  }),
+});
+
+export const automationType = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_AUTOMATION_TYPE_CHANNEL,
+  payload: DesktopPreviewAutomationTypeInputSchema,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.preview.automationType")(function* ({
+    tabId,
+    input,
+    controlEpoch,
+  }) {
+    const manager = yield* PreviewManager.PreviewManager;
+    yield* manager.automationType(tabId, input, controlEpoch);
+  }),
+});
+
+export const automationPress = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_AUTOMATION_PRESS_CHANNEL,
+  payload: DesktopPreviewAutomationPressInputSchema,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.preview.automationPress")(function* ({
+    tabId,
+    input,
+    controlEpoch,
+  }) {
+    const manager = yield* PreviewManager.PreviewManager;
+    yield* manager.automationPress(tabId, input, controlEpoch);
+  }),
+});
+
+export const automationScroll = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_AUTOMATION_SCROLL_CHANNEL,
+  payload: DesktopPreviewAutomationScrollInputSchema,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.preview.automationScroll")(function* ({
+    tabId,
+    input,
+    controlEpoch,
+  }) {
+    const manager = yield* PreviewManager.PreviewManager;
+    yield* manager.automationScroll(tabId, input, controlEpoch);
+  }),
+});
+
+export const automationEvaluate = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_AUTOMATION_EVALUATE_CHANNEL,
+  payload: DesktopPreviewAutomationEvaluateInputSchema,
+  result: Schema.Unknown,
+  handler: Effect.fn("desktop.ipc.preview.automationEvaluate")(function* ({
+    tabId,
+    input,
+    controlEpoch,
+  }) {
+    const manager = yield* PreviewManager.PreviewManager;
+    return yield* manager.automationEvaluate(tabId, input, controlEpoch);
+  }),
+});
+
+export const automationWaitFor = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_AUTOMATION_WAIT_FOR_CHANNEL,
+  payload: DesktopPreviewAutomationWaitForInputSchema,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.preview.automationWaitFor")(function* ({
+    tabId,
+    input,
+    controlEpoch,
+  }) {
+    const manager = yield* PreviewManager.PreviewManager;
+    yield* manager.automationWaitFor(tabId, input, controlEpoch);
+  }),
+});
+
 export const saveRecording = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_RECORDING_SAVE_CHANNEL,
   payload: DesktopPreviewRecordingSaveInputSchema,
@@ -463,6 +609,16 @@ export const methods = [
   copyArtifactToClipboard,
   openPictureInPicture,
   closePictureInPicture,
+  setAutomationPaused,
+  checkAutomationControl,
+  automationStatus,
+  automationSnapshot,
+  automationClick,
+  automationType,
+  automationPress,
+  automationScroll,
+  automationEvaluate,
+  automationWaitFor,
   startRecording,
   stopRecording,
   saveRecording,

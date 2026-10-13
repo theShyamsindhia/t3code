@@ -3,6 +3,7 @@ import type {
   OrchestrationV2SearchThreadResult,
   OrchestrationV2ThreadHistoryPage,
 } from "@t3tools/contracts";
+import { externalSessionSource } from "@t3tools/contracts";
 import {
   latestExecutedRun,
   latestRootProviderFailure,
@@ -10603,6 +10604,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       "orchestration_v2.thread_id": commandThreadId(command),
     });
 
+    if (
+      externalSessionSource(commandThreadId(command) ?? "") &&
+      (command.type.startsWith("message.") ||
+        command.type.startsWith("run.") ||
+        command.type.startsWith("checkpoint.") ||
+        command.type === "thread.fork" ||
+        command.type === "provider.switch")
+    ) {
+      return yield* new OrchestratorCommandRejectedError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "Continue in T3 after stopping the original app before sending commands.",
+      });
+    }
     const events = yield* Ref.make<Array<OrchestrationV2DomainEvent>>([]);
     const effects = yield* Ref.make<Array<PendingOrchestrationEffectV2>>([]);
     let cancelUnsettledEffects:

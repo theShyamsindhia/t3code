@@ -251,11 +251,23 @@ export const SETTINGS_SEARCH_ITEMS = [
     targetId: "appearance",
   },
   {
+    id: "sculpted-material",
+    title: "Sculpted material",
+    to: "/settings/appearance",
+    searchTerms: ["beta experimental interface rounded shapes pills curved chat tray dock solid"],
+  },
+  {
     // Prefixed because the slider control already owns the `appearance-contrast` id.
     id: "setting-appearance-contrast",
     title: "Contrast",
     to: "/settings/appearance",
     searchTerms: ["colors borders interface"],
+  },
+  {
+    id: "setting-liquid-glass-style",
+    title: "Liquid Glass style",
+    to: "/settings/appearance",
+    searchTerms: ["clear regular native transparency frame dock"],
   },
   {
     // Prefixed because the slider control already owns the `glass-opacity` id.

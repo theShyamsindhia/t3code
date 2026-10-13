@@ -40,9 +40,21 @@ function toNativeHeaderMenuItems(items: HomeListFilterMenu["items"]): NativeHead
 export function createSidebarHeaderItems(input: {
   readonly filterIcon: string;
   readonly filterMenu: HomeListFilterMenu;
+  readonly onSync?: () => void;
   readonly onOpenSettings: () => void;
 }): NativeStackHeaderItem[] {
   return [
+    ...(input.onSync
+      ? [
+          withNativeGlassHeaderItem({
+            type: "button" as const,
+            label: "",
+            accessibilityLabel: "Sync conversations",
+            icon: sfSymbolIcon("arrow.triangle.2.circlepath"),
+            onPress: input.onSync,
+          }),
+        ]
+      : []),
     withNativeGlassHeaderItem({
       type: "menu",
       axisBehavior: "horizontalOnly",

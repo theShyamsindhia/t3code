@@ -548,6 +548,7 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Diff colors"]
         : []),
       ...(settings.chatWidth !== DEFAULT_UNIFIED_SETTINGS.chatWidth ? ["Chat width"] : []),
+      ...(settings.sculptedInterfaceEnabled ? ["Sculpted material"] : []),
       ...(settings.panelAnimationDurationMs !== DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs
         ? ["Panel animations"]
         : []),
@@ -675,6 +676,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.appearanceContrast,
       settings.diffColorScheme,
       settings.chatWidth,
+      settings.sculptedInterfaceEnabled,
       settings.enableAgentBrowserAccess,
       settings.confirmQuit,
       settings.confirmThreadArchive,
@@ -792,6 +794,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       appearanceContrast: DEFAULT_UNIFIED_SETTINGS.appearanceContrast,
       diffColorScheme: DEFAULT_UNIFIED_SETTINGS.diffColorScheme,
       chatWidth: DEFAULT_UNIFIED_SETTINGS.chatWidth,
+      sculptedInterfaceEnabled: DEFAULT_UNIFIED_SETTINGS.sculptedInterfaceEnabled,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       notificationMode: DEFAULT_UNIFIED_SETTINGS.notificationMode,
       inAppNotificationsEnabled: DEFAULT_UNIFIED_SETTINGS.inAppNotificationsEnabled,
@@ -1153,6 +1156,8 @@ function BackgroundActivityAdvancedDialog({
 export function AppearanceSettingsPanel() {
   const {
     appearanceMode,
+    glassStyle,
+    setGlassStyle,
     refreshTheme,
     resolvedTheme,
     setAppearanceMode,
@@ -1191,6 +1196,22 @@ export function AppearanceSettingsPanel() {
 
   return (
     <SettingsPageContainer>
+      <SettingsSection id="appearance-beta" title="Beta">
+        <SettingsRow
+          {...searchableSetting("sculpted-material")}
+          description="Rounded controls, sculpted cards, and a curved chat tray. Pair with any color theme below."
+          control={
+            <Switch
+              checked={settings.sculptedInterfaceEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ sculptedInterfaceEnabled: Boolean(checked) })
+              }
+              aria-label="Sculpted material"
+            />
+          }
+        />
+      </SettingsSection>
+
       <SettingsSection id="appearance" title="Colors & themes" variant="plain" hideTitle>
         <div id={searchableSetting("theme").id}>
           <ThemeLibrary
@@ -1259,8 +1280,40 @@ export function AppearanceSettingsPanel() {
         />
 
         <SettingsRow
+          {...searchableSetting("setting-liquid-glass-style")}
+          description={
+            settings.sculptedInterfaceEnabled
+              ? "Turn off Sculpted material to use translucent glass surfaces."
+              : "For the Liquid Glass theme. Clear reveals more of the backdrop through the frame and chat dock."
+          }
+          control={
+            <div className="w-full sm:w-40">
+              <Select
+                value={glassStyle}
+                disabled={settings.sculptedInterfaceEnabled}
+                onValueChange={(value) => {
+                  if (value === "regular" || value === "clear") setGlassStyle(value);
+                }}
+              >
+                <SelectTrigger size="sm" className="w-full" aria-label="Liquid Glass style">
+                  <SelectValue>{glassStyle === "clear" ? "Clear" : "Regular"}</SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end">
+                  <SelectItem value="regular">Regular</SelectItem>
+                  <SelectItem value="clear">Clear</SelectItem>
+                </SelectPopup>
+              </Select>
+            </div>
+          }
+        />
+
+        <SettingsRow
           {...searchableSetting("setting-glass-opacity")}
-          description="Higher values make menus, dialogs, and the composer more solid."
+          description={
+            settings.sculptedInterfaceEnabled
+              ? "Sculpted material keeps surfaces solid. Your glass opacity is saved for when you turn it off."
+              : "Controls translucency in menus, dialogs, and the composer. Reading areas stay solid."
+          }
           resetAction={
             settings.glassOpacity !== DEFAULT_UNIFIED_SETTINGS.glassOpacity ? (
               <SettingResetButton
@@ -1281,6 +1334,7 @@ export function AppearanceSettingsPanel() {
               </output>
               <input
                 aria-label="Glass opacity"
+                disabled={settings.sculptedInterfaceEnabled}
                 className="settings-slider min-w-0 flex-1"
                 id="glass-opacity"
                 max={MAX_GLASS_OPACITY}

@@ -3200,3 +3200,205 @@ describe("parseAgentSessionTranscript", () => {
     expect(thread?.messages.at(-1)?.text).toBe("Assistant update 249");
   });
 });
+
+it.effect("background scans discover new files and reread only changed transcript identities", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const now = Date.parse("2026-09-30T12:00:00.000Z");
+    yield* TestClock.setTime(now);
+    const claudeHomePath = yield* makeTempDir("t3-external-claude-");
+    const codexHomePath = yield* makeTempDir("t3-external-codex-");
+    const workspace = yield* makeTempDir("t3-external-workspace-");
+    const filePath = path.join(
+      codexHomePath,
+      "sessions",
+      "2026",
+      "09",
+      "30",
+      "rollout-first.jsonl",
+    );
+    const contents =
+      [
+        encodeTranscriptRecord({ type: "session_meta", payload: { id: "first", cwd: workspace } }),
+        encodeTranscriptRecord({
+          type: "event_msg",
+          timestamp: "2026-09-30T11:00:00.000Z",
+          payload: { type: "user_message", message: "First prompt" },
+        }),
+      ].join("\n") + "\n";
+    yield* writeTranscript({ filePath, contents, mtimeMs: now - 1000 });
+    yield* Effect.gen(function* () {
+      const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+      yield* scanner.scan;
+      const first = yield* scanner.recentThreads(workspace, [], true).pipe(Stream.runCollect);
+      expect(first).toHaveLength(1);
+      const imported = first[0];
+      if (imported?._tag !== "Importable") throw new Error("Expected external history");
+      const cached = yield* scanner
+        .recentThreads(workspace, [imported.source], true)
+        .pipe(Stream.runCollect);
+      expect(cached.map((entry) => entry._tag)).toEqual(["AlreadyImported"]);
+      const updatedContents =
+        contents +
+        encodeTranscriptRecord({
+          type: "response_item",
+          timestamp: "2026-09-30T11:01:00.000Z",
+          payload: {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "New reply" }],
+          },
+        }) +
+        "\n";
+      yield* writeTranscript({ filePath, contents: updatedContents, mtimeMs: now });
+      yield* writeTranscript({
+        filePath: path.join(codexHomePath, "sessions", "2026", "09", "30", "rollout-second.jsonl"),
+        contents: contents.replace('"first"', '"second"'),
+        mtimeMs: now,
+      });
+      yield* scanner.scan;
+      const refreshed = yield* scanner
+        .recentThreads(workspace, [imported.source], true)
+        .pipe(Stream.runCollect);
+      expect(refreshed).toHaveLength(2);
+      const changed = refreshed.find(
+        (entry) => entry._tag === "Importable" && entry.thread.providerSessionId === "first",
+      );
+      expect(
+        changed?._tag === "Importable" && changed.thread.messages.map((message) => message.text),
+      ).toEqual(["First prompt", "New reply"]);
+      expect(yield* fs.readFileString(filePath)).toBe(updatedContents);
+    }).pipe(Effect.provide(layerScannerTest({ claudeHomePath, codexHomePath })));
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("external previews discover large Codex histories and retain the recent text", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-codex-preview-" });
+    const codexHomePath = path.join(root, "codex");
+    const claudeHomePath = path.join(root, "claude");
+    const workspace = path.join(root, "workspace");
+    yield* fs.makeDirectory(workspace, { recursive: true });
+    const now = Date.parse("2026-09-30T12:00:00.000Z");
+    yield* TestClock.setTime(now);
+    const filePath = path.join(
+      codexHomePath,
+      "sessions",
+      "2026",
+      "09",
+      "30",
+      "rollout-large.jsonl",
+    );
+    const contents =
+      [
+        encodeTranscriptRecord({
+          type: "session_meta",
+          payload: { id: "large-session", cwd: workspace },
+        }),
+        encodeTranscriptRecord({
+          type: "event_msg",
+          payload: { type: "user_message", message: "Original request" },
+        }),
+        encodeTranscriptRecord({
+          type: "response_item",
+          payload: { type: "function_call_output", output: "x".repeat(20 * 1024 * 1024) },
+        }),
+        encodeTranscriptRecord({
+          type: "event_msg",
+          payload: { type: "user_message", message: "Latest request" },
+        }),
+        encodeTranscriptRecord({
+          type: "response_item",
+          payload: {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "Latest response" }],
+          },
+        }),
+      ].join("\n") + "\n";
+    yield* writeTranscript({ filePath, contents, mtimeMs: now - 1000 });
+    yield* fs.writeFileString(
+      path.join(codexHomePath, "session_index.jsonl"),
+      encodeTranscriptRecord({ id: "large-session", thread_name: "Named Codex conversation" }) +
+        "\n",
+    );
+    yield* Effect.gen(function* () {
+      const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+      yield* scanner.scan;
+      for (const mode of ["discover", true] as const) {
+        const outcomes = yield* scanner.recentThreads(workspace, [], mode).pipe(Stream.runCollect);
+        const result = outcomes[0];
+        if (result?._tag !== "Importable") throw new Error("Expected large session preview");
+        expect(result.thread.title).toBe("Named Codex conversation");
+        expect(result.thread.messages.map((message) => message.text)).toEqual([
+          "Original request",
+          "Latest request",
+          "Latest response",
+        ]);
+      }
+      const unselected = yield* scanner
+        .recentThreads(workspace, [], true, ["codex\0different-session"])
+        .pipe(Stream.runCollect);
+      expect(unselected.every((entry) => entry._tag === "Skipped")).toBe(true);
+    }).pipe(Effect.provide(layerScannerTest({ codexHomePath, claudeHomePath })));
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect.each(["codex", "claudeAgent"] as const)(
+  "reuses unchanged %s discovery metadata and invalidates edited or replaced files",
+  (provider) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const claudeHomePath = yield* makeTempDir("t3-cache-claude-");
+      const codexHomePath = yield* makeTempDir("t3-cache-codex-");
+      const firstRoot = yield* makeTempDir("t3-cache-one-");
+      const secondRoot = yield* makeTempDir("t3-cache-two-");
+      const filePath =
+        provider === "codex"
+          ? path.join(codexHomePath, "sessions", "2026", "09", "30", "rollout-cache.jsonl")
+          : path.join(claudeHomePath, "projects", "project", "cache.jsonl");
+      const content = provider === "codex" ? codexRolloutLine : claudeSessionLine;
+      const mtimeMs = Date.parse("2026-09-30T12:00:00.000Z");
+      yield* writeTranscript({ filePath, contents: content(firstRoot), mtimeMs });
+      let reads = 0;
+      const measuredFs = FileSystem.FileSystem.of({
+        ...fs,
+        open: (target, options) => {
+          if (target === filePath) reads++;
+          return fs.open(target, options);
+        },
+      });
+      yield* Effect.gen(function* () {
+        const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+        expect((yield* scanner.scan).candidates.map((c) => c.path)).toEqual([firstRoot]);
+        expect(reads).toBe(1);
+        expect((yield* scanner.scan).candidates.map((c) => c.path)).toEqual([firstRoot]);
+        expect(reads).toBe(1);
+        yield* writeTranscript({
+          filePath,
+          contents: content(secondRoot),
+          mtimeMs: mtimeMs + 1000,
+        });
+        expect((yield* scanner.scan).candidates.map((c) => c.path)).toEqual([secondRoot]);
+        expect(reads).toBe(2);
+        // A replacement with matching size and mtime still needs its own metadata.
+        yield* writeTranscript({
+          filePath: `${filePath}.replacement`,
+          contents: content(firstRoot),
+          mtimeMs: mtimeMs + 1000,
+        });
+        yield* fs.rename(`${filePath}.replacement`, filePath);
+        expect((yield* scanner.scan).candidates.map((c) => c.path)).toEqual([firstRoot]);
+        expect(reads).toBe(3);
+        yield* fs.remove(filePath);
+        expect((yield* scanner.scan).candidates).toEqual([]);
+      }).pipe(
+        Effect.provide(layerScannerTest({ claudeHomePath, codexHomePath })),
+        Effect.provideService(FileSystem.FileSystem, measuredFs),
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
+);

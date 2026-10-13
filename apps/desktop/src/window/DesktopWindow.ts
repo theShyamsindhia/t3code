@@ -8,7 +8,11 @@ import * as Ref from "effect/Ref";
 
 import * as Electron from "electron";
 
-import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
+import {
+  type DesktopGlassStyle,
+  type DesktopSnapShotEvent,
+  DEFAULT_CLIENT_SETTINGS,
+} from "@t3tools/contracts";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
@@ -18,6 +22,7 @@ import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
+import { createMacosGlassController, loadMacosGlassApi } from "../electron/MacosGlass.ts";
 import {
   MENU_ACTION_CHANNEL,
   QUIT_SHORTCUT_CHANNEL,
@@ -33,12 +38,13 @@ import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import { makeQuitShortcutHandler } from "./QuitHold.ts";
+import { forwardDockSwitcherShortcut } from "./dockSwitcherShortcut.ts";
 import { copyContextMenuImage } from "./ContextMenuImage.ts";
 
 const TITLEBAR_HEIGHT = 40;
 // Matches --workspace-topbar-height in apps/web/src/index.css. Native macOS
 // buttons are 14 points tall and do not scale with the renderer's zoom.
-const MACOS_WORKSPACE_TOPBAR_HEIGHT = 52;
+const MACOS_WORKSPACE_TOPBAR_HEIGHT = 44;
 const MACOS_WINDOW_BUTTON_RADIUS = 7;
 
 function syncMacosWindowButtons(window: Electron.BrowserWindow): void {
@@ -285,17 +291,38 @@ function getWindowTitleBarOptions(
   };
 }
 
-function syncWindowAppearance(
+export function syncWindowAppearance(
   window: Electron.BrowserWindow,
   shouldUseDarkColors: boolean,
   platform: NodeJS.Platform,
+  useVibrancy = false,
+  nativeGlass?: ReturnType<typeof createMacosGlassController>,
+  glassStyle: DesktopGlassStyle = "regular",
 ): Effect.Effect<void> {
-  return Effect.sync(() => {
+  return Effect.gen(function* () {
     if (window.isDestroyed()) {
       return;
     }
 
-    window.setBackgroundColor(getInitialWindowBackgroundColor(shouldUseDarkColors));
+    const glass = platform === "darwin" && useVibrancy;
+    if (platform === "darwin") {
+      // Electron vibrancy must be removed before adding NSGlassEffectView.
+      window.setVibrancy(glass && !nativeGlass ? "under-window" : null);
+      if (nativeGlass) {
+        yield* Effect.try(() =>
+          nativeGlass.sync(window, glass, shouldUseDarkColors, glassStyle),
+        ).pipe(
+          Effect.catch((cause) =>
+            logWindowWarning("native glass failed; using vibrancy", { cause }).pipe(
+              Effect.andThen(Effect.sync(() => window.setVibrancy(glass ? "under-window" : null))),
+            ),
+          ),
+        );
+      }
+    }
+    window.setBackgroundColor(
+      glass ? "#00000000" : getInitialWindowBackgroundColor(shouldUseDarkColors),
+    );
     const { titleBarOverlay } = getWindowTitleBarOptions(shouldUseDarkColors, platform);
     if (typeof titleBarOverlay === "object") {
       window.setTitleBarOverlay(titleBarOverlay);
@@ -333,6 +360,18 @@ export const make = Effect.gen(function* () {
   const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
   const clientSettings = yield* DesktopClientSettings.DesktopClientSettings;
   const electronApp = yield* ElectronApp.ElectronApp;
+  const glassApi =
+    environment.platform === "darwin"
+      ? yield* Effect.tryPromise(loadMacosGlassApi).pipe(
+          Effect.catch((cause) =>
+            logWindowWarning("native glass unavailable; using vibrancy", { cause }).pipe(
+              Effect.as(null),
+            ),
+          ),
+        )
+      : null;
+  const nativeGlass = glassApi ? createMacosGlassController(glassApi) : undefined;
+  const glassWindows = new WeakSet<Electron.BrowserWindow>();
   const rendererHistory = yield* DesktopRendererHistory.DesktopRendererHistory;
   // Window-side latch for the primary backend's readiness. Set by
   // handleBackendReady (driven by the pool's onReady callback), cleared
@@ -412,13 +451,16 @@ export const make = Effect.gen(function* () {
       minHeight: 620,
       show: false,
       autoHideMenuBar: true,
-      ...(environment.platform === "darwin" ? { disableAutoHideCursor: true } : {}),
+      ...(environment.platform === "darwin"
+        ? { disableAutoHideCursor: true, transparent: Boolean(nativeGlass) }
+        : {}),
       backgroundColor: getInitialWindowBackgroundColor(shouldUseDarkColors),
       ...iconOption,
       title: environment.displayName,
       ...getWindowTitleBarOptions(shouldUseDarkColors, environment.platform),
       webPreferences: {
         preload: environment.preloadPath,
+        additionalArguments: nativeGlass ? ["--t3-native-glass"] : [],
         // The window boots hidden (show: false until ready-to-show), and
         // Chromium throttles hidden renderers: timers coalesce and rAF stops,
         // which stalls first paint. Boot unthrottled; the first-reveal trigger
@@ -439,6 +481,8 @@ export const make = Effect.gen(function* () {
     yield* rendererHistory.register(window.webContents, { surface: "main" });
     if (environment.platform === "darwin") {
       window.setAutoHideCursor(false);
+      window.setWindowButtonVisibility(true);
+      if (nativeGlass) glassWindows.add(window);
     }
     let boundsPersistFiber: Fiber.Fiber<void, never> | undefined;
     let pendingBoundsPersistFiber: Fiber.Fiber<void, never> | undefined;
@@ -629,6 +673,15 @@ export const make = Effect.gen(function* () {
     window.webContents.on("did-attach-webview", (_event, contents) => {
       installContextMenu(window, contents);
       void runPromise(previewManager.prepareWebview(contents));
+      // A focused browser guest owns its keyboard events. Return this app
+      // gesture to the host; subsequent Tab presses and Control-up reach it.
+      contents.on("before-input-event", (event, input) => {
+        forwardDockSwitcherShortcut(event, input, {
+          isGuestFocused: () => Electron.webContents.getFocusedWebContents() === contents,
+          focus: () => window.webContents.focus(),
+          send: (action) => window.webContents.send(MENU_ACTION_CHANNEL, action),
+        });
+      });
     });
 
     window.webContents.setWindowOpenHandler(({ url }) => {
@@ -709,9 +762,11 @@ export const make = Effect.gen(function* () {
 
     if (environment.platform === "darwin") {
       window.on("enter-full-screen", () => {
+        nativeGlass?.syncCorners(window);
         window.webContents.send(WINDOW_FULLSCREEN_STATE_CHANNEL, true);
       });
       window.on("leave-full-screen", () => {
+        nativeGlass?.syncCorners(window);
         syncMacosWindowButtons(window);
         window.webContents.send(WINDOW_FULLSCREEN_STATE_CHANNEL, false);
       });
@@ -1064,8 +1119,17 @@ export const make = Effect.gen(function* () {
     }),
     syncAppearance: Effect.gen(function* () {
       const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;
+      const useVibrancy = yield* electronTheme.shouldUseVibrancy;
+      const glassStyle = yield* electronTheme.glassStyle;
       yield* electronWindow.syncAllAppearance((window) =>
-        syncWindowAppearance(window, shouldUseDarkColors, environment.platform),
+        syncWindowAppearance(
+          window,
+          shouldUseDarkColors,
+          environment.platform,
+          useVibrancy,
+          glassWindows.has(window) ? nativeGlass : undefined,
+          glassStyle,
+        ),
       );
     }).pipe(Effect.withSpan("desktop.window.syncAppearance")),
   });

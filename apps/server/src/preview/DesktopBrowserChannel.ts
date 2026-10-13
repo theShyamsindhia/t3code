@@ -10,11 +10,13 @@
 import * as NodeStream from "@effect/platform-node/NodeStream";
 import * as NodeSocketServer from "@effect/platform-node/NodeSocketServer";
 import {
+  type BrowserSignInResult,
   DesktopBrowserCommand,
   DesktopBrowserEvent,
   type DesktopBrowserCommand as DesktopBrowserCommandType,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -38,6 +40,15 @@ const encodeCommand = Schema.encodeEffect(Schema.fromJsonString(DesktopBrowserCo
 export interface DesktopTabKey {
   readonly threadId: string;
   readonly tabId: string;
+}
+
+export class DesktopBrowserSignInError extends Schema.TaggedError<DesktopBrowserSignInError>()(
+  "DesktopBrowserSignInError",
+  { reason: Schema.String },
+) {
+  override get message(): string {
+    return this.reason;
+  }
 }
 
 const keyOf = ({ threadId, tabId }: DesktopTabKey) => `${threadId}\u0000${tabId}`;
@@ -67,6 +78,11 @@ export class DesktopBrowserChannel extends Context.Service<
       key: DesktopTabKey,
       pointer: { readonly phase: "move" | "click"; readonly x: number; readonly y: number },
     ) => Effect.Effect<void>;
+    /** Fills a permitted saved login in a desktop-rendered tab. */
+    readonly signIn?: (
+      key: DesktopTabKey,
+      username?: string,
+    ) => Effect.Effect<BrowserSignInResult, DesktopBrowserSignInError>;
   }
 >()("t3/preview/DesktopBrowserChannel") {}
 
@@ -78,6 +94,10 @@ const make = Effect.gen(function* () {
   const attachedTabs = new Set<string>();
   /** CDP frames from the desktop, per tab, for the endpoint connected to it. */
   const inbound = new Map<string, Queue.Queue<string>>();
+  const passwordResults = new Map<
+    string,
+    Deferred.Deferred<{ readonly result?: BrowserSignInResult; readonly error?: string }, never>
+  >();
   const writeLock = yield* Semaphore.make(1);
 
   if (inputFd === undefined || controlFd === undefined) {
@@ -118,17 +138,30 @@ const make = Effect.gen(function* () {
     Stream.runForEach((decoded) => {
       if (Option.isNone(decoded)) return Effect.void;
       const event = decoded.value;
-      const key = { threadId: event.threadId, tabId: event.tabId };
-      const id = keyOf(key);
       switch (event.type) {
+        case "passwordResult": {
+          const pending = passwordResults.get(event.requestId);
+          if (!pending) return Effect.void;
+          passwordResults.delete(event.requestId);
+          return Deferred.succeed(pending, {
+            ...(event.result === undefined ? {} : { result: event.result }),
+            ...(event.error === undefined ? {} : { error: event.error }),
+          });
+        }
         case "cdp": {
+          const id = keyOf(event);
           const queue = inbound.get(id);
           return queue ? Queue.offer(queue, event.message).pipe(Effect.asVoid) : Effect.void;
         }
-        case "attached":
+        case "attached": {
+          const key = { threadId: event.threadId, tabId: event.tabId };
+          const id = keyOf(key);
           attachedTabs.add(id);
           return PubSub.publish(changes, { key, attached: true });
+        }
         case "detached": {
+          const key = { threadId: event.threadId, tabId: event.tabId };
+          const id = keyOf(key);
           attachedTabs.delete(id);
           const queue = inbound.get(id);
           return (queue ? Queue.shutdown(queue) : Effect.void).pipe(
@@ -228,6 +261,41 @@ const make = Effect.gen(function* () {
     isAttached: (key) => Effect.sync(() => attachedTabs.has(keyOf(key))),
     endpoint,
     pointer: (key, pointer) => command({ type: "pointer", ...key, ...pointer }),
+    signIn: (key, username) =>
+      Effect.gen(function* () {
+        const requestId = NodeCrypto.randomUUID();
+        const pending = yield* Deferred.make<
+          { readonly result?: BrowserSignInResult; readonly error?: string },
+          never
+        >();
+        passwordResults.set(requestId, pending);
+        yield* command({
+          type: "passwordSignIn",
+          ...key,
+          requestId,
+          ...(username === undefined ? {} : { username }),
+        });
+        const response = yield* Deferred.await(pending).pipe(Effect.timeoutOption("60 seconds"));
+        if (Option.isNone(response)) {
+          passwordResults.delete(requestId);
+          return yield* Effect.fail(
+            new DesktopBrowserSignInError({
+              reason: "The desktop did not answer the saved-login request.",
+            }),
+          );
+        }
+        if (response.value.error)
+          return yield* Effect.fail(
+            new DesktopBrowserSignInError({ reason: response.value.error }),
+          );
+        if (!response.value.result)
+          return yield* Effect.fail(
+            new DesktopBrowserSignInError({
+              reason: "The desktop returned no saved-login result.",
+            }),
+          );
+        return response.value.result;
+      }),
   });
 });
 

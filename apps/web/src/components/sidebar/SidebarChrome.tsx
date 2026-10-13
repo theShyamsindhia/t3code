@@ -26,6 +26,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
+import { SidebarUsagePopover } from "./SidebarUsagePopover";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
@@ -228,11 +229,17 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
               onClick={handlePullRequestsClick}
             />
           ) : null}
-          <SidebarUtilityItem
-            icon={<ChartNoAxesColumnIcon />}
-            label="Usage"
-            onClick={handleUsageClick}
-          />
+          {isMobile ? (
+            <SidebarUtilityItem
+              icon={<ChartNoAxesColumnIcon />}
+              label="Usage"
+              onClick={handleUsageClick}
+            />
+          ) : (
+            <SidebarMenuItem className="shrink-0">
+              <SidebarUsagePopover />
+            </SidebarMenuItem>
+          )}
         </>
       )}
       <SidebarUpdatePill />
@@ -240,13 +247,24 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   );
 });
 
-export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
+export const SidebarChromeFooter = memo(function SidebarChromeFooter({
+  dock = false,
+}: {
+  dock?: boolean;
+}) {
+  const Footer = dock ? "div" : SidebarFooter;
   return (
-    <SidebarFooter>
-      <SidebarThreadUndoNotice />
-      <SidebarProviderUpdatePill />
-      <SidebarUpdateArchitectureWarning />
+    <Footer>
+      <div
+        className={
+          dock ? "absolute right-2 bottom-full z-50 flex w-64 flex-col gap-2 pb-2" : "contents"
+        }
+      >
+        <SidebarThreadUndoNotice />
+        <SidebarProviderUpdatePill />
+        <SidebarUpdateArchitectureWarning />
+      </div>
       <SidebarUtilityMenu />
-    </SidebarFooter>
+    </Footer>
   );
 });

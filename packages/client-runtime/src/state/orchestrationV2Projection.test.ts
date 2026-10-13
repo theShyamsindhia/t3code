@@ -4,6 +4,7 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2TurnItem,
+  EventId,
   MessageId,
   ProjectId,
   ProviderInstanceId,
@@ -105,6 +106,40 @@ const emptyProjection = {
 } as OrchestrationV2ThreadProjection;
 
 describe("applyOrchestrationV2ProjectionEvent", () => {
+  it("replaces external history and visible rows when the source edits or removes messages", () => {
+    const oldItem = { ...commandItem("old"), runId: null };
+    const newItem = { ...commandItem("new"), runId: null };
+    const projection = {
+      ...emptyProjection,
+      turnItems: [oldItem],
+      visibleTurnItems: [
+        {
+          position: 0,
+          visibility: "local" as const,
+          sourceThreadId: threadId,
+          sourceItemId: oldItem.id,
+          item: oldItem,
+        },
+      ],
+    };
+    const event = {
+      id: EventId.make("external-refresh"),
+      type: "thread.external-history.synced",
+      threadId,
+      occurredAt: now,
+      payload: { messages: [], turnItems: [newItem] },
+    } satisfies OrchestrationV2DomainEvent;
+    const next = applyOrchestrationV2ProjectionEvent(projection, event);
+    expect(next?.turnItems).toEqual([newItem]);
+    expect(next?.visibleTurnItems.map((row) => row.item)).toEqual([newItem]);
+    expect(
+      applyOrchestrationV2ProjectionEvent(next, {
+        ...event,
+        payload: { messages: [], turnItems: [] },
+      })?.visibleTurnItems,
+    ).toEqual([]);
+  });
+
   it("keeps live token usage when the terminal provider turn omits it", () => {
     const providerTurnId = ProviderTurnId.make("provider-turn-reducer");
     const running = {

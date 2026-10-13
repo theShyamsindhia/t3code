@@ -192,3 +192,34 @@ On mobile, use **Settings → Source control** to change selected environment de
 T3 Code only pulls when it can fast-forward and the checkout has no changed files, untracked files,
 or local commits. It skips checkouts on another branch or without an upstream. If a checkout has
 local work, resolve it yourself before automatic pulls can resume.
+
+## Sharing the browser with an agent
+
+In the desktop app, local dev server links in chat and terminal output open in the Workbench.
+Opening the server's root link again reuses its tab and keeps the page you were testing;
+a link to a specific page navigates there. Hold **⌘** or **Ctrl** while clicking to use your
+default browser instead. Other website links follow **Settings → Integrations → Open links in**.
+
+With agent browser access enabled in **Settings → Integrations**, you and the agent use the same
+live tab in the desktop app. Click **Take over**, or click or type in the page, to pause the agent’s
+actions in that tab. Other tabs remain independent. **Resume** restores access and requires the
+agent to inspect the current page before acting again. Your page and signed-in session stay open.
+
+If the agent has already ended its turn, Resume does not start a new one; send a follow-up to
+continue. A disconnected browser host leaves its tabs paused until you resume them.
+
+In the desktop browser, **Live edit** lets you select an element and adjust its text, size,
+spacing, colors, and borders directly on the page. Drag an element or its **Move** handle
+to reposition it. **Shift-click** adds or removes elements from the selection; drag to move
+them together, with one undo for the gesture. Drag any corner dot to resize its element,
+or use the fields for precise values. The inset dot adjusts corner roundness. Drag the
+dials beside numeric fields to adjust their values; hold **Shift** for finer control, or
+focus a dial and use the arrow keys. **Parent** selects the containing element.
+**Play** lets you use the page with your edits visible; **Select** returns to editing.
+Undo, redo, and reset stay within the current preview session. Movement previews a visual
+offset; it does not reorder the page or automatically rewrite its layout.
+
+These are temporary previews: closing Live edit or reloading restores the page, and a page
+that replaces its elements can clear their edits. **Attach edits to chat** captures a screenshot
+and the changes, then restores the page. Send the attachment to ask the agent to apply them
+to your project's source. Editing another website only changes your local preview.

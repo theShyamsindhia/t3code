@@ -1736,6 +1736,14 @@ const OrchestrationV2EventBase = Schema.Struct({
 export const OrchestrationV2DomainEvent = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2EventBase.fields,
+    type: Schema.Literal("thread.external-history.synced"),
+    payload: Schema.Struct({
+      messages: Schema.Array(OrchestrationV2ConversationMessage),
+      turnItems: Schema.Array(OrchestrationV2TurnItem),
+    }),
+  }),
+  Schema.Struct({
+    ...OrchestrationV2EventBase.fields,
     type: Schema.Literal("thread.created"),
     payload: OrchestrationV2AppThread,
   }),
@@ -2554,6 +2562,14 @@ export const OrchestrationV2RawProviderEventJson = OrchestrationV2RawProviderEve
 export type OrchestrationV2RawProviderEventJson = typeof OrchestrationV2RawProviderEventJson.Type;
 
 export const OrchestrationV2DomainEventJson = Schema.Union([
+  Schema.Struct({
+    ...OrchestrationV2JsonEventBaseFields,
+    type: Schema.Literal("thread.external-history.synced"),
+    payload: Schema.Struct({
+      messages: Schema.Array(OrchestrationV2ConversationMessageJson),
+      turnItems: Schema.Array(OrchestrationV2TurnItemJson),
+    }),
+  }),
   Schema.Struct({
     ...OrchestrationV2JsonEventBaseFields,
     type: Schema.Literal("thread.created"),

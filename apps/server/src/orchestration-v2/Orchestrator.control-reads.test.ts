@@ -49,6 +49,51 @@ const layerTest = Layer.mergeAll(
   ),
 );
 
+it.effect("rejects sending commands to an external preview before takeover", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = ThreadId.make("external:codex:codex:control-preview");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-external-preview"),
+      threadId,
+      projectId: ProjectId.make("project:external-preview"),
+      title: "External preview",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "system",
+      creationSource: "server",
+    });
+    const error = yield* orchestrator
+      .dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("send-external-preview"),
+        threadId,
+        messageId: MessageId.make("external-preview-message"),
+        text: "Do not send before takeover",
+        attachments: [],
+        dispatchMode: { type: "start_immediately" },
+        createdBy: "user",
+        creationSource: "web",
+      })
+      .pipe(Effect.flip);
+    assert.equal(error._tag, "OrchestratorCommandRejectedError");
+    const projection = yield* projections.getThreadProjection(threadId);
+    assert.deepEqual(projection.messages, []);
+    assert.deepEqual(projection.runs, []);
+    yield* orchestrator.dispatch({
+      type: "thread.archive",
+      commandId: CommandId.make("archive-external-preview"),
+      threadId,
+    });
+    assert.ok((yield* projections.getThreadShell(threadId))?.archivedAt);
+  }).pipe(Effect.provide(Layer.fresh(layerTest))),
+);
+
 it.effect(
   "dispatches metadata, queue resume and request controls without hydrating unrelated history",
   () =>

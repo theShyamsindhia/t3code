@@ -1,3 +1,4 @@
+import * as ExternalSessionSync from "../project/ExternalSessionSync.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as Layer from "effect/Layer";
@@ -239,6 +240,20 @@ const layerAgentSessionImporterProvided = AgentSessionImporter.layer.pipe(
   ),
 );
 
+const layerExternalSessionSyncProvided = ExternalSessionSync.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      AgentSessionScanner.layer,
+      layerProjectService,
+      layerOrchestratorProvided,
+      layerEventSinkProvided,
+      IdAllocator.layer,
+      ProjectionStore.layer,
+      ProviderSessionRuntime.layer,
+    ),
+  ),
+);
+
 const layerThreadManagementProvided = ThreadManagementService.layerWithLegacyImporter.pipe(
   Layer.provide(
     Layer.mergeAll(
@@ -359,6 +374,7 @@ export const layerProduction = Layer.mergeAll(
   UsageLimitRecoveryWorker.layer.pipe(
     Layer.provide(Layer.mergeAll(ProjectionStore.layer, layerThreadManagementProvided)),
   ),
+  layerExternalSessionSyncProvided,
   layerProviderContinuationWorkerProvided,
   layerAgentSessionImporterProvided,
   EffectOutbox.layerPruneWorker.pipe(Layer.provide(EffectOutbox.layer)),

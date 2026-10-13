@@ -1,7 +1,7 @@
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
-import { PanelLeft, PanelLeftClose } from "lucide";
+import { PanelBottom, PanelBottomClose, PanelLeft, PanelLeftClose } from "lucide";
 import * as React from "react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
@@ -343,9 +343,22 @@ function Sidebar({
   );
 }
 
-function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
+function SidebarTrigger({
+  className,
+  onClick,
+  orientation = "vertical",
+  ...props
+}: React.ComponentProps<typeof Button> & { orientation?: "horizontal" | "vertical" }) {
   const { toggleSidebar } = useSidebar();
   const isOpen = useSidebarVisibility();
+  const icon =
+    orientation === "horizontal"
+      ? isOpen
+        ? PanelBottomClose
+        : PanelBottom
+      : isOpen
+        ? PanelLeftClose
+        : PanelLeft;
 
   return (
     <Button
@@ -364,7 +377,7 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
       variant="ghost"
       {...props}
     >
-      <MorphIcon className="size-4" icon={isOpen ? PanelLeftClose : PanelLeft} />
+      <MorphIcon className="size-4" icon={icon} />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   );
@@ -704,8 +717,10 @@ const sidebarMenuButtonVariants = cva(
     variants: {
       size: {
         default:
-          "h-8 rounded-[var(--control-radius)] px-[var(--sidebar-row-content-inset)] py-1.5 text-sm",
-        icon: "size-8 justify-center rounded-[var(--control-radius)] p-0",
+          "h-[var(--sidebar-control-height,2rem)] rounded-[var(--control-radius)] px-[var(--sidebar-row-content-inset)] py-1.5 text-sm",
+        icon: "size-[var(--sidebar-control-height,2rem)] justify-center rounded-[var(--control-radius)] p-0",
+        "icon-sm":
+          "size-[var(--sidebar-control-height,1.75rem)] justify-center rounded-[var(--control-radius)] p-0",
         lg: "h-12 rounded-lg p-2 text-sm group-data-[collapsible=icon]:p-0!",
         sm: "h-7 rounded-lg p-2 text-xs",
       },

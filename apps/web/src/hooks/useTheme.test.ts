@@ -204,3 +204,71 @@ describe("theme failure handling", () => {
     }
   });
 });
+
+describe("native glass theme", () => {
+  it("persists the glass style and resyncs it without changing the theme", async () => {
+    const storage = createStorage();
+    storage.setItem("t3code:theme", "liquid-glass");
+    const setTheme = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("window", {
+      localStorage: storage,
+      desktopBridge: { setTheme, supportsVibrancy: true, supportsLiquidGlass: true },
+    });
+    vi.doMock("react", () => ({
+      useCallback: <A>(callback: A) => callback,
+      useEffect: () => undefined,
+      useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => getSnapshot(),
+    }));
+    const { useTheme, syncDesktopTheme } = await import("./useTheme");
+    expect(useTheme().glassStyle).toBe("regular");
+    syncDesktopTheme("liquid-glass");
+    expect(setTheme).toHaveBeenLastCalledWith("light", { vibrancy: true, glassStyle: "regular" });
+    expect(useTheme().setGlassStyle("clear")).toBe(true);
+    expect(useTheme().glassStyle).toBe("clear");
+    syncDesktopTheme("liquid-glass");
+    expect(setTheme).toHaveBeenLastCalledWith("light", { vibrancy: true, glassStyle: "clear" });
+    syncDesktopTheme("liquid-glass");
+    expect(setTheme).toHaveBeenCalledTimes(2);
+    expect(storage.getItem("t3code:theme")).toBe("liquid-glass");
+    expect(storage.getItem("t3code:liquid-glass-style")).toBe("clear");
+    useTheme().setGlassStyle("regular");
+    syncDesktopTheme("liquid-glass");
+    expect(setTheme).toHaveBeenLastCalledWith("light", { vibrancy: true, glassStyle: "regular" });
+  });
+
+  it("uses the selected appearance half and clears glass when returning to an opaque theme", async () => {
+    const setTheme = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("window", {
+      desktopBridge: { setTheme, supportsVibrancy: true },
+      localStorage: createStorage(),
+    });
+    const { syncDesktopThemePreference, syncDesktopTheme } = await import("./useTheme");
+    await syncDesktopThemePreference(
+      { setTheme, supportsVibrancy: true },
+      "system",
+      false,
+      "light",
+      { light: "liquid-glass", dark: "cloud" },
+    );
+    expect(setTheme).toHaveBeenLastCalledWith("light", { vibrancy: true });
+    await syncDesktopThemePreference(
+      { setTheme, supportsVibrancy: true },
+      "system",
+      false,
+      "dark",
+      { light: "liquid-glass", dark: "cloud" },
+    );
+    expect(setTheme).toHaveBeenLastCalledWith("dark", { vibrancy: false });
+    syncDesktopTheme("liquid-glass", false, "light");
+    expect(setTheme).toHaveBeenLastCalledWith("light", { vibrancy: true });
+    syncDesktopTheme("cloud", false, "light");
+    expect(setTheme).toHaveBeenLastCalledWith("light", { vibrancy: false });
+  });
+
+  it("keeps theme switching compatible with older desktop shells", async () => {
+    const setTheme = vi.fn().mockResolvedValue(undefined);
+    const { syncDesktopThemePreference } = await import("./useTheme");
+    await syncDesktopThemePreference({ setTheme }, "liquid-glass", false, "light", null);
+    expect(setTheme).toHaveBeenCalledExactlyOnceWith("light");
+  });
+});

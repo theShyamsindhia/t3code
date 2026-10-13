@@ -15,6 +15,7 @@ import type {
 } from "@t3tools/contracts";
 
 import { resolveAnnotationSubmission } from "./AnnotationKeyboard.ts";
+import { startLiveEdit } from "./LiveEdit.ts";
 import { previewAnnotationStyles } from "./AnnotationStyles.generated.ts";
 import { installRecordingCursor } from "./RecordingCursor.ts";
 import { DEFAULT_RECORDING_INPUT_OPTIONS } from "./RecordingInput.ts";
@@ -1500,16 +1501,48 @@ function startAnnotation(sendEnabled: boolean): void {
   };
 }
 
+function startLiveEditSession(): void {
+  activeSession?.teardown(false);
+  const host = document.createElement("div");
+  host.setAttribute(OVERLAY_ATTRIBUTE, "");
+  host.style.cssText = `position:fixed;inset:0;z-index:${Z_INDEX_OVERLAY};pointer-events:none`;
+  applyAnnotationTheme(host, annotationTheme);
+  document.documentElement.appendChild(host);
+  const session = startLiveEdit({
+    host,
+    captureElement,
+    attach: (annotation) =>
+      ipcRenderer.send(
+        ELEMENT_PICKED_CHANNEL,
+        annotation,
+        unionRects(annotation.elements.map((target) => target.rect)),
+        "attach",
+      ),
+    cancel: () => teardown(true),
+  });
+  function teardown(notifyMain: boolean): void {
+    session.dispose();
+    ipcRenderer.off(ANNOTATION_CAPTURED_CHANNEL, onCaptured);
+    activeSession = null;
+    if (notifyMain) ipcRenderer.send(ELEMENT_PICKED_CHANNEL, null);
+  }
+  const onCaptured = () => teardown(false);
+  ipcRenderer.on(ANNOTATION_CAPTURED_CHANNEL, onCaptured);
+  activeSession = {
+    teardown,
+    applyTheme: (theme) => applyAnnotationTheme(host, theme),
+    setSendEnabled: () => undefined,
+  };
+}
+
 ipcRenderer.on(
   START_PICK_CHANNEL,
-  (_event, theme: DesktopPreviewAnnotationTheme | undefined, sendEnabled?: boolean) => {
+  (_event, theme: DesktopPreviewAnnotationTheme | undefined, mode: unknown) => {
     if (theme) annotationTheme = theme;
-    startAnnotation(sendEnabled === true);
+    if (mode === "live-edit") startLiveEditSession();
+    else startAnnotation(false);
   },
 );
-ipcRenderer.on(ANNOTATION_SEND_ENABLED_CHANNEL, (_event, enabled: boolean) => {
-  activeSession?.setSendEnabled(enabled === true);
-});
 ipcRenderer.on(ANNOTATION_THEME_CHANNEL, (_event, theme: DesktopPreviewAnnotationTheme) => {
   annotationTheme = theme;
   recordingCursor?.setTheme(theme);

@@ -1,3 +1,5 @@
+import { ExternalConversationNotice } from "./ExternalConversationNotice";
+import { externalSessionSource } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useChildThreadInputs, useThreadReportedModelSelection } from "../../state/entities";
 import { UsageLimitRecoveryCard } from "./UsageLimitRecoveryCard";
@@ -1390,8 +1392,20 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                 composer slot, so composer drafts and editor state survive.
                 A rejected creation has no thread to send to; the failure card
                 owns the slot instead. */}
-                <View style={composerSlotHidden ? { display: "none" } : undefined}>
-                  {isProviderSubagent ? (
+                <View
+                  style={
+                    activeUserInputRequestId !== null || props.creationState?.kind === "failed"
+                      ? { display: "none" }
+                      : undefined
+                  }
+                >
+                  {externalSessionSource(props.selectedThread.id) !== null ? (
+                    <ExternalConversationNotice
+                      environmentId={props.environmentId}
+                      projectId={props.selectedThread.projectId}
+                      threadId={props.selectedThread.id}
+                    />
+                  ) : isProviderSubagent ? (
                     <View
                       className="self-center px-3 pt-1.5"
                       style={{
@@ -1445,14 +1459,11 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                         canStopThread={props.canStopThread}
                         environmentId={props.environmentId}
                         projectCwd={props.threadCwd ?? props.projectWorkspaceRoot}
-                        // Follow-ups typed before the server creates the thread wait in
-                        // the draft: queueing them against a thread id the server may
-                        // still reject would strand them in the outbox.
+                        // Follow-ups typed during setup wait in the draft: queueing
+                        // them against a thread id the server may still reject
+                        // would strand them in the outbox.
                         sendBlockedReason={
-                          props.creationState?.kind === "preparing" &&
-                          !props.creationState.serverOwned
-                            ? "Starting the task…"
-                            : null
+                          props.creationState?.kind === "preparing" ? "Starting the task…" : null
                         }
                         draftKey={props.composerDraftKey ?? undefined}
                         followUpBehavior={props.followUpBehavior}

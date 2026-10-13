@@ -301,15 +301,24 @@ export function createMobileThemeVariables(
     "--color-inline-skill-foreground": c.accentSurfaceForeground,
     "--color-primary": c.messageAction,
     "--color-prominent-action": themeColorToNativeColor(prominentAction[0]),
-    "--color-prominent-action-foreground": themeColorToNativeColor(prominentAction[1]),
-    "--color-primary-foreground": c.messageActionForeground,
+    "--color-prominent-action-foreground": themeColorWithContrast(
+      themeColorToNativeColor(prominentAction[1]),
+      themeColorToNativeColor(prominentAction[0]),
+    ),
+    "--color-primary-foreground": themeColorWithContrast(
+      c.messageActionForeground,
+      c.messageAction,
+    ),
     "--color-primary-text": themeColorWithContrast(c.messageAction, textSurfaces),
     "--color-primary-shadow": "#000000",
     "--color-secondary": c.secondary,
     "--color-secondary-foreground": c.secondaryForeground,
     "--color-secondary-border": c.border,
     "--color-switch-active-track": c.messageAction,
-    "--color-switch-active-thumb": c.messageActionForeground,
+    "--color-switch-active-thumb": themeColorWithContrast(
+      c.messageActionForeground,
+      c.messageAction,
+    ),
     "--color-switch-inactive-track": c.secondary,
     "--color-switch-inactive-thumb": c.mutedForeground,
     "--color-warning": c.warningSurface,
@@ -400,7 +409,9 @@ export function getMobileThemeVariables(
         ? appearance === "light"
           ? colors.toolbarControl
           : colors.surface
-        : colors.muted;
+        : themeId === "afterglow" || themeId === "cloud"
+          ? colors.toolbarControlHover
+          : colors.muted;
   const mobileColors =
     themeId === DEFAULT_MOBILE_THEME_ID
       ? {

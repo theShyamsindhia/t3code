@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
 import {
+  type BrowserSignInResult,
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   PREVIEW_RECORDING_STOP_TIMEOUT_MS,
   PreviewAutomationRecordingTransferError,
@@ -201,6 +202,9 @@ const handlers = {
   ),
   preview_navigate: McpToolAccess.actsAsCaller((input) =>
     invokeTargeted<PreviewAutomationStatus>("navigate", input, input.timeoutMs),
+  ),
+  preview_sign_in: McpToolAccess.actsAsCaller((input) =>
+    invokeTargeted<BrowserSignInResult>("signIn", input),
   ),
   preview_resize: McpToolAccess.actsAsCaller((input) =>
     invokeTargeted<PreviewAutomationResizeResult>("resize", input, input.timeoutMs),

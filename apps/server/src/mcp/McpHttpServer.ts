@@ -1,3 +1,5 @@
+import { InteractionToolkit } from "./toolkits/interaction/tools.ts";
+import * as InteractionHandlers from "./toolkits/interaction/handlers.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -826,6 +828,11 @@ const layerPreviewControlsRegistration = toolkitRegistration(
   PreviewControlsHandlers.layer,
 );
 
+export const layerInteractionToolkit = toolkitRegistration(
+  InteractionToolkit,
+  InteractionHandlers.layer,
+);
+
 export const layerEnvironmentToolkit = toolkitRegistration(
   EnvironmentToolkit,
   EnvironmentHandlers.layer,
@@ -867,6 +874,7 @@ export const layerMcpTransport = McpServer.layerHttp({
 }).pipe(Layer.provide(layerMcpAuthMiddleware));
 
 export const layer = Layer.mergeAll(
+  layerInteractionToolkit,
   layerPreviewToolkit,
   layerOrchestratorToolkit,
   layerThreadToolkit,

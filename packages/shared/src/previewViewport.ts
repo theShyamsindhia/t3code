@@ -16,9 +16,58 @@ export interface PreviewViewportPreset {
 
 type PreviewViewportPresetDefinition = Omit<PreviewViewportPreset, "id">;
 
-// Keep this in Chrome DevTools' default-device order. Dimensions are CSS
-// viewport sizes from Chromium's EmulatedDevices.ts standard catalog.
+// Computer presets are CSS viewport sizes, independent of screen pixel density.
+// Phones and tablets keep Chromium's EmulatedDevices.ts standard catalog order.
 const PREVIEW_VIEWPORT_PRESET_DEFINITIONS = {
+  "laptop-1280x800": {
+    label: "Compact laptop",
+    category: "Desktop",
+    detail: "1280 × 800",
+    width: 1280,
+    height: 800,
+  },
+  "laptop-1366x768": {
+    label: "Laptop",
+    category: "Desktop",
+    detail: "1366 × 768",
+    width: 1366,
+    height: 768,
+  },
+  "desktop-1440x900": {
+    label: "Large laptop",
+    category: "Desktop",
+    detail: "1440 × 900",
+    width: 1440,
+    height: 900,
+  },
+  "desktop-1920x1080": {
+    label: "Full HD desktop",
+    category: "Desktop",
+    detail: "1920 × 1080",
+    width: 1920,
+    height: 1080,
+  },
+  "desktop-2560x1440": {
+    label: "QHD desktop",
+    category: "Desktop",
+    detail: "2560 × 1440",
+    width: 2560,
+    height: 1440,
+  },
+  "desktop-3840x2160": {
+    label: "4K desktop",
+    category: "Desktop",
+    detail: "3840 × 2160",
+    width: 3840,
+    height: 2160,
+  },
+  "desktop-3440x1440": {
+    label: "Ultrawide desktop",
+    category: "Desktop",
+    detail: "3440 × 1440",
+    width: 3440,
+    height: 1440,
+  },
   "iphone-se": {
     label: "iPhone SE",
     category: "Phone",
@@ -145,6 +194,17 @@ export const PREVIEW_VIEWPORT_PRESETS: ReadonlyArray<PreviewViewportPreset> =
     id,
     ...PREVIEW_VIEWPORT_PRESET_DEFINITIONS[id],
   }));
+
+export const PREVIEW_VIEWPORT_PRESET_GROUPS = [
+  {
+    label: "Laptops & desktops",
+    presets: PREVIEW_VIEWPORT_PRESETS.filter((preset) => preset.category === "Desktop"),
+  },
+  {
+    label: "Phones & tablets",
+    presets: PREVIEW_VIEWPORT_PRESETS.filter((preset) => preset.category !== "Desktop"),
+  },
+] as const;
 
 export function resolvePreviewViewport(
   input: PreviewAutomationResizeInput,

@@ -148,4 +148,34 @@ describe("DesktopBrowserHost", () => {
       expect(host.humanStartedDownload(debuggee.tab.webContents)).toBe(false);
     }),
   );
+
+  it.effect("routes a saved-login request through the registered desktop vault", () =>
+    Effect.gen(function* () {
+      const host = yield* DesktopBrowserHost.make;
+      const debuggee = makeDebuggee();
+      const requests: Array<DesktopBrowserHost.DesktopBrowserPasswordSignInRequest> = [];
+      yield* host.registerPasswordSignIn((request) => {
+        requests.push(request);
+        return Effect.succeed({ status: "submitted" as const });
+      });
+      host.attach(key, debuggee.tab);
+      const reader = yield* takeEvents(host, 2).pipe(Effect.forkScoped);
+      yield* Effect.yieldNow;
+      yield* host.handleCommandLine(
+        encodeJson({
+          type: "passwordSignIn",
+          ...key,
+          requestId: "request-1",
+          username: "alice",
+        }),
+      );
+      const [, result] = yield* Fiber.join(reader);
+      expect(requests).toEqual([{ ...key, requestId: "request-1", username: "alice" }]);
+      expect(result).toEqual({
+        type: "passwordResult",
+        requestId: "request-1",
+        result: { status: "submitted" },
+      });
+    }).pipe(Effect.scoped),
+  );
 });

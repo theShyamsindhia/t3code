@@ -1,7 +1,18 @@
 import * as Schema from "effect/Schema";
 
+import {
+  PreviewAutomationClickInput,
+  PreviewAutomationControl,
+  PreviewAutomationEvaluateInput,
+  PreviewAutomationPressInput,
+  PreviewAutomationScrollInput,
+  PreviewAutomationSnapshot,
+  PreviewAutomationStatus,
+  PreviewAutomationTypeInput,
+  PreviewAutomationWaitForInput,
+} from "./previewAutomation.ts";
 import { SnapShotSource } from "./chatAttachment.ts";
-import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { EnvironmentId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { BrowserProfileId } from "./browserProfile.ts";
 import type {
   BrowserImportResult,
@@ -80,6 +91,8 @@ export type DesktopUpdateStatus =
 
 export type DesktopRuntimeArch = "arm64" | "x64" | "other";
 export type DesktopTheme = "light" | "dark" | "system";
+export const DesktopGlassStyleSchema = Schema.Literals(["regular", "clear"]);
+export type DesktopGlassStyle = typeof DesktopGlassStyleSchema.Type;
 export type DesktopUpdateChannel = "latest" | "nightly";
 export type DesktopAppStageLabel = "Alpha" | "Dev" | "Nightly";
 
@@ -646,6 +659,7 @@ export interface DesktopPreviewTabState {
    */
   audible: boolean;
   controller: "human" | "agent" | "none";
+  automationControl?: PreviewAutomationControl;
   favicon?: DesktopPreviewFavicon;
   updatedAt: string;
 }
@@ -653,6 +667,13 @@ export interface DesktopPreviewTabState {
 export const DesktopPreviewTabIdSchema = Schema.String.check(Schema.isTrimmed()).check(
   Schema.isNonEmpty(),
 );
+
+export const DesktopPreviewAutomationStatusSchema = Schema.Struct({
+  ...PreviewAutomationStatus.fields,
+  controlEpoch: Schema.optional(Schema.Int),
+  tabId: Schema.NullOr(DesktopPreviewTabIdSchema),
+});
+export type DesktopPreviewAutomationStatus = typeof DesktopPreviewAutomationStatusSchema.Type;
 
 export interface DesktopPreviewPointerEvent {
   tabId: string;
@@ -1054,6 +1075,7 @@ export const DesktopPreviewRegisterWebviewInputSchema = Schema.Struct({
 
 export const DesktopPreviewNavigateInputSchema = Schema.Struct({
   tabId: DesktopPreviewTabIdSchema,
+  controlEpoch: Schema.optional(Schema.Int),
   url: Schema.String,
 });
 
@@ -1076,6 +1098,7 @@ export const DesktopPreviewClearDataInputSchema = Schema.Struct({
 
 export const DesktopPreviewSetColorSchemeInputSchema = Schema.Struct({
   tabId: DesktopPreviewTabIdSchema,
+  controlEpoch: Schema.optional(Schema.Int),
   colorScheme: DesktopPreviewColorSchemeSchema,
 });
 
@@ -1108,12 +1131,82 @@ export const DesktopPreviewRecordingSaveInputSchema = Schema.Struct({
   data: Schema.Uint8Array,
 });
 
+export const DesktopPreviewAutomationControlInputSchema = Schema.Struct({
+  tabId: DesktopPreviewTabIdSchema,
+  paused: Schema.Boolean,
+});
+
+export const DesktopPreviewAutomationCheckInputSchema = Schema.Struct({
+  tabId: DesktopPreviewTabIdSchema,
+  operation: Schema.String,
+  controlEpoch: Schema.optional(Schema.Int),
+});
+
+export const DesktopPreviewAutomationSnapshotInputSchema = Schema.Struct({
+  tabId: DesktopPreviewTabIdSchema,
+  controlEpoch: Schema.optional(Schema.Int),
+});
+
+export const DesktopPreviewAutomationClickInputSchema = Schema.Struct({
+  tabId: DesktopPreviewTabIdSchema,
+  controlEpoch: Schema.optional(Schema.Int),
+  input: PreviewAutomationClickInput,
+});
+
+export const DesktopPreviewAutomationTypeInputSchema = Schema.Struct({
+  tabId: DesktopPreviewTabIdSchema,
+  controlEpoch: Schema.optional(Schema.Int),
+  input: PreviewAutomationTypeInput,
+});
+
+export const DesktopPreviewAutomationPressInputSchema = Schema.Struct({
+  tabId: DesktopPreviewTabIdSchema,
+  controlEpoch: Schema.optional(Schema.Int),
+  input: PreviewAutomationPressInput,
+});
+
+export const DesktopPreviewAutomationScrollInputSchema = Schema.Struct({
+  tabId: DesktopPreviewTabIdSchema,
+  controlEpoch: Schema.optional(Schema.Int),
+  input: PreviewAutomationScrollInput,
+});
+
+export const DesktopPreviewAutomationEvaluateInputSchema = Schema.Struct({
+  tabId: DesktopPreviewTabIdSchema,
+  controlEpoch: Schema.optional(Schema.Int),
+  input: PreviewAutomationEvaluateInput,
+});
+
+export const DesktopPreviewAutomationWaitForInputSchema = Schema.Struct({
+  tabId: DesktopPreviewTabIdSchema,
+  controlEpoch: Schema.optional(Schema.Int),
+  input: PreviewAutomationWaitForInput,
+});
+
 /**
  * A System Settings pane the app can deep-link to. The identifier crosses IPC
  * rather than a URL, so the renderer can only reach these known destinations.
  */
 export const SystemSettingsPaneSchema = Schema.Literals(["full-disk-access"]);
 export type SystemSettingsPane = typeof SystemSettingsPaneSchema.Type;
+
+export const DesktopActivityThread = Schema.Struct({
+  environmentId: EnvironmentId,
+  threadId: ThreadId,
+  title: Schema.String.check(Schema.isMaxLength(240)),
+  project: Schema.String.check(Schema.isMaxLength(120)),
+  environment: Schema.String.check(Schema.isMaxLength(120)),
+  status: Schema.Literals(["approval", "input", "failed", "limited", "working", "waiting"]),
+});
+export type DesktopActivityThread = typeof DesktopActivityThread.Type;
+
+export const DesktopActivitySnapshot = Schema.Struct({
+  threads: Schema.Array(DesktopActivityThread).check(Schema.isMaxLength(16)),
+  attentionCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  workingCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  unavailableCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+});
+export type DesktopActivitySnapshot = typeof DesktopActivitySnapshot.Type;
 
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
@@ -1123,6 +1216,10 @@ export interface DesktopBridge {
   getClientPlatform?: () => string;
   setNotificationBadge?: (badge: { count: number; image: string | null }) => Promise<void>;
   onNotificationBadgeClear?: (listener: () => void) => () => void;
+  setActivitySnapshot?: (snapshot: DesktopActivitySnapshot | null) => Promise<void>;
+  onActivityOpenThread?: (
+    listener: (thread: { environmentId: EnvironmentId; threadId: ThreadId }) => void,
+  ) => () => void;
   onTrackpadScrollEnd?: (listener: () => void) => () => void;
   /**
    * The OS locale as a BCP-47 tag, which the renderer cannot read for itself:
@@ -1201,7 +1298,14 @@ export interface DesktopBridge {
    * web callers fall back to a plain file input.
    */
   pickThemeFiles?: () => Promise<readonly PickedThemeFile[] | null>;
-  setTheme: (theme: DesktopTheme) => Promise<void>;
+  /** Native translucent window material, available in newer macOS shells. */
+  supportsVibrancy?: boolean;
+  /** This window can render Apple's NSGlassEffectView (macOS 26 or newer). */
+  supportsLiquidGlass?: boolean;
+  setTheme: (
+    theme: DesktopTheme,
+    options?: { vibrancy: boolean; glassStyle?: DesktopGlassStyle },
+  ) => Promise<void>;
   showContextMenu: <T extends string>(
     items: readonly ContextMenuItem<T>[],
     position?: { x: number; y: number },
@@ -1270,11 +1374,16 @@ export interface DesktopBridge {
 export const DESKTOP_PREVIEW_RECORDING_CAPTURE_TRIGGER = "__t3DesktopPreviewRecordingCapture";
 
 export interface DesktopPreviewBridge {
-  setForwardedShortcuts?: (shortcuts: ReadonlyArray<PreviewForwardedShortcut>) => Promise<void>;
+  /** Older desktop shells only support annotation mode. */
+  supportsLiveEdit?: boolean;
+  setForwardedShortcuts?: (
+    shortcuts: ReadonlyArray<import("./keybindings.ts").PreviewForwardedShortcut>,
+  ) => Promise<void>;
+  passwords?: import("./browserPasswords.ts").DesktopBrowserPasswords;
   createTab: (tabId: string, defaults?: DesktopPreviewTabDefaults) => Promise<void>;
   closeTab: (tabId: string) => Promise<void>;
   registerWebview: (tabId: string, webContentsId: number) => Promise<void>;
-  navigate: (tabId: string, url: string) => Promise<void>;
+  navigate: (tabId: string, url: string, controlEpoch?: number) => Promise<void>;
   goBack: (tabId: string) => Promise<void>;
   goForward: (tabId: string) => Promise<void>;
   refresh: (tabId: string) => Promise<void>;
@@ -1289,7 +1398,11 @@ export interface DesktopPreviewBridge {
    * Emulate `prefers-color-scheme` on the guest page ("system" clears the
    * override). Persists per tab and is re-applied across webview swaps.
    */
-  setColorScheme: (tabId: string, colorScheme: DesktopPreviewColorScheme) => Promise<void>;
+  setColorScheme: (
+    tabId: string,
+    colorScheme: DesktopPreviewColorScheme,
+    controlEpoch?: number,
+  ) => Promise<void>;
   /**
    * Silence the tab's audio output. Persists per tab and is re-applied across
    * webview swaps, but is dropped when the tab closes. Muting a silent tab is
@@ -1329,7 +1442,10 @@ export interface DesktopPreviewBridge {
    * user cancels (Escape / nav). The promise rejects if the picker can't be
    * activated (no webview, etc.).
    */
-  pickElement: (tabId: string) => Promise<PreviewAnnotationSubmissionResult | null>;
+  pickElement: (
+    tabId: string,
+    mode?: "annotate" | "live-edit",
+  ) => Promise<PreviewAnnotationSubmissionResult | null>;
   /** Cancel an in-flight preview annotation session. */
   cancelPickElement: (tabId: string) => Promise<void>;
   captureScreenshot: (tabId: string) => Promise<DesktopPreviewScreenshotArtifact>;
@@ -1349,6 +1465,42 @@ export interface DesktopPreviewBridge {
       data: Uint8Array,
     ) => Promise<DesktopPreviewRecordingArtifact>;
     onFrame: (listener: (frame: DesktopPreviewRecordingFrame) => void) => () => void;
+  };
+  automation: {
+    setPaused: (tabId: string, paused: boolean) => Promise<void>;
+    checkControl: (tabId: string, operation: string, controlEpoch?: number) => Promise<number>;
+    status: (tabId: string) => Promise<DesktopPreviewAutomationStatus>;
+    snapshot: (tabId: string, controlEpoch?: number) => Promise<PreviewAutomationSnapshot>;
+    click: (
+      tabId: string,
+      input: PreviewAutomationClickInput,
+      controlEpoch?: number,
+    ) => Promise<void>;
+    type: (
+      tabId: string,
+      input: PreviewAutomationTypeInput,
+      controlEpoch?: number,
+    ) => Promise<void>;
+    press: (
+      tabId: string,
+      input: PreviewAutomationPressInput,
+      controlEpoch?: number,
+    ) => Promise<void>;
+    scroll: (
+      tabId: string,
+      input: PreviewAutomationScrollInput,
+      controlEpoch?: number,
+    ) => Promise<void>;
+    evaluate: (
+      tabId: string,
+      input: PreviewAutomationEvaluateInput,
+      controlEpoch?: number,
+    ) => Promise<unknown>;
+    waitFor: (
+      tabId: string,
+      input: PreviewAutomationWaitForInput,
+      controlEpoch?: number,
+    ) => Promise<void>;
   };
   onStateChange: (listener: (tabId: string, state: DesktopPreviewTabState) => void) => () => void;
   onPointerEvent: (listener: (event: DesktopPreviewPointerEvent) => void) => () => void;

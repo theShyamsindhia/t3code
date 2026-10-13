@@ -52,6 +52,7 @@ import {
 } from "~/previewMiniPlayerStore";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { useRightPanelStore } from "~/rightPanelStore";
+import { useClientSettings } from "~/hooks/useSettings";
 
 import { previewBridge } from "./previewBridge";
 import { subscribePreviewAction } from "./previewActionBus";
@@ -59,6 +60,8 @@ import { closePreviewSession } from "./closePreviewSession";
 import { openPreviewSession } from "./openPreviewSession";
 import { showPreviewPopup } from "./showPreviewPopup";
 import { PreviewChromeRow } from "./PreviewChromeRow";
+import { PreviewPasswords } from "./PreviewPasswords";
+import { PreviewControlButton } from "./PreviewControlButton";
 import { PreviewEmptyState } from "./PreviewEmptyState";
 import { PreviewMoreMenu, type PreviewMoreMenuActions } from "./PreviewMoreMenu";
 import {
@@ -149,11 +152,13 @@ export function PreviewView({
   visible,
   onSendAnnotation,
 }: Props) {
+  const sculpted = useClientSettings((settings) => settings.sculptedInterfaceEnabled);
   const [focusUrlNonce, setFocusUrlNonce] = useState<number | undefined>(undefined);
   const [pickActive, setPickActive] = useState(false);
   const canSendAnnotation =
     useEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope) &&
     Boolean(onSendAnnotation);
+  const [pickMode, setPickMode] = useState<"annotate" | "live-edit">("annotate");
   const activeRecordingTabIds = useActiveBrowserRecordingTabIds();
   const pickActiveRef = useRef<{ cancelled: boolean } | null>(null);
   const isMountedRef = useRef(true);
@@ -227,6 +232,7 @@ export function PreviewView({
   const serverInputDisabled = isServerTab && serverControlledTabId !== runtimeTabId;
   const [serverFrameTabId, setServerFrameTabId] = useState<string | null>(null);
   const desktopOverlay = tabId ? (previewState.desktopByTabId[tabId] ?? null) : null;
+  const browserPasswords = previewBridge?.passwords;
   const navStatus = snapshot?.navStatus ?? { _tag: "Idle" as const };
   const url = navStatus._tag === "Idle" ? "" : navStatus.url;
   const loading = desktopOverlay?.loading ?? navStatus._tag === "Loading";
@@ -388,6 +394,8 @@ export function PreviewView({
   const handleViewportChange = useCallback(
     async (nextViewport: PreviewViewportSetting) => {
       if (!tabId) return;
+      if (previewBridge && runtimeTabId)
+        await previewBridge.automation.setPaused(runtimeTabId, true);
       const result = await resize({
         environmentId: threadRef.environmentId,
         input: {
@@ -407,7 +415,7 @@ export function PreviewView({
       }
       updatePreviewServerSnapshot(threadRef, result.value);
     },
-    [resize, tabId, threadRef],
+    [resize, runtimeTabId, tabId, threadRef],
   );
 
   const handleToggleDeviceToolbar = () => {
@@ -801,116 +809,120 @@ export function PreviewView({
     [recordingRuntimeTabId, runtimeTabId, tabId, threadRef],
   );
 
-  const handlePickElement = useCallback(() => {
-    if (!previewBridge || !runtimeTabId) return;
-    if (pickActiveRef.current) {
-      pickActiveRef.current.cancelled = true;
-      void previewBridge.cancelPickElement(runtimeTabId).catch(() => undefined);
-      return;
-    }
-    // Snapshot whatever the user was focused on (typically the chat
-    // composer textarea or the chrome-row pick button) BEFORE main steals
-    // focus into the guest webContents. We restore it when the pick
-    // resolves so the user's typing context isn't lost — otherwise after
-    // every pick they'd have to click back into the textarea.
-    const previouslyFocused =
-      typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null;
-    const pickRequest = { cancelled: false };
-    let submitted = false;
-    pickActiveRef.current = pickRequest;
-    setPickActive(true);
-    void (async () => {
-      try {
-        await previewBridge.setAnnotationSendEnabled?.(
-          runtimeTabId,
-          Boolean(onSendAnnotation) &&
-            readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
-        );
-        if (pickRequest.cancelled) return;
-        const result = await previewBridge.pickElement(runtimeTabId);
-        if (!result || pickRequest.cancelled) return;
-        // The user has submitted. Nothing that happens after this point (a
-        // second picker click, a tab change, unmount) may discard it, so the
-        // pick stops being cancellable here rather than in `finally`.
-        if (pickActiveRef.current === pickRequest) {
-          pickActiveRef.current = null;
-          if (isMountedRef.current) setPickActive(false);
-          submitted = true;
-        }
-        const { annotation: picked, submission, screenshotFailed = false } = result;
-        // The structured annotation is still sendable when its optional crop
-        // stalls or fails, so tell the user what they lost and keep going
-        // instead of holding the composer for an attachment that never lands.
-        // The stored copy drops the screenshot on failure, otherwise the prompt
-        // would tell the agent a crop is attached when none was sent.
-        const capture = capturePreviewAnnotationScreenshot(picked);
-        // Main reports a crop that failed or timed out on its side; the local
-        // conversion can fail too. Either way the user should hear about it.
-        const cropDropped = screenshotFailed || capture.status === "failed";
-        const annotation = capture.status === "failed" ? { ...picked, screenshot: null } : picked;
-        addPreviewAnnotation(threadRef, annotation);
-        if (cropDropped) {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Could not capture the picked element",
-              // The send path reports its own outcome, so only say what this
-              // handler knows: the crop was dropped.
-              description: "The annotation was kept without the screenshot.",
-            }),
+  const handlePickElement = useCallback(
+    (mode: "annotate" | "live-edit" = "annotate") => {
+      if (!previewBridge || !runtimeTabId) return;
+      if (pickActiveRef.current) {
+        pickActiveRef.current.cancelled = true;
+        void previewBridge.cancelPickElement(runtimeTabId).catch(() => undefined);
+        return;
+      }
+      // Snapshot whatever the user was focused on (typically the chat
+      // composer textarea or the chrome-row pick button) BEFORE main steals
+      // focus into the guest webContents. We restore it when the pick
+      // resolves so the user's typing context isn't lost — otherwise after
+      // every pick they'd have to click back into the textarea.
+      const previouslyFocused =
+        typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null;
+      const pickRequest = { cancelled: false };
+      let submitted = false;
+      pickActiveRef.current = pickRequest;
+      setPickActive(true);
+      setPickMode(mode);
+      void (async () => {
+        try {
+          await previewBridge.setAnnotationSendEnabled?.(
+            runtimeTabId,
+            Boolean(onSendAnnotation) &&
+              readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
           );
-        }
-        const screenshotFile = capture.status === "captured" ? capture.file : null;
-        const image =
-          screenshotFile && annotation.screenshot
-            ? ({
-                type: "image",
-                id: annotation.id,
-                name: screenshotFile.name,
-                mimeType: screenshotFile.type,
-                sizeBytes: screenshotFile.size,
-                previewUrl: annotation.screenshot.dataUrl,
-                file: screenshotFile,
-              } satisfies ComposerImageAttachment)
-            : null;
-        if (image) {
-          addImage(threadRef, image);
-        }
-        if (
-          submission === "send" &&
-          readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope)
-        ) {
-          onSendAnnotation?.(annotation, image);
-        }
-      } catch {
-        // Picker failed (e.g. webview navigated). Treat as silent cancel.
-      } finally {
-        // A submitted pick already released itself above; a cancelled or
-        // failed one releases here. Avoid `setState on unmounted component`
-        // if the panel/thread closed while the pick was in flight.
-        const isCurrentPick = pickActiveRef.current === pickRequest;
-        if (isCurrentPick) {
-          pickActiveRef.current = null;
-          if (isMountedRef.current) setPickActive(false);
-        }
-        // Best-effort: restore focus to whatever the user had before the
-        // pick stole it into the guest webContents. Skip if the previously-
-        // focused element was unmounted or is no longer focusable.
-        if (
-          (isCurrentPick || submitted) &&
-          previouslyFocused &&
-          previouslyFocused.isConnected &&
-          typeof previouslyFocused.focus === "function"
-        ) {
-          try {
-            previouslyFocused.focus({ preventScroll: true });
-          } catch {
-            // Some elements throw on .focus() (detached iframes, etc.).
+          if (pickRequest.cancelled) return;
+          const result = await previewBridge.pickElement(runtimeTabId, mode);
+          if (!result || pickRequest.cancelled) return;
+          // The user has submitted. Nothing that happens after this point (a
+          // second picker click, a tab change, unmount) may discard it, so the
+          // pick stops being cancellable here rather than in `finally`.
+          if (pickActiveRef.current === pickRequest) {
+            pickActiveRef.current = null;
+            if (isMountedRef.current) setPickActive(false);
+            submitted = true;
+          }
+          const { annotation: picked, submission, screenshotFailed = false } = result;
+          // The structured annotation is still sendable when its optional crop
+          // stalls or fails, so tell the user what they lost and keep going
+          // instead of holding the composer for an attachment that never lands.
+          // The stored copy drops the screenshot on failure, otherwise the prompt
+          // would tell the agent a crop is attached when none was sent.
+          const capture = capturePreviewAnnotationScreenshot(picked);
+          // Main reports a crop that failed or timed out on its side; the local
+          // conversion can fail too. Either way the user should hear about it.
+          const cropDropped = screenshotFailed || capture.status === "failed";
+          const annotation = capture.status === "failed" ? { ...picked, screenshot: null } : picked;
+          addPreviewAnnotation(threadRef, annotation);
+          if (cropDropped) {
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: "Could not capture the picked element",
+                // The send path reports its own outcome, so only say what this
+                // handler knows: the crop was dropped.
+                description: "The annotation was kept without the screenshot.",
+              }),
+            );
+          }
+          const screenshotFile = capture.status === "captured" ? capture.file : null;
+          const image =
+            screenshotFile && annotation.screenshot
+              ? ({
+                  type: "image",
+                  id: annotation.id,
+                  name: screenshotFile.name,
+                  mimeType: screenshotFile.type,
+                  sizeBytes: screenshotFile.size,
+                  previewUrl: annotation.screenshot.dataUrl,
+                  file: screenshotFile,
+                } satisfies ComposerImageAttachment)
+              : null;
+          if (image) {
+            addImage(threadRef, image);
+          }
+          if (
+            submission === "send" &&
+            readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope)
+          ) {
+            onSendAnnotation?.(annotation, image);
+          }
+        } catch {
+          // Picker failed (e.g. webview navigated). Treat as silent cancel.
+        } finally {
+          // A submitted pick already released itself above; a cancelled or
+          // failed one releases here. Avoid `setState on unmounted component`
+          // if the panel/thread closed while the pick was in flight.
+          const isCurrentPick = pickActiveRef.current === pickRequest;
+          if (isCurrentPick) {
+            pickActiveRef.current = null;
+            if (isMountedRef.current) setPickActive(false);
+          }
+          // Best-effort: restore focus to whatever the user had before the
+          // pick stole it into the guest webContents. Skip if the previously-
+          // focused element was unmounted or is no longer focusable.
+          if (
+            (isCurrentPick || submitted) &&
+            previouslyFocused &&
+            previouslyFocused.isConnected &&
+            typeof previouslyFocused.focus === "function"
+          ) {
+            try {
+              previouslyFocused.focus({ preventScroll: true });
+            } catch {
+              // Some elements throw on .focus() (detached iframes, etc.).
+            }
           }
         }
-      }
-    })();
-  }, [addImage, addPreviewAnnotation, onSendAnnotation, runtimeTabId, threadRef]);
+      })();
+    },
+    [addImage, addPreviewAnnotation, onSendAnnotation, runtimeTabId, threadRef],
+  );
 
   useEffect(() => {
     if (!pickActive || !previewBridge || !runtimeTabId) return;
@@ -991,8 +1003,14 @@ export function PreviewView({
         pictureInPictureDisabled={
           isUnreachable || (!isServerTab && !desktopOverlay?.hasWebContents)
         }
-        onPickElement={previewBridge && tabId && !isServerTab ? handlePickElement : undefined}
-        pickActive={pickActive}
+        onPickElement={previewBridge && tabId ? () => handlePickElement() : undefined}
+        onLiveEdit={
+          previewBridge?.supportsLiveEdit && tabId
+            ? () => handlePickElement("live-edit")
+            : undefined
+        }
+        pickActive={pickActive && pickMode === "annotate"}
+        liveEditActive={pickActive && pickMode === "live-edit"}
         // Disable when there's no tab (nothing to pick on) OR the page
         // failed to load (a React overlay covers the webview, so the
         // user wouldn't be able to actually click anything underneath).
@@ -1021,30 +1039,47 @@ export function PreviewView({
           ) : null
         }
         trailingActions={
-          moreMenuActions ? (
-            <PreviewMoreMenu
-              enabled={
-                runtimeTabId !== null &&
-                (serverOwnsRendering || (desktopOverlay?.hasWebContents ?? false))
-              }
-              actions={moreMenuActions}
-              {...(moveTarget
-                ? { move: { label: moveLabel, onMove: () => void handleMoveTab() } }
-                : {})}
-              profileName={activeProfileName}
-              zoomFactor={
-                serverOwnsRendering ? serverZoomFactor : (desktopOverlay?.zoomFactor ?? 1)
-              }
-              colorScheme={
-                serverOwnsRendering
-                  ? (snapshot?.colorScheme ?? "system")
-                  : (desktopOverlay?.colorScheme ?? "system")
-              }
-              deviceToolbarVisible={viewport._tag !== "fill"}
-              onToggleDeviceToolbar={handleToggleDeviceToolbar}
-              nativePictureInPicture={desktopOverlay?.pictureInPicture ?? false}
-            />
-          ) : null
+          <>
+            {runtimeTabId && desktopOverlay?.hasWebContents ? (
+              <PreviewControlButton
+                key={`control:${runtimeTabId}`}
+                tabId={runtimeTabId}
+                control={desktopOverlay.automationControl ?? "ready"}
+                controller={controller}
+              />
+            ) : null}
+            {runtimeTabId && desktopOverlay?.hasWebContents && browserPasswords ? (
+              <PreviewPasswords
+                key={`passwords:${runtimeTabId}`}
+                tabId={runtimeTabId}
+                passwords={browserPasswords}
+              />
+            ) : null}
+            {moreMenuActions ? (
+              <PreviewMoreMenu
+                enabled={
+                  runtimeTabId !== null &&
+                  (serverOwnsRendering || (desktopOverlay?.hasWebContents ?? false))
+                }
+                actions={moreMenuActions}
+                {...(moveTarget
+                  ? { move: { label: moveLabel, onMove: () => void handleMoveTab() } }
+                  : {})}
+                profileName={activeProfileName}
+                zoomFactor={
+                  serverOwnsRendering ? serverZoomFactor : (desktopOverlay?.zoomFactor ?? 1)
+                }
+                colorScheme={
+                  serverOwnsRendering
+                    ? (snapshot?.colorScheme ?? "system")
+                    : (desktopOverlay?.colorScheme ?? "system")
+                }
+                deviceToolbarVisible={viewport._tag !== "fill"}
+                onToggleDeviceToolbar={handleToggleDeviceToolbar}
+                nativePictureInPicture={desktopOverlay?.pictureInPicture ?? false}
+              />
+            ) : null}
+          </>
         }
       />
 
@@ -1092,6 +1127,7 @@ export function PreviewView({
               key={runtimeTabId}
               tabId={runtimeTabId}
               visible={visible && !isUnreachable}
+              cornerRadius={sculpted ? 16 : 0}
               className="absolute inset-0 h-full w-full"
             />
           ) : (

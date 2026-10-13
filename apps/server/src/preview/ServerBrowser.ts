@@ -27,6 +27,7 @@ import {
   type PreviewAutomationRequest,
   type PreviewAutomationResizeInput,
   type PreviewAutomationScrollInput,
+  type PreviewAutomationSignInInput,
   type PreviewAutomationSelectInput,
   type PreviewAutomationSetColorSchemeInput,
   type PreviewAutomationStatus,
@@ -325,6 +326,8 @@ interface ServerTab {
   colorScheme: PreviewAppearancePreference;
   zoomFactor: number;
   loading: boolean;
+  /** Set after a desktop vault fill until a full page navigation completes. */
+  passwordProtected: boolean;
   closing: boolean;
   recording: Recording | null;
   initialNavigation: Promise<void> | null;
@@ -798,6 +801,7 @@ const make = Effect.gen(function* () {
       colorScheme: "system",
       zoomFactor: 1,
       loading: false,
+      passwordProtected: false,
       closing: false,
       recording: null,
       recordingStart: null,
@@ -823,6 +827,7 @@ const make = Effect.gen(function* () {
     });
     page.on("load", () => {
       tab.loading = false;
+      tab.passwordProtected = false;
       void reportLoaded(tab);
     });
     page.on("framenavigated", (frame) => {
@@ -1820,6 +1825,12 @@ const make = Effect.gen(function* () {
       }
     }
     const tab = await requireTab(request);
+    if (tab.passwordProtected && request.operation !== "navigate") {
+      throw new ServerBrowserPage.ServerBrowserOperationError(
+        "PreviewBrowserPasswordProtected",
+        "This page contains an autofilled login. Complete sign-in in the browser or navigate away before using page tools.",
+      );
+    }
     // Closing must unblock an action waiting on a dialog, without queueing behind it.
     if (request.operation === "close") {
       if (tab.control.agentId !== request.agentSessionId)
@@ -1890,6 +1901,20 @@ const make = Effect.gen(function* () {
           ),
         );
         return statusWithTitle(tab, request.agentSessionId);
+      }
+      case "signIn": {
+        if (!tab.desktop || !desktopChannel.signIn) {
+          throw new ServerBrowserPage.ServerBrowserOperationError(
+            "PreviewBrowserPasswordUnavailable",
+            "Saved logins are available only in the desktop browser surface.",
+          );
+        }
+        const signIn = input as PreviewAutomationSignInInput;
+        const result = await Effect.runPromise(
+          desktopChannel.signIn({ threadId: tab.threadId, tabId: tab.tabId }, signIn.username),
+        );
+        tab.passwordProtected = true;
+        return result;
       }
       case "resize": {
         const setting = resolvePreviewViewport(input as PreviewAutomationResizeInput);

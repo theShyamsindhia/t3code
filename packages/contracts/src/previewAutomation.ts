@@ -46,6 +46,7 @@ const PREVIEW_AUTOMATION_OPERATIONS = [
   ...PREVIEW_AUTOMATION_V1_OPERATIONS,
   "resize",
   "setColorScheme",
+  "signIn",
 ] as const;
 
 export const PREVIEW_AUTOMATION_SERVER_OPERATIONS = [
@@ -85,7 +86,15 @@ export const PreviewAutomationProfile = Schema.Struct({
 });
 export type PreviewAutomationProfile = typeof PreviewAutomationProfile.Type;
 
+/** Human takeover is latched until Resume; resuming requires a fresh snapshot. */
+export const PreviewAutomationControl = Schema.Literals(["ready", "paused", "needs-snapshot"]);
+export type PreviewAutomationControl = typeof PreviewAutomationControl.Type;
+
 export const PreviewAutomationStatus = Schema.Struct({
+  automationControl: Schema.optional(PreviewAutomationControl).annotate({
+    description:
+      "ready permits agent actions; paused means the human has taken over and must choose Resume in this tab; needs-snapshot requires preview_snapshot before any further action. Never bypass takeover by retrying actions or opening another tab.",
+  }),
   available: Schema.Boolean,
   visible: Schema.Boolean,
   tabId: Schema.NullOr(PreviewTabId),
@@ -236,6 +245,17 @@ export const BrowserNavigationTarget = Schema.Union([
 ]);
 export type BrowserNavigationTarget = typeof BrowserNavigationTarget.Type;
 
+export const PreviewAutomationSignInInput = Schema.Struct({
+  ...PreviewAutomationTabTargetFields,
+  username: Schema.optional(
+    Schema.String.annotate({
+      description:
+        "Account username to select when more than one permitted saved login matches this website.",
+    }),
+  ),
+});
+export type PreviewAutomationSignInInput = typeof PreviewAutomationSignInInput.Type;
+
 export const PreviewAutomationNavigateInput = Schema.Struct({
   ...PreviewAutomationTabTargetFields,
   url: Schema.optional(BoundedUrl).annotate({
@@ -282,7 +302,7 @@ export const PreviewAutomationResizeInput = Schema.Struct({
   }),
   preset: Schema.optional(
     PreviewViewportPresetId.annotate({
-      description: "Named viewport from Chrome DevTools' standard device catalog.",
+      description: "Named laptop, desktop, phone, or tablet viewport in CSS pixels.",
     }),
   ).annotate({
     description: "Named device size. Required only when mode is preset.",
@@ -724,6 +744,10 @@ export const PreviewAutomationActionEvent = Schema.Struct({
 export type PreviewAutomationActionEvent = typeof PreviewAutomationActionEvent.Type;
 
 export const PreviewAutomationSnapshot = Schema.Struct({
+  automationControl: Schema.optional(PreviewAutomationControl).annotate({
+    description:
+      "ready permits agent actions; paused means the human has taken over and must choose Resume in this tab; needs-snapshot requires preview_snapshot before any further action. Never bypass takeover by retrying actions or opening another tab.",
+  }),
   url: Schema.String,
   title: Schema.String,
   loading: Schema.Boolean,
@@ -1001,7 +1025,7 @@ export class PreviewAutomationControlInterruptedError extends Schema.TaggedError
     if (this.reason === "closed") return "This browser tab is closed. Call preview_open.";
     if (this.reason === "interrupted")
       return "Browser control changed. Take a fresh snapshot before trying again.";
-    return `Preview automation ${this.operation} was interrupted on client ${this.clientId}.`;
+    return `Browser control changed on client ${this.clientId}. Check preview_status. If paused, wait for the user to choose Resume in that tab; do not retry actions or open another tab to bypass takeover. After Resume, call preview_snapshot before continuing from the current page.`;
   }
 }
 

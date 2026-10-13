@@ -231,6 +231,7 @@ const dependencies = Layer.mergeAll(
         Effect.sync(() => releasedDesktopTabs.push(key.tabId)),
       ),
     pointer: () => Effect.void,
+    signIn: (_key, _username) => Effect.succeed({ status: "submitted" as const }),
   }),
 ).pipe(
   Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "t3-server-browser-" })),
@@ -1371,6 +1372,50 @@ it.live("a desktop page the desktop takes back reconnects instead of closing", (
       expect(sessions.map((session) => session.tabId)).toContain(opened.tabId);
       yield* browser.attachViewer(viewerInput(opened.tabId, false));
       expect(desktopConnections).toHaveLength(2);
+    }),
+  ).pipe(Effect.provide(layer)),
+);
+
+it.live("routes saved-login automation through a desktop tab and protects the page", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const browser = yield* ServerBrowser.ServerBrowser;
+      const broker = yield* Broker.PreviewAutomationBroker;
+      const manager = yield* Manager.PreviewManager;
+      yield* Effect.yieldNow;
+      desktopRendersNext = true;
+      const opened = yield* manager.open({ threadId: scope.thread.threadId, runtime: "server" });
+      const tabId = PreviewTabId.make(opened.tabId);
+      const result = yield* broker.invoke({
+        scope,
+        tabId,
+        operation: "signIn",
+        input: { username: "alice" },
+      });
+      expect(result).toEqual({ status: "submitted" });
+      const blocked = yield* broker
+        .invoke<void>({ scope, tabId, operation: "evaluate", input: { expression: "secret" } })
+        .pipe(Effect.flip);
+      expect(blocked).toMatchObject({
+        _tag: "PreviewAutomationExecutionError",
+        reason:
+          "This page contains an autofilled login. Complete sign-in in the browser or navigate away before using page tools.",
+      });
+      yield* broker.invoke({
+        scope,
+        tabId,
+        operation: "navigate",
+        input: { url: "https://example.com" },
+      });
+      expect(
+        yield* broker.invoke({
+          scope,
+          tabId,
+          operation: "evaluate",
+          input: { expression: "safe" },
+        }),
+      ).toBe("evaluated");
+      yield* browser.attachViewer(viewerInput(tabId, false));
     }),
   ).pipe(Effect.provide(layer)),
 );

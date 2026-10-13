@@ -1,10 +1,10 @@
+import { splitBlockKeepMarks } from "@tiptap/pm/commands";
 import { getSchemaByResolvedExtensions, Node, resolveExtensions } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskList } from "@tiptap/extension-task-list";
 import { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
-import { splitBlockKeepMarks } from "@tiptap/pm/commands";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { collapseExpandedComposerCursor, pastedPathQueryLength } from "./composer-logic";
 
@@ -85,6 +85,25 @@ function roundTrip(value: string) {
   doc.check();
   return serializeEditorDoc(doc);
 }
+
+it("avoids rewalking unchanged documents while keeping edited mappings fresh", () => {
+  const doc = ProseMirrorNode.fromJSON(
+    schema,
+    buildDocJson("hello", (name) => ({ label: name, description: null })),
+  );
+  const walk = vi.spyOn(doc.content, "forEach");
+  let state = EditorState.create({ doc });
+  const original = serializeEditorDoc(doc);
+  for (let pos = 1; pos <= 6; pos++) {
+    state = state.apply(state.tr.setSelection(TextSelection.create(doc, pos)));
+    expect(serializeEditorDoc(state.doc)).toBe(original);
+  }
+  expect(walk).toHaveBeenCalledTimes(1);
+  state = state.apply(state.tr.insertText("!"));
+  expect(serializeEditorDoc(state.doc).value).toBe("hello!");
+  expect(serializeEditorDoc(doc).value).toBe("hello");
+  walk.mockRestore();
+});
 
 // Plain mode: the same engine with the mark extensions off. Markers stay
 // literal characters and task lines stay paragraphs.

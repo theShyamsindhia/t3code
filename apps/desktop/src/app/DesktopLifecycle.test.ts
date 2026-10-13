@@ -56,6 +56,8 @@ function layerElectronApp(
 
 const layerElectronTheme = Layer.succeed(ElectronTheme.ElectronTheme, {
   shouldUseDarkColors: Effect.succeed(false),
+  shouldUseVibrancy: Effect.succeed(false),
+  glassStyle: Effect.succeed("regular" as const),
   setSource: () => Effect.void,
   onUpdated: () => Effect.void,
 });

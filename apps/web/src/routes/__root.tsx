@@ -1,3 +1,4 @@
+import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkCoordinator";
 import { PermissionUpdateNotice } from "../components/PermissionUpdateNotice";
 import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
@@ -27,7 +28,7 @@ import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstall
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
 import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
 import { DesktopAppActivationCoordinator } from "../components/desktop/DesktopAppActivationCoordinator";
-import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkCoordinator";
+import { DesktopActivityCoordinator } from "../components/desktop/DesktopActivityCoordinator";
 import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
 import { ProviderUpdateLaunchNotification } from "../components/ProviderUpdateLaunchNotification";
 import { NightlyMobileBetaNotice } from "../components/NightlyMobileBeta";
@@ -234,6 +235,7 @@ function RootRouteView() {
       <AnchoredToastProvider>
         <DocumentTitleSync />
         <ContrastAppearanceSync />
+        <SculptedAppearanceSync />
         <EnvironmentThemeSync />
         <GlassAppearanceSync />
         <FontAppearanceSync />
@@ -247,6 +249,11 @@ function RootRouteView() {
           {primaryEnvironmentAuthenticated ? <DesktopAppActivationCoordinator /> : null}
           {primaryEnvironmentAuthenticated ? <DesktopWebLinkCoordinator /> : null}
           {isElectron ? <RunningThreadKeepAlive /> : null}
+          {isElectron &&
+          window.desktopBridge?.getClientPlatform?.() === "darwin" &&
+          window.desktopBridge?.setActivitySnapshot ? (
+            <DesktopActivityCoordinator />
+          ) : null}
           <RelayClientInstallDialog />
           <ConnectOnboardingDialog />
           <SshPasswordPromptDialog />
@@ -302,6 +309,20 @@ function ContrastAppearanceSync() {
   useEffect(() => {
     applyAppearanceContrast(document.documentElement, appearanceContrast);
   }, [appearanceContrast]);
+
+  return null;
+}
+
+function SculptedAppearanceSync() {
+  const enabled = useClientSettings((settings) => settings.sculptedInterfaceEnabled);
+
+  useEffect(() => {
+    if (enabled) document.documentElement.dataset.interfaceStyle = "sculpted";
+    else delete document.documentElement.dataset.interfaceStyle;
+    return () => {
+      delete document.documentElement.dataset.interfaceStyle;
+    };
+  }, [enabled]);
 
   return null;
 }

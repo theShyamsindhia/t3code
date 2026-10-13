@@ -22,6 +22,10 @@ import {
   type ThemeAppearance,
   type ThemeDefinition,
   type ThemeHalves,
+  AFTERGLOW_THEME,
+  CLOUD_THEME,
+  LIQUID_GLASS_THEME,
+  SCULPTED_THEME,
   T3_CHAT_THEME,
   EMBER_THEME,
   GROVE_THEME,
@@ -55,6 +59,10 @@ import {
 import { ThemeWireframe } from "./ThemeWireframe";
 
 const MAINTAINER_THEMES: ReadonlyArray<ThemeDefinition> = [
+  SCULPTED_THEME,
+  AFTERGLOW_THEME,
+  CLOUD_THEME,
+  LIQUID_GLASS_THEME,
   T3_CHAT_THEME,
   GROVE_THEME,
   OCEAN_THEME,

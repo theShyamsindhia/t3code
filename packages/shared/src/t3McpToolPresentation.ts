@@ -6,6 +6,8 @@ export interface T3McpToolPresentation {
 }
 
 export type T3McpToolSummaryAction =
+  | "interaction-present"
+  | "widget-present"
   | "capabilities"
   | "delegate"
   | "task-status"
@@ -86,6 +88,11 @@ const T3_MCP_SERVER_ALIASES = new Set(["t3-code", "t3_code", "t3code"]);
 
 // Cards, activity rows, summaries, and provider identity recovery share this inventory.
 const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
+  t3_widget_present: tool(["Show", "Showing", "Showed", "a chat widget"], "widget-present"),
+  t3_interaction_present: tool(
+    ["Show", "Showing", "Shared", "a shared space"],
+    "interaction-present",
+  ),
   link_pull_request: tool(
     ["Link", "Linking", "Linked", "a pull request"],
     "link-pr",
@@ -191,19 +198,13 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "browser",
     "browser",
   ),
-  preview_press: tool(
-    ["Press", "Pressing", "Pressed", "a key in the preview browser"],
-    "browser",
-    "browser",
-  ),
-  preview_type: tool(["Type", "Typing", "Typed", "in the preview browser"], "browser", "browser"),
   preview_hover: tool(
     ["Hover", "Hovering", "Hovered", "in the preview browser"],
     "browser",
     "browser",
   ),
   preview_select: tool(
-    ["Choose", "Choosing", "Chose", "an option in the preview browser"],
+    ["Select", "Selecting", "Selected", "in the preview browser"],
     "browser",
     "browser",
   ),
@@ -213,7 +214,18 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "browser",
   ),
   preview_upload: tool(
-    ["Upload", "Uploading", "Uploaded", "files to the preview browser"],
+    ["Upload", "Uploading", "Uploaded", "to the preview browser"],
+    "browser",
+    "browser",
+  ),
+  preview_press: tool(
+    ["Press", "Pressing", "Pressed", "a key in the preview browser"],
+    "browser",
+    "browser",
+  ),
+  preview_type: tool(["Type", "Typing", "Typed", "in the preview browser"], "browser", "browser"),
+  preview_sign_in: tool(
+    ["Sign in", "Signing in", "Requested sign-in", "in the preview browser"],
     "browser",
     "browser",
   ),

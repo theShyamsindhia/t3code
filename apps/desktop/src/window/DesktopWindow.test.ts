@@ -17,6 +17,11 @@ import * as Electron from "electron";
 import * as NodeEvents from "node:events";
 import { vi } from "vite-plus/test";
 
+vi.mock("../electron/MacosGlass.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../electron/MacosGlass.ts")>()),
+  loadMacosGlassApi: vi.fn(async () => null),
+}));
+
 vi.mock("electron", async (importOriginal) => ({
   ...(await importOriginal<typeof import("electron")>()),
   session: {
@@ -119,12 +124,14 @@ function makeFakeBrowserWindow() {
     }),
     restore: vi.fn(),
     setBackgroundColor: vi.fn(),
+    setVibrancy: vi.fn(),
     setAutoHideCursor: vi.fn(),
     setFullScreen: vi.fn(),
     setOpacity: vi.fn(),
     setTitle: vi.fn(),
     setTitleBarOverlay: vi.fn(),
     setWindowButtonPosition: vi.fn(),
+    setWindowButtonVisibility: vi.fn(),
     show: vi.fn(),
     webContents,
   };
@@ -196,6 +203,8 @@ const layerElectronMenu = Layer.succeed(ElectronMenu.ElectronMenu, {
 
 const layerElectronTheme = Layer.succeed(ElectronTheme.ElectronTheme, {
   shouldUseDarkColors: Effect.succeed(false),
+  shouldUseVibrancy: Effect.succeed(false),
+  glassStyle: Effect.succeed("regular"),
   setSource: () => Effect.void,
   onUpdated: () => Effect.void,
 } satisfies ElectronTheme.ElectronTheme["Service"]);
@@ -461,6 +470,53 @@ const captureOne = DesktopSnapShotId.make("11111111-1111-4111-8111-111111111111"
 const captureTwo = DesktopSnapShotId.make("22222222-2222-4222-8222-222222222222");
 
 describe("DesktopWindow", () => {
+  it.effect("uses native glass without stacking vibrancy and removes it on theme change", () =>
+    Effect.gen(function* () {
+      const { window } = makeFakeBrowserWindow();
+      const nativeGlass = { sync: vi.fn(), syncCorners: vi.fn() };
+      yield* DesktopWindow.syncWindowAppearance(window, false, "darwin", true, nativeGlass);
+      assert.deepEqual(vi.mocked(window.setVibrancy).mock.calls, [[null]]);
+      assert.deepEqual(nativeGlass.sync.mock.calls, [[window, true, false, "regular"]]);
+      yield* DesktopWindow.syncWindowAppearance(window, true, "darwin", false, nativeGlass);
+      assert.deepEqual(nativeGlass.sync.mock.calls.at(-1), [window, false, true, "regular"]);
+      assert.notEqual(vi.mocked(window.setBackgroundColor).mock.calls.at(-1)?.[0], "#00000000");
+    }),
+  );
+
+  it.effect("falls back to vibrancy if the native view cannot be created", () =>
+    Effect.gen(function* () {
+      const { window } = makeFakeBrowserWindow();
+      yield* DesktopWindow.syncWindowAppearance(window, false, "darwin", true, {
+        sync: () => {
+          throw new Error("Native view unavailable");
+        },
+        syncCorners: vi.fn(),
+      });
+      assert.deepEqual(vi.mocked(window.setVibrancy).mock.calls.at(-1), ["under-window"]);
+    }),
+  );
+
+  it.effect("restores a solid Mac window when leaving the glass theme", () =>
+    Effect.gen(function* () {
+      const { window } = makeFakeBrowserWindow();
+      yield* DesktopWindow.syncWindowAppearance(window, false, "darwin", true);
+      assert.deepEqual(vi.mocked(window.setVibrancy).mock.calls, [["under-window"]]);
+      assert.deepEqual(vi.mocked(window.setBackgroundColor).mock.calls, [["#00000000"]]);
+      yield* DesktopWindow.syncWindowAppearance(window, true, "darwin", false);
+      assert.deepEqual(vi.mocked(window.setVibrancy).mock.calls, [["under-window"], [null]]);
+      assert.notEqual(vi.mocked(window.setBackgroundColor).mock.calls.at(-1)?.[0], "#00000000");
+    }),
+  );
+
+  it.effect("keeps non-Mac windows opaque even when glass is selected", () =>
+    Effect.gen(function* () {
+      const { window } = makeFakeBrowserWindow();
+      yield* DesktopWindow.syncWindowAppearance(window, false, "win32", true);
+      assert.strictEqual(vi.mocked(window.setVibrancy).mock.calls.length, 0);
+      assert.notEqual(vi.mocked(window.setBackgroundColor).mock.calls.at(-1)?.[0], "#00000000");
+    }),
+  );
+
   it.effect("shows native context menus for browser guests and sign-in popups", () =>
     Effect.gen(function* () {
       const host = makeFakeBrowserWindow();
@@ -851,8 +907,8 @@ describe("DesktopWindow", () => {
           yield* desktopWindow.zoomMain(direction);
           const position = fakeWindow.setWindowButtonPosition.mock.lastCall?.[0];
           assert.isDefined(position);
-          // The 14-point native buttons should share the zoomed 52px header's center.
-          const headerCenter = 26 * fakeWindow.window.webContents.getZoomFactor();
+          // The 14-point native buttons should share the zoomed 44px header's center.
+          const headerCenter = 22 * fakeWindow.window.webContents.getZoomFactor();
           assert.isAtMost(Math.abs(position.y + 7 - headerCenter), 0.5);
           assert.equal(position.x, 16);
         }
@@ -864,7 +920,7 @@ describe("DesktopWindow", () => {
 
         fakeWindow.isFullScreen.mockReturnValue(false);
         fakeWindow.windowListeners.get("leave-full-screen")?.();
-        assert.deepEqual(fakeWindow.setWindowButtonPosition.mock.lastCall, [{ x: 16, y: 19 }]);
+        assert.deepEqual(fakeWindow.setWindowButtonPosition.mock.lastCall, [{ x: 16, y: 15 }]);
       }).pipe(Effect.provide(layer));
     }),
   );

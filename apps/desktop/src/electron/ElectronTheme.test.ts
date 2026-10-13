@@ -7,6 +7,7 @@ const { onMock, removeListenerMock, themeState } = vi.hoisted(() => ({
   removeListenerMock: vi.fn(),
   themeState: {
     shouldUseDarkColors: true,
+    prefersReducedTransparency: false,
     themeSource: "system",
     setSourceError: null as unknown,
   },
@@ -14,6 +15,9 @@ const { onMock, removeListenerMock, themeState } = vi.hoisted(() => ({
 
 vi.mock("electron", () => ({
   nativeTheme: {
+    get prefersReducedTransparency() {
+      return themeState.prefersReducedTransparency;
+    },
     get shouldUseDarkColors() {
       return themeState.shouldUseDarkColors;
     },
@@ -35,9 +39,36 @@ describe("ElectronTheme", () => {
     onMock.mockClear();
     removeListenerMock.mockClear();
     themeState.shouldUseDarkColors = true;
+    themeState.prefersReducedTransparency = false;
     themeState.themeSource = "system";
     themeState.setSourceError = null;
   });
+
+  it.effect("respects Reduce transparency and removes vibrancy when switching themes", () =>
+    Effect.gen(function* () {
+      const theme = yield* ElectronTheme.ElectronTheme;
+      yield* theme.setSource("light", true);
+      assert.isTrue(yield* theme.shouldUseVibrancy);
+      themeState.prefersReducedTransparency = true;
+      assert.isFalse(yield* theme.shouldUseVibrancy);
+      themeState.prefersReducedTransparency = false;
+      yield* theme.setSource("dark");
+      assert.isFalse(yield* theme.shouldUseVibrancy);
+    }).pipe(Effect.provide(ElectronTheme.layer)),
+  );
+
+  it.effect("keeps the glass style while accessibility disables transparency", () =>
+    Effect.gen(function* () {
+      const theme = yield* ElectronTheme.ElectronTheme;
+      yield* theme.setSource("dark", true, "clear");
+      assert.strictEqual(yield* theme.glassStyle, "clear");
+      themeState.prefersReducedTransparency = true;
+      assert.isFalse(yield* theme.shouldUseVibrancy);
+      assert.strictEqual(yield* theme.glassStyle, "clear");
+      yield* theme.setSource("dark", true);
+      assert.strictEqual(yield* theme.glassStyle, "regular");
+    }).pipe(Effect.provide(ElectronTheme.layer)),
+  );
 
   it.effect("scopes native theme update listeners", () =>
     Effect.gen(function* () {

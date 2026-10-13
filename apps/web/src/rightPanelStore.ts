@@ -22,6 +22,7 @@ import type { ThreadPanelPresentation } from "./rightPanelLayout";
 import type { ChatFileAttachment } from "./types";
 
 const RIGHT_PANEL_KINDS = [
+  "interaction",
   "diff",
   "files",
   "file",
@@ -41,6 +42,7 @@ export interface DeviceTabTarget {
 }
 
 export type RightPanelSurface =
+  | { id: "interaction"; kind: "interaction" }
   | { id: `browser:${string}`; kind: "preview"; resourceId: string }
   | { id: "browser:new"; kind: "preview"; resourceId: null }
   | { id: "device" | `device:${string}`; kind: "device"; target?: DeviceTabTarget; title?: string }
@@ -217,6 +219,8 @@ const singletonSurface = (
   kind: Exclude<RightPanelKind, "file" | "preview" | "terminal" | "pull-request">,
 ): RightPanelSurface => {
   switch (kind) {
+    case "interaction":
+      return { id: "interaction", kind };
     case "diff":
       return { id: "diff", kind };
     case "files":

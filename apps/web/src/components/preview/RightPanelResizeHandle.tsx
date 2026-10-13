@@ -9,8 +9,7 @@ interface Props {
 /**
  * Hit target for resizing a right-anchored panel via its left edge.
  *
- * - Sits on top of the panel's border with a 4px overlap on each side so the
- *   user can grab a few pixels off the edge without aiming.
+ * - Centers an 8px hit target on the border, or on the Sculpted pane gap.
  * - Visual indicator is a 1px line that lights up on hover/active to mirror
  *   VS Code / Cursor.
  */
@@ -19,6 +18,7 @@ export function RightPanelResizeHandle({ handlers, className }: Props) {
     <div
       role="separator"
       aria-orientation="vertical"
+      data-preview-panel-resize-handle
       className={cn(
         "group absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize select-none",
         className,

@@ -7,7 +7,7 @@ import {
   FILL_PREVIEW_VIEWPORT,
   ThreadId,
 } from "@t3tools/contracts";
-import { act, createElement, Profiler } from "react";
+import { act, createElement, Profiler, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -222,6 +222,7 @@ vi.mock("./previewBridge", () => ({
     pickElement: mocks.pickElement,
     setAnnotationSendEnabled: mocks.setAnnotationSendEnabled,
     cancelPickElement: mocks.cancelPickElement,
+    passwords: {},
     pictureInPicture: {
       open: mocks.openPictureInPicture,
       close: mocks.closePictureInPicture,
@@ -235,18 +236,21 @@ vi.mock("./PreviewChromeRow", () => ({
     onPickElement?: () => void;
     onPictureInPicture?: () => void;
     pictureInPicture?: boolean;
-    trailingActions?: {
-      props: { actions?: { toggleNativePictureInPicture?: () => void } };
-    };
+    trailingActions?: ReactNode;
   }) => {
     mocks.submittedUrl = props.onSubmit;
     mocks.toggleAnnotation = props.onPickElement ?? null;
     mocks.togglePictureInPicture = props.onPictureInPicture ?? null;
-    mocks.toggleNativePictureInPicture =
-      props.trailingActions?.props.actions?.toggleNativePictureInPicture ?? null;
     mocks.pictureInPicturePressed = props.pictureInPicture ?? false;
-    return null;
+    return props.trailingActions ?? null;
   },
+}));
+
+vi.mock("./PreviewControlButton", () => ({
+  PreviewControlButton: () => createElement("browser-control"),
+}));
+vi.mock("./PreviewPasswords", () => ({
+  PreviewPasswords: () => createElement("saved-logins"),
 }));
 
 vi.mock("./PreviewEmptyState", () => ({
@@ -304,6 +308,13 @@ class TestNode {
   appendChild(child: TestNode) {
     child.parentNode = this;
     this.childNodes.push(child);
+    return child;
+  }
+
+  insertBefore(child: TestNode, before: TestNode) {
+    if (child.parentNode) child.parentNode.removeChild(child);
+    child.parentNode = this;
+    this.childNodes.splice(this.childNodes.indexOf(before), 0, child);
     return child;
   }
 
@@ -394,6 +405,30 @@ describe("PreviewView navigation", () => {
       });
       expect(hasCursor(container)).toBe(true);
       expect(mocks.recordingTabIds.has(TEST_RUNTIME_TAB_ID)).toBe(true);
+    } finally {
+      await act(() => root.unmount());
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("replaces browser controls without leaving stale buttons when the server epoch arrives", async () => {
+    const document = installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const container = document.createElement("div");
+    const root = createRoot(container as unknown as Element);
+    const count = (node: TestNode, name: string): number =>
+      Number(node.nodeName === name) +
+      node.childNodes.reduce((total, child) => total + count(child, name), 0);
+
+    try {
+      for (const epoch of [null, "connected-server", "restarted-server"]) {
+        mocks.serverEpoch = epoch;
+        await act(() => {
+          root.render(<PreviewView threadRef={TEST_THREAD_REF} tabId="tab-1" visible />);
+        });
+        expect(count(container, "BROWSER-CONTROL")).toBe(1);
+        expect(count(container, "SAVED-LOGINS")).toBe(1);
+      }
     } finally {
       await act(() => root.unmount());
       vi.unstubAllGlobals();

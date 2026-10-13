@@ -1,3 +1,4 @@
+export * from "./interaction.ts";
 export * from "./baseSchemas.ts";
 export * from "./assistantCitations.ts";
 export * from "./composerContext.ts";
@@ -52,6 +53,7 @@ export * from "./assets.ts";
 export * from "./review.ts";
 export * from "./mcpApps.ts";
 export * from "./browserImport.ts";
+export * from "./browserPasswords.ts";
 export * from "./browserProfile.ts";
 export * from "./device.ts";
 export * from "./preview.ts";

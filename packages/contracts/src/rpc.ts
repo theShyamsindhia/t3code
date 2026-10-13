@@ -84,7 +84,11 @@ import {
   FilesystemBrowseError,
 } from "./filesystem.ts";
 import {
+  ExternalSessionsInput,
+  ExternalSessionsResult,
+  ExternalSessionsError,
   AgentSessionImportInput,
+  AgentSessionTakeoverError,
   AgentSessionImportProjectChangedError,
   AgentSessionImportProjectNotFoundError,
   AgentSessionImportResult,
@@ -389,6 +393,7 @@ export const WS_METHODS = {
   // Filesystem methods
   filesystemBrowse: "filesystem.browse",
   filesystemGetMetadata: "filesystem.getMetadata",
+  externalSessions: "agentSessions.external",
   agentSessionsScan: "agentSessions.scan",
   agentSessionsImport: "agentSessions.import",
   assetsCreateUrl: "assets.createUrl",
@@ -1276,6 +1281,12 @@ const WsFilesystemBrowseRpc = Rpc.make(WS_METHODS.filesystemBrowse, {
   error: Schema.Union([FilesystemBrowseError, EnvironmentAuthorizationError]),
 });
 
+const WsExternalSessionsRpc = Rpc.make(WS_METHODS.externalSessions, {
+  payload: ExternalSessionsInput,
+  success: ExternalSessionsResult,
+  error: Schema.Union([ExternalSessionsError, EnvironmentAuthorizationError]),
+});
+
 const WsAgentSessionsScanRpc = Rpc.make(WS_METHODS.agentSessionsScan, {
   payload: AgentSessionScanInput,
   success: AgentSessionScanResult,
@@ -1286,6 +1297,7 @@ const WsAgentSessionsImportRpc = Rpc.make(WS_METHODS.agentSessionsImport, {
   payload: AgentSessionImportInput,
   success: AgentSessionImportResult,
   error: Schema.Union([
+    AgentSessionTakeoverError,
     AgentSessionImportProjectChangedError,
     AgentSessionImportProjectNotFoundError,
     AgentSessionScanError,
@@ -1991,6 +2003,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
   WsFilesystemGetMetadataRpc,
+  WsExternalSessionsRpc,
   WsAgentSessionsScanRpc,
   WsAgentSessionsImportRpc,
   WsAssetsCreateUrlRpc,

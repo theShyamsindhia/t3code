@@ -201,6 +201,20 @@ export function applyOrchestrationV2ProjectionEvent(
   const latestLocalTurnOrdinal = options?.latestLocalTurnOrdinal;
   const base = { ...projection, updatedAt: event.occurredAt };
   switch (event.type) {
+    case "thread.external-history.synced": {
+      return {
+        ...base,
+        messages: event.payload.messages,
+        turnItems: event.payload.turnItems,
+        visibleTurnItems: event.payload.turnItems.map((item, position) => ({
+          position,
+          visibility: "local",
+          sourceThreadId: event.threadId,
+          sourceItemId: item.id,
+          item,
+        })),
+      };
+    }
     case "thread.created":
     case "thread.archived":
     case "thread.unarchived":

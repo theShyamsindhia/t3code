@@ -12,6 +12,7 @@
 import {
   DesktopBrowserCommand,
   DesktopBrowserEvent,
+  type BrowserSignInResult,
   type DesktopBrowserEvent as DesktopBrowserEventType,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -45,6 +46,24 @@ export interface DesktopBrowserTabDebugger {
   readonly debugger: Electron.Debugger;
 }
 
+export interface DesktopBrowserPasswordSignInRequest extends DesktopBrowserTabKey {
+  readonly requestId: string;
+  readonly username?: string;
+}
+
+export class DesktopBrowserPasswordSignInError extends Schema.TaggedError<DesktopBrowserPasswordSignInError>()(
+  "DesktopBrowserPasswordSignInError",
+  { reason: Schema.String },
+) {
+  override get message(): string {
+    return this.reason;
+  }
+}
+
+export type DesktopBrowserPasswordSignInHandler = (
+  request: DesktopBrowserPasswordSignInRequest,
+) => Effect.Effect<BrowserSignInResult, DesktopBrowserPasswordSignInError>;
+
 const keyOf = ({ threadId, tabId }: DesktopBrowserTabKey) => `${threadId}\u0000${tabId}`;
 
 interface AttachedTab {
@@ -75,6 +94,10 @@ export class DesktopBrowserHost extends Context.Service<
     readonly events: Stream.Stream<Uint8Array>;
     /** One line from the backend's browser control fd. */
     readonly handleCommandLine: (line: string) => Effect.Effect<void>;
+    /** Registers the desktop vault callback used by the server browser engine. */
+    readonly registerPasswordSignIn: (
+      handler: DesktopBrowserPasswordSignInHandler,
+    ) => Effect.Effect<void>;
     /** Offers a server tab's `<webview>` to the server. */
     readonly attach: (key: DesktopBrowserTabKey, debuggee: DesktopBrowserTabDebugger) => void;
     /** Withdraws it: closed, swapped, crashed, or devtools needs the debugger. */
@@ -106,6 +129,7 @@ export const make = Effect.gen(function* () {
   }>(16);
   const runFork = Effect.runForkWith(yield* Effect.context<never>());
   const tabs = new Map<string, AttachedTab>();
+  let passwordSignIn: DesktopBrowserPasswordSignInHandler | undefined;
   const emit = (event: DesktopBrowserEventType) => runFork(PubSub.publish(outbox, event));
 
   const relayFor = (tab: AttachedTab) => {
@@ -198,6 +222,40 @@ export const make = Effect.gen(function* () {
         runFork(PubSub.publish(pointers, { key: { threadId, tabId }, phase, x, y }));
         return;
       }
+      if (command.value.type === "passwordSignIn") {
+        const handler = passwordSignIn;
+        if (!handler) {
+          emit({
+            type: "passwordResult",
+            requestId: command.value.requestId,
+            error: "Saved logins are unavailable on this desktop.",
+          });
+          return;
+        }
+        const { threadId, tabId, requestId, username } = command.value;
+        runFork(
+          handler({
+            threadId,
+            tabId,
+            requestId,
+            ...(username === undefined ? {} : { username }),
+          }).pipe(
+            Effect.matchEffect({
+              onSuccess: (result) =>
+                Effect.sync(() => emit({ type: "passwordResult", requestId, result })),
+              onFailure: (error) =>
+                Effect.sync(() =>
+                  emit({
+                    type: "passwordResult",
+                    requestId,
+                    error: error.message,
+                  }),
+                ),
+            }),
+          ),
+        );
+        return;
+      }
       if (command.value.type === "release") {
         // A new server connection starts with a fresh relay and fresh sessions.
         tab.relay = null;
@@ -235,6 +293,10 @@ export const make = Effect.gen(function* () {
       }),
     ).pipe(Stream.map((event) => lineEncoder.encode(`${encodeEvent(event)}\n`))),
     handleCommandLine,
+    registerPasswordSignIn: (handler) =>
+      Effect.sync(() => {
+        passwordSignIn = handler;
+      }),
     attach,
     detach,
     placeDownload,

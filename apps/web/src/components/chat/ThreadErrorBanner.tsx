@@ -1,4 +1,6 @@
 import type { OrchestrationV2ProviderFailureClass } from "@t3tools/contracts";
+import { explainProviderConnectionError } from "@t3tools/client-runtime/provider-connection-error";
+import { ProviderConnectionErrorDetails } from "./ProviderConnectionErrorDetails";
 import { memo } from "react";
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
@@ -49,6 +51,7 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
 }) {
   if (!error) return null;
   const variant = errorClass === "usage_limit" ? "warning" : "error";
+  const connectionError = explainProviderConnectionError(error);
   return (
     <div className="pointer-events-auto mx-auto w-fit max-w-[min(48rem,calc(100%-2rem))] pt-3">
       <Alert variant={variant} surface="glass" controlAlignment="first-line" data-variant={variant}>
@@ -62,6 +65,14 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
             <div className="space-y-1">
               <p className="font-medium">ChatGPT usage limit reached</p>
               <p>Review your usage settings in ChatGPT to continue.</p>
+            </div>
+          ) : connectionError ? (
+            <div className="space-y-1">
+              <p className="font-medium">{connectionError.label}</p>
+              <ProviderConnectionErrorDetails
+                description={connectionError.detail}
+                message={error}
+              />
             </div>
           ) : (
             <Tooltip>

@@ -718,6 +718,12 @@ export function applyToProjection(
   };
 
   switch (event.type) {
+    case "thread.external-history.synced":
+      return withLocalVisibleTurnItems({
+        ...base,
+        messages: event.payload.messages,
+        turnItems: event.payload.turnItems,
+      });
     case "thread.created":
     case "thread.archived":
     case "thread.unarchived":
@@ -1823,6 +1829,15 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
     const apply: ProjectionStoreV2Shape["apply"] = (event) =>
       Effect.gen(function* () {
         switch (event.type) {
+          case "thread.external-history.synced": {
+            yield* sql`DELETE FROM orchestration_v2_projection_messages WHERE thread_id = ${event.threadId}`;
+            yield* sql`DELETE FROM orchestration_v2_projection_turn_items WHERE thread_id = ${event.threadId}`;
+            for (const message of event.payload.messages)
+              yield* apply({ ...event, type: "message.updated", payload: message });
+            for (const item of event.payload.turnItems)
+              yield* apply({ ...event, type: "turn-item.updated", payload: item });
+            break;
+          }
           case "thread.created":
           case "thread.archived":
           case "thread.unarchived":

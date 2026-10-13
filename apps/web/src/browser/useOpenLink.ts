@@ -13,6 +13,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 
 import {
   canOpenLinksInApp,
+  isLocalServerUrl,
   resolveBrowserLinkTargetPreference,
   resolveLinkTarget,
 } from "./browserLinkTarget";
@@ -28,8 +29,9 @@ const NO_MODIFIER = { metaKey: false, ctrlKey: false } as const;
  *
  * An in-app open that fails falls back to the system browser rather than
  * dropping the click: the user asked for the link, and the setting only says
- * where it should go first. Failed settings reads reject without opening a
- * browser. The promise also rejects if the system-browser fallback fails.
+ * where it should go first. Local server failures and failed settings reads
+ * reject without launching another browser. The promise also rejects if the
+ * system-browser fallback fails.
  */
 export function useOpenLink(threadRef: ScopedThreadRef | null | undefined): (
   url: string,
@@ -60,7 +62,7 @@ export function useOpenLink(threadRef: ScopedThreadRef | null | undefined): (
           return;
         }
         const failure = squashAtomCommandFailure(result);
-        if (failure instanceof BrowserSettingsReadError) throw failure;
+        if (failure instanceof BrowserSettingsReadError || isLocalServerUrl(url)) throw failure;
         console.error(result.cause);
       }
       const api = readLocalApi();
