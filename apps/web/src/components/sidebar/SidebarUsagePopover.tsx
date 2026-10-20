@@ -54,7 +54,7 @@ export function SidebarUsagePopover() {
 
 function UsagePopoverContent({ onClose }: { readonly onClose: () => void }) {
   const navigate = useNavigate();
-  const presentations = useAtomValue(environmentPresentations.presentationsAtom);
+  const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
   const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
     reportFailure: false,
   });

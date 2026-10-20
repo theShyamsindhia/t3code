@@ -39,7 +39,6 @@ interface OpenTerminalLinkInPreviewInput<E> {
   readonly threadRef: ScopedThreadRef;
   readonly openPreview: OpenPreviewMutation<E>;
   readonly fallbackToBrowser: () => void;
-  /** Cmd/Ctrl-click bypasses the preference and opens in the system browser. */
   readonly forceBrowser: boolean;
 }
 

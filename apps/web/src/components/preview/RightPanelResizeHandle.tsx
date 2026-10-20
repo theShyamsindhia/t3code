@@ -6,13 +6,6 @@ interface Props {
   className?: string;
 }
 
-/**
- * Hit target for resizing a right-anchored panel via its left edge.
- *
- * - Centers an 8px hit target on the border, or on the Sculpted pane gap.
- * - Visual indicator is a 1px line that lights up on hover/active to mirror
- *   VS Code / Cursor.
- */
 export function RightPanelResizeHandle({ handlers, className }: Props) {
   return (
     <div

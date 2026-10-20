@@ -7,10 +7,10 @@ import {
 import { createEnvironmentRpcCommand } from "@t3tools/client-runtime/state/runtime";
 import { useEffect, useState } from "react";
 import { Modal, Pressable, ScrollView, View } from "react-native";
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { RequestActionButton } from "./RequestActionButton";
+import { Button } from "../../components/ui/Button";
 
 const externalSessions = createEnvironmentRpcCommand(connectionAtomRuntime, {
   label: "external-sessions",
@@ -153,12 +153,9 @@ export function ExternalSessionsSheet(props: {
             ))}
           </ScrollView>
           <View className="flex-row justify-end gap-3">
-            <RequestActionButton
-              label="Cancel"
-              disabled={busy && scans.length > 0}
-              onPress={props.onClose}
-            />
-            <RequestActionButton
+            <Button label="Cancel" disabled={busy && scans.length > 0} onPress={props.onClose} />
+            <Button
+              tone="primary"
               label={busy && scans.length > 0 ? "Saving…" : `Track selected (${count})`}
               disabled={busy || !scans.some((scan) => !scan.error)}
               onPress={() => void save()}

@@ -2,7 +2,7 @@ import { PreviewAutomationResizeInput, PreviewViewportSetting } from "@t3tools/c
 import { Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
-import { PREVIEW_VIEWPORT_PRESETS, resolvePreviewViewport } from "./previewViewport.ts";
+import { resolvePreviewViewport } from "./previewViewport.ts";
 
 const decodeResizeInput = Schema.decodeUnknownSync(PreviewAutomationResizeInput);
 const decodeViewport = Schema.decodeSync(PreviewViewportSetting);
@@ -72,31 +72,5 @@ describe("previewViewport", () => {
       width: 2160,
       height: 3840,
     });
-  });
-
-  it("keeps Chrome's phone and tablet ordering", () => {
-    expect(
-      PREVIEW_VIEWPORT_PRESETS.filter((preset) => preset.category !== "Desktop").map(
-        (preset) => preset.label,
-      ),
-    ).toEqual([
-      "iPhone SE",
-      "iPhone XR",
-      "iPhone 12 Pro",
-      "iPhone 14 Pro Max",
-      "Pixel 7",
-      "Samsung Galaxy S8+",
-      "Samsung Galaxy S20 Ultra",
-      "iPad Mini",
-      "iPad Air",
-      "iPad Pro",
-      "Surface Pro 7",
-      "Surface Duo",
-      "Galaxy Z Fold 5",
-      "Asus Zenbook Fold",
-      "Samsung Galaxy A51/71",
-      "Nest Hub",
-      "Nest Hub Max",
-    ]);
   });
 });

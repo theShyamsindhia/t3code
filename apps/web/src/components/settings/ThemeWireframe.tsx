@@ -2,7 +2,6 @@ import type { CSSProperties } from "react";
 import { cn } from "../../lib/utils";
 import type { ThemeCardPreviewColors } from "./ThemePreviewCircles";
 
-/** The actual workspace silhouette: one reading area above a slim chat dock. */
 function ThemeWireframePane({
   colors,
   clip,

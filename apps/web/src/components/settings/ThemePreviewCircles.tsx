@@ -100,17 +100,11 @@ export function getThemeCardDefinition(theme: ThemeDefinition): ThemeCardDefinit
   };
 }
 
-// Interpolating in oklab keeps the glow falloff perceptually even (no gray
-// mid-tones or banding rings), and premultiplied alpha keeps the fade to
-// transparent clean.
 function getThemePreviewStyle(
   colors: ThemeCardPreviewColors,
   mode: ThemeAppearance,
 ): CSSProperties {
   const spec = THEME_PREVIEW_RENDER_SPECS[mode];
-  // The canvas carries the ball's light/dark identity, so it stays dominant:
-  // a near-true base with a contained accent glow, instead of an accent wash
-  // that makes both modes read alike.
   const modeBase = `color-mix(in oklab, ${colors.canvas} ${spec.baseWeight * 100}%, ${spec.baseTarget})`;
   const accentPosition = `${spec.accent.center[0] * 100}% ${spec.accent.center[1] * 100}%`;
   const actionPosition = `${spec.action.center[0] * 100}% ${spec.action.center[1] * 100}%`;
@@ -118,15 +112,11 @@ function getThemePreviewStyle(
     backgroundColor: modeBase,
     backgroundImage: [
       `radial-gradient(circle at ${accentPosition} in oklab, ${colors.accent} 0%, color-mix(in oklab, ${colors.accent} ${spec.accent.middleOpacity * 100}%, transparent) ${spec.accent.middleOffset * 100}%, transparent ${spec.accent.endOffset * 100}%)`,
-      // The action color is a soft tint from the opposite corner, not a second
-      // light source — two bright hotspots read as headlights.
       `radial-gradient(circle at ${actionPosition} in oklab, color-mix(in oklab, ${colors.messageAction} ${spec.action.startOpacity * 100}%, transparent) 0%, transparent ${spec.action.endOffset * 100}%)`,
     ].join(", "),
   };
 }
 
-// The gradient halves of each ball can match the card surface, so every ball
-// carries a faint mode-appropriate inner ring to keep its silhouette legible.
 function themePreviewEdgeShadow(mode: ThemeAppearance): string {
   return mode === "dark"
     ? "inset 0 0 0 1px rgb(255 255 255 / 0.14), 0 1px 2px rgb(0 0 0 / 0.18)"
@@ -163,11 +153,6 @@ export function ThemePreviewCircle({
   );
 }
 
-/**
- * A theme card's light and dark previews. Clicking one assigns that theme to
- * that half of the appearance mix; assigned previews carry a ring and a sun or
- * moon badge.
- */
 export function ThemePreviewCircles({
   label,
   activeModes,
@@ -192,7 +177,7 @@ export function ThemePreviewCircles({
                   aria-label={`Use ${label} ${mode} mode`}
                   aria-pressed={isPicked}
                   className={cn(
-                    "relative flex min-w-0 flex-1 cursor-pointer items-center justify-center rounded-lg p-1 outline-none hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
+                    "relative flex min-w-0 flex-1 cursor-pointer items-center justify-center rounded-lg p-1 outline-none hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
                     isPicked && "bg-accent/30",
                   )}
                   onClick={(event) => {

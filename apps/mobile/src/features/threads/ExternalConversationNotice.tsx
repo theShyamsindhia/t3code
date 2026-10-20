@@ -9,10 +9,10 @@ import { createEnvironmentRpcCommand } from "@t3tools/client-runtime/state/runti
 import { useNavigation, StackActions } from "@react-navigation/native";
 import { useRef, useState } from "react";
 import { Alert, View } from "react-native";
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { RequestActionButton } from "./RequestActionButton";
+import { Button } from "../../components/ui/Button";
 
 const importExternalSession = createEnvironmentRpcCommand(connectionAtomRuntime, {
   label: "external-conversation:takeover",
@@ -74,7 +74,8 @@ export function ExternalConversationNotice(props: {
         </Text>
       )}
       <View className="flex-row">
-        <RequestActionButton
+        <Button
+          tone="primary"
           disabled={busy}
           label={busy ? "Loading conversation…" : "Continue in T3"}
           onPress={() =>

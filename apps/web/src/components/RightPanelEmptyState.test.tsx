@@ -117,6 +117,7 @@ describe("sculpted surface launcher", () => {
 
     const menu = document.createElement("div");
     menu.dataset.slot = "menu-popup";
+    menu.dataset.open = "";
     container.append(menu);
     await key(container, "m");
     expect(actions.onAddDevice).not.toHaveBeenCalled();

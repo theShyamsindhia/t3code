@@ -2,7 +2,6 @@ import type { ComponentProps } from "react";
 
 import { cn } from "../../lib/utils";
 
-/** Settings rows use dividers; elevation is reserved for floating surfaces. */
 export function SettingsGroup({
   variant = "grouped",
   divided = true,

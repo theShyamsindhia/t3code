@@ -50,7 +50,7 @@ const decodeResumeCursor = Schema.decodeUnknownOption(
 /** One bounded sweep; the cache belongs to this server, never to a browser connection. */
 export const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
-  const randomUuidV4 = crypto.randomUUIDv4.pipe(Effect.orDie);
+  const randomUuidV4 = crypto.randomUUIDv4().pipe(Effect.orDie);
   const settings = yield* ServerSettingsService;
   const lock = yield* Semaphore.make(1);
   const scanner = yield* AgentSessionScanner.AgentSessionScanner;

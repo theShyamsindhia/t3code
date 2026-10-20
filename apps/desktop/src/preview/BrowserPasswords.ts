@@ -112,7 +112,7 @@ const make = Effect.gen(function* () {
         yield* fs.makeDirectory(directory, { recursive: true, mode: 0o700 });
         const temporary = environment.path.join(
           directory,
-          `${yield* crypto.randomUUIDv4.pipe(Effect.orDie)}.tmp`,
+          `${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}.tmp`,
         );
         yield* fs
           .writeFile(temporary, encrypted, { mode: 0o600, flag: "wx" })
@@ -187,7 +187,7 @@ const make = Effect.gen(function* () {
           const previous = logins[index];
           const login = {
             ...item,
-            id: previous?.id ?? (yield* crypto.randomUUIDv4.pipe(Effect.orDie)),
+            id: previous?.id ?? (yield* crypto.randomUUIDv4().pipe(Effect.orDie)),
             partition: context.partition,
             allowAgent: false,
           };
