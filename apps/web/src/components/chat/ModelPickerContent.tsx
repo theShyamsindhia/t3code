@@ -838,7 +838,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     <TooltipProvider delay={0}>
       <div
         ref={pickerContentRef}
-        className="relative flex max-h-86.5 w-screen max-w-90 flex-row overflow-hidden"
+        className="relative flex max-h-[min(70vh,32rem)] w-screen max-w-[min(90vw,42rem)] flex-row overflow-hidden rounded-[inherit]"
         // Hold the height from when the search started; results scroll instead of resizing.
         style={isSearching ? { height: searchHeight } : undefined}
         data-model-picker-content="true"
@@ -907,13 +907,16 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
         >
           <div
             className={cn(
-              "flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/40",
-              showSidebar && "border-l border-border/70",
+              "flex min-h-0 flex-1 flex-col overflow-hidden bg-popover/35",
+              showSidebar && "border-l border-foreground/[0.12]",
             )}
           >
             <ComboboxSearchInput
               ref={searchInputRef}
               placeholder="Search models..."
+              containerClassName="px-3 pt-3 pb-1.5"
+              inputContainerClassName="rounded-md border border-foreground/[0.12] bg-foreground/[0.045] px-2 pb-1.5 focus-within:border-primary/60"
+              searchIconClassName="left-2 text-muted-foreground/50"
               value={searchQuery}
               onChange={(e) => {
                 if (!isSearching) setSearchHeight(pickerContentRef.current?.offsetHeight ?? 0);
@@ -990,7 +993,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                           index={index}
                           value={modelKey}
                           aria-expanded={legacySection.isExpanded}
-                          className="group w-full cursor-pointer"
+                          className="group mt-1 w-full cursor-pointer rounded-md border-t border-foreground/[0.12] pt-2 data-highlighted:bg-foreground/[0.1] data-highlighted:text-foreground"
                         >
                           <div className="min-w-0 flex-1 text-left">
                             <div className="text-xs font-medium leading-snug">Legacy models</div>
@@ -1062,7 +1065,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               </ComboboxListVirtualized>
             </div>
             {providerSetupEntries.length > 0 ? (
-              <div className="max-h-44 shrink-0 overflow-y-auto border-t border-border/70 p-2">
+              <div className="max-h-44 shrink-0 overflow-y-auto border-t border-foreground/[0.12] p-2">
                 {providerSetupEntries.map((entry) => (
                   <div key={entry.instanceId} className="px-1 py-1.5 text-xs leading-snug">
                     <p className="line-clamp-3 text-muted-foreground">
@@ -1088,7 +1091,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             {updateRequiredNotices.map(({ instanceId, notice }) => (
               <p
                 key={instanceId}
-                className="shrink-0 border-t border-border/70 px-3 py-2 text-xs leading-snug text-muted-foreground"
+                className="shrink-0 border-t border-foreground/[0.12] px-3 py-2 text-xs leading-snug text-muted-foreground"
               >
                 {notice}{" "}
                 <InlineButton

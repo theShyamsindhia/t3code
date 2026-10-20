@@ -31,7 +31,7 @@ function describeUnavailableInstance(entry: ProviderInstanceEntry): string {
 }
 
 const SELECTED_INDICATOR_CLASS =
-  "pointer-events-none absolute -right-1 top-1/2 z-10 h-5 w-0.75 -translate-y-1/2 rounded-l-full bg-primary";
+  "pointer-events-none absolute -right-px top-1/2 z-10 h-4.5 w-0.5 -translate-y-1/2 rounded-l-full bg-primary";
 const BADGE_BASE_CLASS =
   "pointer-events-none absolute -right-0.5 top-0.5 z-10 flex size-3.5 items-center justify-center rounded-full bg-transparent shadow-sm ";
 const NEW_BADGE_CLASS = `${BADGE_BASE_CLASS} text-update-foreground `;
@@ -89,7 +89,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
 
   return (
     <Toolbar.Root
-      className="w-11 shrink-0 overflow-hidden bg-muted/30"
+      className="w-11 shrink-0 overflow-hidden bg-foreground/[0.035]"
       data-model-picker-sidebar="true"
       aria-label="Providers"
       orientation="vertical"
@@ -103,7 +103,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
       }}
     >
       <div className="h-full overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div ref={sidebarContentRef} className="relative flex min-h-full flex-col gap-1 p-1">
+        <div ref={sidebarContentRef} className="relative flex min-h-full flex-col gap-0.5 p-1">
           {selectedIndicatorTop !== null ? (
             <div
               data-model-picker-selected-indicator="true"
@@ -123,7 +123,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                     render={
                       <Toolbar.Button
                         className={cn(
-                          "relative isolate flex w-full cursor-pointer aspect-square items-center justify-center rounded-md transition-colors hover:bg-foreground/10 focus-visible:bg-foreground/10 focus-visible:outline-none",
+                          "relative isolate flex w-full cursor-pointer aspect-square items-center justify-center rounded-md transition-colors hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.06] aria-pressed:bg-primary/[0.1] focus-visible:outline-none",
                         )}
                         onClick={() => handleSelect("favorites")}
                         type="button"
@@ -143,7 +143,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                   </TooltipPopup>
                 </Tooltip>
               </div>
-              <div className="border-b border-border/70" aria-hidden="true" />
+              <div className="my-1 border-b border-foreground/[0.08]" aria-hidden="true" />
             </>
           ) : null}
 
@@ -171,7 +171,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
             const button = (
               <Toolbar.Button
                 className={cn(
-                  "relative isolate flex w-full cursor-pointer aspect-square items-center justify-center rounded-md transition-colors hover:bg-foreground/10 focus-visible:bg-foreground/10 focus-visible:outline-none",
+                  "relative isolate flex w-full cursor-pointer aspect-square items-center justify-center rounded-md transition-colors hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.06] aria-pressed:bg-primary/[0.1] focus-visible:outline-none",
                   isDisabled && "opacity-50 cursor-not-allowed hover:bg-transparent",
                 )}
                 data-provider-accent-color={entry.accentColor}

@@ -1,7 +1,11 @@
 import { ThreadFind, ThreadFindCanvas, type ThreadFindControls } from "./chat/ThreadFindProvider";
 import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
-import { interactionPresentations } from "@t3tools/client-runtime/interaction";
+import {
+  chatWidgetPresentation,
+  interactionPresentations,
+} from "@t3tools/client-runtime/interaction";
 import { InteractionPanel } from "./InteractionPanel";
+import { CanvasPanel, type CanvasWidget } from "./CanvasPanel";
 import { externalSessionSource } from "@t3tools/contracts";
 import { ExternalConversationNotice } from "./chat/ExternalConversationNotice";
 import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
@@ -1734,6 +1738,14 @@ export default function ChatView(props: ChatViewProps) {
   const serverVisibleTurnItems = useThreadVisibleTurnItems(routeThreadDetailRef);
   const sharedPresentations = useMemo(
     () => interactionPresentations(serverVisibleTurnItems),
+    [serverVisibleTurnItems],
+  );
+  const canvasWidgets = useMemo<CanvasWidget[]>(
+    () =>
+      serverVisibleTurnItems.flatMap(({ item, sourceThreadId, sourceItemId }) => {
+        const widget = chatWidgetPresentation(item);
+        return widget ? [{ id: `${sourceThreadId}:${sourceItemId}`, widget }] : [];
+      }),
     [serverVisibleTurnItems],
   );
   const serverThreadHistory = useThreadHistory(routeThreadDetailRef);
@@ -5459,6 +5471,10 @@ export default function ChatView(props: ChatViewProps) {
     useRightPanelStore.getState().open(activeThreadRef, "diff");
     onDiffPanelOpen?.();
   }, [activeThreadRef, isGitRepo, isServerThread, onDiffPanelOpen]);
+  const addCanvasSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "canvas");
+  }, [activeThreadRef]);
   const openChangesFromThreadPanel = useCallback(() => {
     addDiffSurface();
   }, [addDiffSurface]);
@@ -11127,7 +11143,17 @@ export default function ChatView(props: ChatViewProps) {
     onSubmitFollowUp({ text, interactionMode, source: "interaction" });
 
   const rightPanelContent = activeThreadRef ? (
-    renderedRightPanelSurface?.kind === "interaction" ? (
+    renderedRightPanelSurface?.kind === "canvas" ? (
+      <CanvasPanel
+        key={activeThreadKey}
+        threadKey={activeThreadKey!}
+        widgets={canvasWidgets}
+        theme={resolvedTheme}
+        onSubmit={
+          !isSendBusy && !isConnecting && isServerThread ? submitInteractionReply : undefined
+        }
+      />
+    ) : renderedRightPanelSurface?.kind === "interaction" ? (
       <InteractionPanel
         key={activeThreadKey}
         threadKey={activeThreadKey!}
@@ -12140,6 +12166,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddBrowser={() => createBrowserSurface()}
           onAddBrowserInProfile={createBrowserSurface}
           onAddTerminal={addTerminalSurface}
+          onAddCanvas={addCanvasSurface}
           onAddDiff={addDiffSurface}
           onAddFiles={addFilesSurface}
           onAddPullRequest={addPullRequestSurface}
@@ -12152,6 +12179,7 @@ export default function ChatView(props: ChatViewProps) {
           pullRequestAvailable={pullRequestSurfaceAvailable}
           pullRequestsAvailable={pullRequestsSurfaceAvailable}
           deviceAvailable={activeThreadRef !== null}
+          canvasAvailable={activeThreadRef !== null}
         >
           {rightPanelContent}
         </RightPanelTabs>
@@ -12193,6 +12221,7 @@ export default function ChatView(props: ChatViewProps) {
             onAddBrowser={() => createBrowserSurface()}
             onAddBrowserInProfile={createBrowserSurface}
             onAddTerminal={addTerminalSurface}
+            onAddCanvas={addCanvasSurface}
             onAddDiff={addDiffSurface}
             onAddFiles={addFilesSurface}
             onAddPullRequest={addPullRequestSurface}
@@ -12205,6 +12234,7 @@ export default function ChatView(props: ChatViewProps) {
             pullRequestAvailable={pullRequestSurfaceAvailable}
             pullRequestsAvailable={pullRequestsSurfaceAvailable}
             deviceAvailable={activeThreadRef !== null}
+            canvasAvailable={activeThreadRef !== null}
           >
             {rightPanelContent}
           </RightPanelTabs>

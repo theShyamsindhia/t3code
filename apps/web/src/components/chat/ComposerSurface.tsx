@@ -14,10 +14,10 @@ function Shell({
       data-with-context={contextStrip || undefined}
       className={cn(
         "@container/composer-surface group/composer-surface relative isolate mx-auto w-full max-w-(--chat-content-max-width)",
-        "[--chat-composer-drawer-inset:1.375rem] [--chat-composer-glass-surface:var(--card)] [--chat-composer-outline:rgb(0_0_0/8%)]",
-        "dark:[--chat-composer-glass-surface:var(--surface-raised)] dark:[--chat-composer-highlight:rgb(255_255_255/3%)] dark:[--chat-composer-outline:color-mix(in_srgb,var(--color-white)_5%,transparent)]",
-        "[html[data-theme-id]_&]:[--chat-composer-glass-surface:var(--app-theme-surface-raised)] [html[data-theme-id]_&]:[--chat-composer-outline:var(--app-theme-toolbar-border)]",
-        "dark:[html[data-theme-id]:not([data-theme-id=t3-chat])_&]:[--chat-composer-highlight:color-mix(in_srgb,var(--app-theme-input)_12%,transparent)] dark:[html[data-theme-id]:not([data-theme-id=t3-chat])_&]:[--chat-composer-outline:color-mix(in_srgb,var(--app-theme-input)_30%,var(--background))]",
+        "[--chat-composer-drawer-inset:1.375rem] [--chat-composer-glass-surface:color-mix(in_srgb,var(--card)_55%,var(--background))] [--chat-composer-outline:rgb(0_0_0/5%)]",
+        "dark:[--chat-composer-glass-surface:color-mix(in_srgb,var(--surface-raised)_55%,var(--background))] dark:[--chat-composer-highlight:rgb(255_255_255/2%)] dark:[--chat-composer-outline:color-mix(in_srgb,var(--color-white)_4%,transparent)]",
+        "[html[data-theme-id]_&]:[--chat-composer-glass-surface:color-mix(in_srgb,var(--app-theme-surface-raised)_55%,var(--background))] [html[data-theme-id]_&]:[--chat-composer-outline:var(--app-theme-toolbar-border)]",
+        "dark:[html[data-theme-id]:not([data-theme-id=t3-chat])_&]:[--chat-composer-highlight:color-mix(in_srgb,var(--app-theme-input)_8%,transparent)] dark:[html[data-theme-id]:not([data-theme-id=t3-chat])_&]:[--chat-composer-outline:color-mix(in_srgb,var(--app-theme-input)_14%,var(--background))]",
         "dark:[html[data-theme-id=t3-chat]_&]:[--chat-composer-highlight:color-mix(in_srgb,#432d48_12%,transparent)] dark:[html[data-theme-id=t3-chat]_&]:[--chat-composer-outline:#241e28]",
         "before:pointer-events-none before:absolute before:inset-0 before:z-0 before:rounded-3xl before:bg-(--chat-composer-glass-surface)/(--glass-opacity) before:backdrop-blur-(--glass-blur) before:backdrop-saturate-(--glass-saturation)",
         "not-supports-[((backdrop-filter:blur(1px))_or_(-webkit-backdrop-filter:blur(1px)))]:before:bg-(--chat-composer-glass-surface)",
@@ -37,7 +37,7 @@ function Shell({
 }
 
 const outlineClasses =
-  "after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-(--chat-composer-outline) dark:after:inset-shadow-2xs dark:after:inset-shadow-(color:--chat-composer-highlight)";
+  "after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-(--chat-composer-outline)";
 
 // The bottom strip continues the outline, so leave the seam between its corners open.
 const contextSeamClasses =
@@ -48,7 +48,7 @@ function Host({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="composer-host"
       className={cn(
-        "relative z-10 w-full rounded-3xl shadow-composer after:z-1 dark:shadow-none",
+        "relative z-10 w-full rounded-2xl shadow-none after:z-1",
         outlineClasses,
         contextSeamClasses,
         "group-has-data-[composer-banner-surface=attached]/composer-surface:shadow-none group-has-data-[composer-banner-surface=attached]/composer-surface:after:hidden",
@@ -64,14 +64,14 @@ function Main({ className, ...props }: ComponentProps<"div">) {
     <div
       data-chat-composer-main-surface="true"
       className={cn(
-        "group relative z-10 rounded-3xl p-px",
+        "group relative z-10 rounded-2xl p-px",
         // The host also wraps shoulder tabs, so its backdrop would extend above the input.
         "group-data-model-strip-transition/composer-surface:bg-(--chat-composer-glass-surface)/(--glass-opacity) group-data-model-strip-transition/composer-surface:backdrop-blur-(--glass-blur) group-data-model-strip-transition/composer-surface:backdrop-saturate-(--glass-saturation)",
         outlineClasses,
         contextSeamClasses,
         "after:z-20 after:hidden group-has-data-[composer-banner-surface=attached]/composer-surface:after:block group-data-model-strip-transition/composer-surface:after:block",
         "group-has-data-[composer-banner-surface=attached]/composer-surface:bg-(--chat-composer-glass-surface)/(--glass-opacity) group-has-data-[composer-banner-surface=attached]/composer-surface:backdrop-blur-(--glass-blur) group-has-data-[composer-banner-surface=attached]/composer-surface:backdrop-saturate-(--glass-saturation)",
-        "group-has-data-[composer-banner-surface=attached]/composer-surface:shadow-composer dark:group-has-data-[composer-banner-surface=attached]/composer-surface:shadow-none",
+        "group-has-data-[composer-banner-surface=attached]/composer-surface:shadow-none",
         "not-supports-[((backdrop-filter:blur(1px))_or_(-webkit-backdrop-filter:blur(1px)))]:group-has-data-[composer-banner-surface=attached]/composer-surface:bg-(--chat-composer-glass-surface)",
         "group-has-data-[composer-banner-surface=attached]/composer-surface:**:data-[chat-composer-mobile-collapsed=true]:min-h-[calc(1rem+1px)]",
         className,
@@ -87,8 +87,8 @@ function ContextStrip({ className, ...props }: ComponentProps<"div">) {
       data-slot="composer-context-strip"
       className={cn(
         "group/composer-context relative isolate mx-auto -mt-4 flex w-[calc(100%-2*var(--chat-composer-drawer-inset))] items-center gap-2 overflow-x-clip overflow-y-visible px-2 pt-5 pb-1",
-        "before:absolute before:inset-0 before:-z-1 before:rounded-b-2xl before:border before:border-(--chat-composer-outline) before:mask-b-from-transparent before:mask-b-from-4 before:mask-b-to-black before:mask-b-to-4 before:shadow-composer",
-        "dark:before:border-white/7 dark:before:bg-composer-seam-below dark:before:shadow-composer-dark",
+        "before:absolute before:inset-0 before:-z-1 before:rounded-b-xl before:border before:border-(--chat-composer-outline) before:mask-b-from-transparent before:mask-b-from-4 before:mask-b-to-black before:mask-b-to-4",
+        "dark:before:border-white/5 dark:before:bg-composer-seam-below",
         "group-has-data-[composer-banner-surface=attached]/composer-surface:before:bg-(--chat-composer-glass-surface)/(--glass-opacity) group-has-data-[composer-banner-surface=attached]/composer-surface:before:backdrop-blur-(--glass-blur) group-has-data-[composer-banner-surface=attached]/composer-surface:before:backdrop-saturate-(--glass-saturation)",
         "not-supports-[clip-path:shape(from_0_0,line_to_1px_1px)]:before:bg-(--chat-composer-glass-surface)/(--glass-opacity) not-supports-[clip-path:shape(from_0_0,line_to_1px_1px)]:before:backdrop-blur-(--glass-blur) not-supports-[clip-path:shape(from_0_0,line_to_1px_1px)]:before:backdrop-saturate-(--glass-saturation)",
         className,

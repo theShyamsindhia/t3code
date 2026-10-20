@@ -54,6 +54,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
       disabled={Boolean(props.disabledReason)}
       className={cn(
         "group relative w-full !min-w-0 max-w-full cursor-pointer",
+        "rounded-md transition-colors data-selected:bg-foreground/[0.07] data-highlighted:bg-foreground/[0.12] data-highlighted:text-foreground [&[data-highlighted][data-selected]]:bg-foreground/[0.15] [&[data-highlighted][data-selected]]:text-foreground",
         props.disabledReason &&
           "data-disabled:pointer-events-auto data-disabled:cursor-not-allowed",
       )}

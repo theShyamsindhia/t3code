@@ -289,7 +289,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       <PopoverPopup
         {...(props.isComposerOwned ? composerFloatingLayerProps : {})}
         align="start"
-        className="before:hidden"
+        className="before:hidden rounded-xl border-foreground/[0.14] shadow-[0_18px_40px_-24px_rgb(0_0_0/75%)]"
         padding="none"
       >
         <ModelPickerContent

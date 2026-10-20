@@ -28,6 +28,6 @@ export const presentWidget = Effect.fn("InteractionMcpService.presentWidget")(fu
   return {
     title: input.title,
     message:
-      "The widget is available inline in this chat on T3 web and desktop. Finish your turn; do not poll. Only the user's explicit Send reply sends a response. Also describe the interaction in text for clients without widgets. Each call creates a separate widget in history.",
+      "The widget is available inline in this chat and in the right-side Canvas on T3 web and desktop. Finish your turn; do not poll. Only the user's explicit Send reply sends a response. Also describe the interaction in text for clients without widgets. Each call creates a separate widget in history.",
   };
 });

@@ -33,6 +33,7 @@ import {
   FileDiff,
   Files,
   Globe2,
+  PaintbrushIcon,
   Plus,
   TerminalSquare,
 } from "lucide-react";
@@ -139,6 +140,7 @@ interface RightPanelTabsProps {
    */
   onAddBrowserInProfile: (profileId: string) => void;
   onAddTerminal: () => void;
+  onAddCanvas?: () => void;
   onAddDiff: () => void;
   onAddFiles: () => void;
   onAddPullRequest: () => void;
@@ -151,6 +153,7 @@ interface RightPanelTabsProps {
   pullRequestAvailable: boolean;
   pullRequestsAvailable: boolean;
   deviceAvailable: boolean;
+  canvasAvailable?: boolean;
   pullRequestStatusSeeds?: Readonly<Record<string, PullRequestTabStatusSeed>>;
   children: ReactNode;
 }
@@ -172,6 +175,7 @@ export function shouldOpenDefaultBrowserProfileFromMenuClick(
 }
 
 const SURFACE_DISABLED_REASONS = {
+  canvas: "Canvas is available from a thread.",
   browser: "Browser previews are only available in the T3 Code desktop app.",
   terminal: "Terminal surfaces are only available from a project thread.",
   files: "Files are only available when a project is open.",
@@ -195,6 +199,7 @@ const LAUNCHER_SHORTCUT_BLOCKING_LAYERS = [
 
 /** One-line unavailability hints for the empty-state rows. */
 const SURFACE_UNAVAILABLE_HINTS = {
+  canvas: "Available from a thread.",
   browser: "Only available in the desktop app.",
   terminal: "Available when a project is open.",
   files: "Available when a project is open.",
@@ -338,6 +343,7 @@ export function RightPanelEmptyState(props: {
   onAddBrowserInProfile: (profileId: string) => void;
   browserProfiles: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   onAddTerminal: () => void;
+  onAddCanvas?: () => void;
   onAddDiff: () => void;
   onAddFiles: () => void;
   onAddPullRequest: () => void;
@@ -350,6 +356,7 @@ export function RightPanelEmptyState(props: {
   pullRequestAvailable: boolean;
   pullRequestsAvailable: boolean;
   deviceAvailable: boolean;
+  canvasAvailable?: boolean;
 }) {
   // -1 means no highlight: it only appears on hover or arrow use.
   const [highlight, setHighlight] = useState(-1);
@@ -380,6 +387,18 @@ export function RightPanelEmptyState(props: {
       disabledReason: SURFACE_UNAVAILABLE_HINTS.files,
       onClick: props.onAddFiles,
     },
+    ...(props.onAddCanvas
+      ? [
+          {
+            label: "Canvas",
+            icon: PaintbrushIcon,
+            shortcut: "C",
+            available: props.canvasAvailable ?? false,
+            disabledReason: SURFACE_UNAVAILABLE_HINTS.canvas,
+            onClick: props.onAddCanvas,
+          },
+        ]
+      : []),
     {
       label: "Diff",
       icon: FileDiff,
@@ -653,6 +672,8 @@ function surfaceTitle(
   terminalLabelsById: ReadonlyMap<string, string>,
 ): string {
   switch (surface.kind) {
+    case "canvas":
+      return "Canvas";
     case "interaction":
       return "Shared space";
     case "diff":
@@ -722,6 +743,8 @@ function SurfaceIcon({
   pullRequestStatusSeeds: Readonly<Record<string, PullRequestTabStatusSeed>> | undefined;
 }) {
   switch (surface.kind) {
+    case "canvas":
+      return <PaintbrushIcon className="size-3 shrink-0" />;
     case "interaction":
       return <Files className="size-3 shrink-0" />;
     case "preview": {
@@ -1016,6 +1039,18 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       disabledReason: SURFACE_DISABLED_REASONS.files,
       onClick: props.onAddFiles,
     },
+    ...(props.onAddCanvas
+      ? [
+          {
+            label: "Canvas",
+            icon: PaintbrushIcon,
+            shortcut: "C",
+            available: props.canvasAvailable ?? false,
+            disabledReason: SURFACE_DISABLED_REASONS.canvas,
+            onClick: props.onAddCanvas,
+          },
+        ]
+      : []),
     {
       label: "Diff",
       icon: FileDiff,
@@ -1539,6 +1574,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddBrowserInProfile={props.onAddBrowserInProfile}
             browserProfiles={browserProfiles}
             onAddTerminal={props.onAddTerminal}
+            {...(props.onAddCanvas ? { onAddCanvas: props.onAddCanvas } : {})}
             onAddDiff={props.onAddDiff}
             onAddFiles={props.onAddFiles}
             onAddPullRequest={props.onAddPullRequest}
@@ -1551,6 +1587,9 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             pullRequestAvailable={props.pullRequestAvailable}
             pullRequestsAvailable={props.pullRequestsAvailable}
             deviceAvailable={props.deviceAvailable}
+            {...(props.canvasAvailable === undefined
+              ? {}
+              : { canvasAvailable: props.canvasAvailable })}
           />
         ) : (
           props.children

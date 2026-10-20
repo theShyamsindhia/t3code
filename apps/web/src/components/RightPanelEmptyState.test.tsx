@@ -28,6 +28,7 @@ async function renderLauncher(
     onAddBrowser: vi.fn(),
     onAddBrowserInProfile: vi.fn(),
     onAddTerminal: vi.fn(),
+    onAddCanvas: vi.fn(),
     onAddDiff: vi.fn(),
     onAddFiles: vi.fn(),
     onAddPullRequest: vi.fn(),
@@ -47,6 +48,7 @@ async function renderLauncher(
         pullRequestAvailable
         pullRequestsAvailable
         deviceAvailable
+        canvasAvailable
         {...overrides}
       />,
     ),
@@ -89,7 +91,8 @@ describe("sculpted surface launcher", () => {
     const launcher = container.querySelector('[aria-label="Open a surface"]')!;
     await key(launcher, "ArrowUp");
     await key(launcher, "Enter");
-    expect(actions.onAddDiff).toHaveBeenCalledOnce();
+    expect(actions.onAddCanvas).toHaveBeenCalledOnce();
+    expect(actions.onAddDiff).not.toHaveBeenCalled();
     expect(actions.onAddDevice).not.toHaveBeenCalled();
 
     await act(async () => moreButton()!.click());
