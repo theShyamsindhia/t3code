@@ -21,12 +21,9 @@ import {
 } from "./chat/threadContextDrag";
 import { discardComposerDraft } from "../lib/discardComposerDraft";
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
-import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
-import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
 import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
 import { Atom } from "effect/reactivity";
-import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import * as Schema from "effect/Schema";
 import {
   DndContext,
@@ -37,28 +34,17 @@ import {
   type DragStartEvent,
   type Modifier,
 } from "@dnd-kit/core";
-import { SortableContext, useSortable } from "@dnd-kit/sortable";
+import { SortableContext } from "@dnd-kit/sortable";
 import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
-import { CSS } from "@dnd-kit/utilities";
 import {
   canSnooze,
   effectiveSnoozed,
-  hasQueuedTurnStart,
-  QUEUED_TURN_START_GRACE_MS,
   threadWokeAt,
 } from "@t3tools/client-runtime/state/thread-settled";
 import { createInboxReturnTracker } from "@t3tools/client-runtime/state/thread-inbox";
-import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
+import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
+import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import {
-  resolveSettledThreadTimestamp,
-  sortSettledThreads,
-} from "@t3tools/client-runtime/state/thread-sort";
-import {
-  threadSearchMatchKey,
-  type EnvironmentThreadSearchMatch,
-} from "@t3tools/client-runtime/state/thread-search";
-import {
-  resolveThreadProviderStack,
   threadRuntimeCanArchive,
   type EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/models";
@@ -70,12 +56,11 @@ import {
 } from "@t3tools/client-runtime/environment";
 import {
   AuthOrchestrationOperateScope,
-  type EnvironmentMachineKind,
   type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
 
-import type { TimestampFormat } from "@t3tools/contracts/settings";
+import { FolderIcon, ListFilterIcon, PlusIcon, SettingsIcon } from "lucide-react";
 import {
   AlarmClockIcon,
   AlarmClockOffIcon,
@@ -109,12 +94,10 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { useRouter } from "@tanstack/react-router";
 
-import { useRightPanelStore } from "../rightPanelStore";
 import {
   isAtomCommandInterrupted,
   settlePromise,
@@ -135,7 +118,6 @@ import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { isMacPlatform } from "~/lib/utils";
-import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { readLocalApi } from "../localApi";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { selectProjectGroupingSettings } from "../logicalProject";
@@ -161,7 +143,6 @@ import { useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useNowMinute } from "../hooks/useNowMinute";
-import { useNowSecond } from "../hooks/useNowSecond";
 import {
   useEnvironmentIdentities,
   useConnectedEnvironmentIds,
@@ -173,24 +154,19 @@ import {
   useAllEnvironmentProjectSnapshotsReady,
   useProjects,
   useServerConfigs,
-  useThreadShells,
+  useQuietThreadShells,
 } from "../state/entities";
 import { environmentPresentations } from "../state/presentation";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { environmentProjects } from "../state/projects";
-import { vcsEnvironment } from "../state/vcs";
 import { threadEnvironment } from "../state/threads";
-import { useEnvironmentQuery } from "../state/query";
 import { useThreadSearch } from "../state/queries";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
-import { readEnvironmentScope, useEnvironmentScope } from "../state/session";
+import { readEnvironmentScope } from "../state/session";
 import { buildThreadRouteParams, resolveActiveThreadRouteRef } from "../threadRoutes";
-import { formatRelativeTimeLabel, parseTimestampDate } from "../timestampFormat";
 import type { SidebarThreadSummary } from "../types";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
-import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { cn } from "~/lib/utils";
-import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
 import {
   buildDraftActionMenuItems,
@@ -198,16 +174,13 @@ import {
   threadActionRequiresOperate,
 } from "./threadActionMenu.logic";
 import {
-  animateSidebarLayoutChanges,
   applySidebarThreadDrop,
   filterSidebarV2VisibleThreads,
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   deleteSelectedThreadEntries,
   filterSidebarProjectScopeItems,
-  formatWorkingDurationLabel,
   firstValidTimestampMs,
-  hasUnseenCompletion,
   isSidebarNestedLinkClick,
   isSidebarThreadWorking,
   isTrailingDoubleClick,
@@ -219,31 +192,20 @@ import {
   resolveSidebarDropTarget,
   resolveSidebarDropVerb,
   resolveSidebarThreadSection,
-  resolveSidebarRowAccessibility,
-  type SidebarDropVerb,
-  resolveSidebarThreadStatus,
-  resolveThreadLastVisitedAt,
   searchSidebarThreads,
   shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
-  shouldRecedeSidebarThread,
-  resolveWorkingStartedAt,
   sidebarListItemId,
-  sidebarMarkerId,
   sidebarThreadKeyAtY,
   sortInboxThreadsByReturn,
   sortPinnedThreadsForSidebar,
   sortThreadsForSidebar,
   sortWorkingThreadsBySend,
   useThreadJumpHintVisibility,
-  useRetainedValue,
-  useSidebarRowSubscriptionLease,
   type SidebarListItem,
-  type SidebarListMarker,
   type SidebarSection,
   resolveSidebarRowThreadId,
 } from "./Sidebar.logic";
-import { resolveLocalCheckoutBranchMismatch } from "./BranchToolbar.logic";
 import {
   createSidebarCollisionDetection,
   createSidebarSortingStrategy,
@@ -251,32 +213,17 @@ import {
 } from "./Sidebar.drag";
 import { SidebarDragLifecycle, SidebarPointerSensor } from "./Sidebar.pointer";
 import { createSidebarListMotion } from "./Sidebar.motion";
-import {
-  ThreadPullRequestBadgeControl,
-  ThreadPullRequestsMiniList,
-  ThreadWorktreeIndicator,
-  prStatusIndicator,
-  resolveThreadPullRequestBadge,
-  terminalStatusFromRunningIds,
-  type TerminalStatusIndicator,
-  useLinkedThreadPullRequest,
-  ThreadSearchPullRequestNumber,
-} from "./ThreadStatusIndicators";
 import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Sidebar.snooze";
-import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
-import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
-import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
-import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
-import { getTriggerDisplayModelLabel } from "./chat/providerIconUtils";
-import {
-  deriveProviderEntriesByEnvironment,
-  shouldShowInstanceBadge,
-  type ProviderInstanceEntry,
-} from "../providerInstances";
-import { useThreadRunningTerminalIds } from "../state/terminalSessions";
+import { ProjectFavicon } from "./ProjectFavicon";
+import { deriveProviderEntriesByEnvironment } from "../providerInstances";
 import { useStableCallback } from "../hooks/useStableCallback";
+import {
+  completeSidebarRouteReveal,
+  pendingSidebarRouteReveal,
+  type SidebarRouteReveal,
+} from "./sidebar/routeReveal";
 import { stackedThreadToast, toastManager } from "./ui/toast";
-import { Button, InlineButton } from "./ui/button";
+import { Button } from "./ui/button";
 import {
   Combobox,
   ComboboxEmpty,
@@ -290,33 +237,21 @@ import {
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
-import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
-import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
-import { MiddleTruncate } from "./ui/middle-truncate";
-import {
-  composerDraftHasUserContent,
-  DraftId,
-  useComposerDraftStore,
-  useThreadHasUnsentDraft,
-  type ComposerThreadDraftState,
-  type DraftSessionState,
-} from "../composerDraftStore";
+import { TooltipProvider } from "./ui/tooltip";
+import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
-
-// The fields thread rows show. Provider status pushes refresh `checkedAt`,
-// status and auth on every provider; leaving those out keeps each
-// environment's map, and every memoized row, stable across them.
-type SidebarProviderEntry = Pick<
-  ProviderInstanceEntry,
-  | "instanceId"
-  | "driverKind"
-  | "enabled"
-  | "displayName"
-  | "accentColor"
-  | "acpRegistryAgentId"
-  | "acpRegistryIconUrl"
-  | "models"
->;
+import {
+  SidebarSearchResultRow,
+  SortableThreadRow,
+  type SidebarProviderEntry,
+  type SidebarSweepAction,
+} from "./sidebar/SidebarThreadRow";
+import { SidebarDraftBlock } from "./sidebar/SidebarDraftBlock";
+import {
+  SidebarDragBoundary,
+  SidebarSectionHeader,
+  SidebarSectionPlaceholder,
+} from "./sidebar/SidebarListMarkers";
 
 function sameSidebarProviderEntries(
   left: ReadonlyMap<string, SidebarProviderEntry>,
@@ -1278,8 +1213,6 @@ function SidebarSectionPlaceholder(props: {
 }
 
 const SIDEBAR_DRAG_DISTANCE = 6;
-
-type SidebarSweepAction = "settle" | "unsettle" | "unsnooze";
 
 const SIDEBAR_DRAG_LABEL_HEIGHT = 24;
 
@@ -3140,6 +3073,44 @@ export default function Sidebar({ dock = false }: { dock?: boolean }) {
   });
 
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
+
+  // History, the command palette, and links can open a thread the project
+  // scope hides or the list has scrolled away. A remount starts the list at
+  // the top, so each mount also scrolls to the open thread once, without
+  // widening the scope.
+  const mountRevealOwed = useRef(true);
+  const revealRouteRow = useStableCallback(() => {
+    const pendingKey = pendingSidebarRouteReveal(routeReveal, routeRowThreadKey);
+    // Search results replace the thread list; reveal once the list returns.
+    if (isSearchingThreads) return;
+    const revealKey = pendingKey ?? (mountRevealOwed.current ? routeRowThreadKey : null);
+    if (revealKey === null) return;
+    const thread = threads.find((candidate) => threadShellKey(candidate) === revealKey);
+    if (thread === undefined) return;
+    if (
+      pendingKey !== null &&
+      scopedProjectKeys !== null &&
+      filterSidebarV2VisibleThreads([thread], scopedProjectKeys).length === 0 &&
+      filterSidebarV2VisibleThreads([thread], null).length === 1
+    ) {
+      // The row renders under the widened scope; scroll on that pass.
+      setProjectScopeKey(null);
+      return;
+    }
+    const activeRow = document.querySelector('[data-sidebar="content"] [aria-current="page"]');
+    if (!activeRow) return;
+    completeSidebarRouteReveal(routeReveal);
+    mountRevealOwed.current = false;
+    activeRow.scrollIntoView({ block: "nearest" });
+  });
+  useEffect(revealRouteRow, [
+    revealRouteRow,
+    routeRowThreadKey,
+    threads,
+    projectScopeKey,
+    isSearchingThreads,
+  ]);
+
   const threadSearchMatchByKey = new Map(
     threadSearch.matches.map((match) => [threadSearchMatchKey(match), match] as const),
   );

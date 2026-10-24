@@ -1,5 +1,3 @@
-import { useRenderedAppearance } from "../../hooks/useTheme";
-import type { Root, RootContent } from "mdast";
 import { ThreadFindTimelineContext } from "./ThreadFindProvider";
 import { shallow } from "zustand/vanilla/shallow";
 import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
@@ -9,60 +7,21 @@ import { explainProviderConnectionError } from "@t3tools/client-runtime/provider
 import { ProviderConnectionErrorDetails } from "./ProviderConnectionErrorDetails";
 import { ChatWidget } from "./ChatWidget";
 import { useChatCanvas } from "./ChatCanvasContext";
-import { WorkLogBlock, WorkLogButton, WorkLogDetails, WorkLogList, WorkLogRow } from "./WorkLog";
-import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
+import { WorkLogBlock } from "./WorkLog";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
-import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
-import { useRightPanelStore } from "~/rightPanelStore";
+import { deriveTimelineMinimapItems } from "./timelineMinimapItems";
 import {
-  getQuestionAnswerPreview,
-  getQuestionAnswerText,
-  getQuestionTextPreview,
-  hasQuestionAnswer,
-} from "@t3tools/client-runtime/work-log/user-input";
-import {
-  deriveTimelineMinimapItems,
-  resolveTimelineMinimapPreview,
-  type TimelineMinimapItem,
-} from "./timelineMinimapItems";
-import {
-  COMPOSER_CONTEXT_KINDS,
-  ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
   type AssistantCitation,
   type EnvironmentId,
   type MessageId,
   type OrchestrationV2TurnItem,
   type RunAttemptId,
-  type ScopedThreadRef,
   type ServerProviderSkill,
   type RunId,
   ThreadId,
-  type ToolActivityIcon,
 } from "@t3tools/contracts";
-import { parseScopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { useAtomValue } from "@effect/atom-react";
-import { environmentThreadDetails } from "../../state/threads";
-import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
-import { Link } from "@tanstack/react-router";
-import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
-import { notificationChildThreadId } from "@t3tools/client-runtime/state/thread-execution";
-import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
-import {
-  liveThoughtLine,
-  resolveWorkEntryToolPresentation,
-  resolveViewedImageAsset,
-  workEntryViewedImagePath,
-} from "@t3tools/client-runtime/work-log/presentation";
+import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
-import {
-  turnItemHasDetail,
-  turnItemNeedsDetailFetch,
-} from "@t3tools/client-runtime/work-log/item-detail";
-import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
-import {
-  subagentGroupSummary,
-  summarizeSubagentStatuses,
-} from "@t3tools/client-runtime/state/subagent-display";
 import type { WorkflowOpening } from "@t3tools/client-runtime/state/subagentRuntime";
 import { observeResize } from "~/lib/observeResize";
 import { useStableCallback } from "~/hooks/useStableCallback";
@@ -71,13 +30,8 @@ const NOOP_USE_ARTIFACT_TEMPLATE = () => {};
 const NOOP_OPEN_ATTACHMENT = (_attachment: ChatFileAttachment) => {};
 
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
-import { toolActivityFaviconUrl } from "@t3tools/shared/favicon";
-import { formatDuration } from "@t3tools/shared/orchestrationTiming";
-import { getProjectFaviconCacheKey } from "@t3tools/shared/projectFavicon";
-import { claudeSkillInvocation, isJavaScriptReplTool } from "@t3tools/shared/toolActivity";
 import { observeVisibleAnimation } from "../../lib/visibleAnimation";
 import {
-  createContext,
   memo,
   use,
   useContext,
@@ -85,8 +39,6 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type KeyboardEvent,
-  type MouseEvent,
   type ReactNode,
 } from "react";
 import {
@@ -94,96 +46,13 @@ import {
   type LegendListRef,
   type MaintainScrollAtEndOptions,
 } from "@legendapp/list/react";
-import { FileDiff } from "@pierre/diffs/react";
-import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
-import {
-  type TimelineEntry,
-  providerErrorPresentation,
-  createMessageAttachmentPreviewProjector,
-  selectMessageImageResources,
-  workEntryDisplayIndicatesToolFailure,
-  workEntrySignalsSevereFailure,
-  workLogEntryIsToolLike,
-} from "../../session-logic";
+import { type TimelineEntry } from "../../session-logic";
 import type { CodexArtifactTemplate } from "@t3tools/shared/codexArtifactTemplates";
-import {
-  type ChatMessage,
-  type ChatFileAttachment,
-  type ChatImageAttachment,
-  isFileAttachment,
-  isImageAttachment,
-  isVideoAttachment,
-  type TurnDiffSummary,
-} from "../../types";
-import {
-  getRenderablePatch,
-  resolveDiffThemeName,
-  resolveFileDiffPath,
-} from "../../lib/diffRendering";
-import { PREFERRED_HIGHLIGHTER } from "../../lib/syntaxHighlighting";
-import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
-import { T3Wordmark } from "../T3Wordmark";
-import { ThreadContextChip } from "../ThreadContextChip";
-import {
-  ArrowRightIcon,
-  BotIcon,
-  BrainIcon,
-  CheckIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  ChevronUpIcon,
-  CircleAlertIcon,
-  DownloadIcon,
-  EyeIcon,
-  GitForkIcon,
-  GlobeIcon,
-  type LucideIcon,
-  MessageCircleIcon,
-  MousePointerClickIcon,
-  PaintbrushIcon,
-  MinusIcon,
-  Redo2Icon,
-  Minimize2Icon,
-  SearchIcon,
-  SmartphoneIcon,
-  SquarePenIcon,
-  TerminalIcon,
-  Undo2Icon,
-  HammerIcon,
-  WrenchIcon,
-  Code2Icon,
-  XIcon,
-  ZapIcon,
-  RotateCcwIcon,
-} from "lucide-react";
-import { ChevronDown, ChevronRight, Link as LinkIconNode } from "lucide";
-import type {
-  ComposerContextId,
-  ComposerContextRecord,
-  KnownComposerContextRecord,
-} from "@t3tools/contracts";
-import { Button, InlineButton } from "../ui/button";
+import { type ChatFileAttachment, type TurnDiffSummary } from "../../types";
+import { ArrowRightIcon, BotIcon, Minimize2Icon } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide";
 import { MorphIcon } from "~/components/MorphIcon";
-import { useAssetUrlRefresh, useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
-import { AttachmentImage } from "../media/AttachmentImage";
-import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
-import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
-import {
-  buildAttachmentVideoAsset,
-  buildAttachmentVideoPreview,
-  buildExpandedImagePreview,
-  ExpandedImagePreview,
-} from "./ExpandedImagePreview";
-import {
-  SNAP_SHOT_ATTACHMENT_FRAME_CLASS,
-  SnapShotAttachmentDetails,
-} from "./SnapShotAttachmentDetails";
-import { ProposedPlanCard } from "./ProposedPlanCard";
-import { HtmlRenderFrame } from "./HtmlRenderFrame";
-import { McpAppFrame } from "./McpAppFrame";
-import { ChangedFilesCard } from "./ChangedFilesTree";
-import { useFileContextMenuHandler } from "../../fileContextMenu";
-import { useProject, useThreadShell } from "../../state/entities";
+import { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   CHAT_TIMELINE_ANCHOR_OFFSET,
   readTimelinePosition,
@@ -191,128 +60,66 @@ import {
   rememberTimelinePosition,
   timelineContentOverflowsViewport,
 } from "./timelineScrollAnchoring";
-import { MessageCopyButton } from "./MessageCopyButton";
-import { promptLinkFor } from "../promptLinks/copyPromptLink";
-import { PierreEntryIcon } from "./PierreEntryIcon";
-import { WorkspaceEntryIcon, WorkspaceEntryTooltip } from "./WorkspaceEntryIcon";
 import { AssistantSelectionToolbar } from "./AssistantSelectionToolbar";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
-import {
-  AssistantCitationSource,
-  type AssistantCitationRequest,
-  type AssistantCitationTarget,
-} from "./AssistantCitationSource";
+import { type AssistantCitationRequest } from "./AssistantCitationSource";
 import { useAssistantCitationTarget, type CitationHistoryPage } from "./useAssistantCitationTarget";
 import {
-  computeStableMessagesTimelineRows,
-  deriveMessagesTimelineRowsWithState,
-  type MessagesTimelineRowsProjection,
-  liveWorkEntryLabel,
-  resolveAssistantMessageCopyState,
   resolveTimelineIsAtEnd,
   resolveTimelineMinimapHasPersistentGutter,
   resolveTimelineMinimapCurrentIndex,
   isTimelineMinimapRowVisible,
   resolveTimelineMinimapVisibleRange,
-  resolveTimelineMinimapHeightStyle,
   resolveTimelineMinimapHitStripWidth,
-  resolveTimelineMinimapIndexFromPointer,
-  resolveTimelineMinimapInteractiveWidth,
-  resolveTimelineMinimapNavigationInteractive,
-  resolveTimelineMinimapTopPercent,
-  resolveWorkGroupScrollIndex,
-  shouldCollapseUserMessage,
-  shouldFollowWorkGroupAppend,
   timelineTurnFoldRunIdsByEntryId,
-  threadReadLabelPrefix,
-  threadReadTargetId,
-  threadReadTargetTitle,
-  toolGroupAction,
-  workEntryDisplayLabel,
-  workEntryReadOutput,
-  workEntryIsVisibleInGroup,
   worktreeSetupAgentStarted,
-  type StableMessagesTimelineRowsState,
   type MessagesTimelineRow,
-  TIMELINE_MINIMAP_MIN_ITEMS,
   type TimelineLatestRun,
-  type WorkGroupScrollAnchor,
 } from "./MessagesTimeline.logic";
 import { type ThreadFindMatch } from "./threadFind";
 import { useThreadFindNavigation } from "./useThreadFindNavigation";
-import { readThreadFindPosition } from "./threadFindPosition";
 import type { ThreadFindPositionReader } from "./threadFind";
-import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
-import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { Spinner } from "../ui/spinner";
-import { Tooltip, TooltipPopup, TooltipTrigger, TooltipScrollDismissArea } from "../ui/tooltip";
+import { TooltipScrollDismissArea } from "../ui/tooltip";
 import { WorktreeSetupCard } from "./WorktreeSetupCard";
-import {
-  ContextChipPopover as UserMessageContextPopover,
-  ContextChipShell,
-  FileChip,
-  ImageChipButton,
-  PULL_REQUEST_CHIP_KINDS,
-  PullRequestChip,
-  UnresolvedChip,
-} from "../contextChipParts";
-import {
-  asKnownContextRecord,
-  isPullRequestSummaryContext,
-  pullRequestContextDisplayState,
-  pullRequestContextKindLabel,
-  resolveUserMessageContext,
-  reviewCommentContextLabel,
-  selectedMessageContextFragment,
-} from "~/lib/composerContextRecords";
-import {
-  collectComposerContextReferences,
-  formatComposerContextReference,
-} from "@t3tools/shared/composerContextReferences";
-import {
-  COMPOSER_CONTEXT_CLIPBOARD_MIME,
-  encodeComposerContextClipboardHtml,
-  encodeComposerContextFragment,
-} from "@t3tools/shared/composerContextClipboard";
-import { chatMarkdownClipboardPayload } from "../../markdown-clipboard";
-import { ContextChip, ContextChipLabel, type ContextChipKind } from "../ContextChip";
-import { createContextPresentationRegistry } from "../contextPresentationRegistry";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { useClientSettings } from "~/hooks/useSettings";
-import type { ChatMarkdownContextReference } from "../ChatMarkdown";
 import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { cn } from "~/lib/utils";
-import { useUiStateStore } from "~/uiStateStore";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
-import {
-  formatChatTimestampTooltip,
-  formatDayAwareTimestamp,
-  formatUpcomingTimestamp,
-} from "../../timestampFormat";
-import { FetchedToolOutput, V2ItemInspector } from "./V2ItemInspector";
-import { useV2ItemSupport } from "../../state/v2ItemSupport";
-import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "../ui/collapsible";
-import {
-  isV2LifecycleItem,
-  EnvironmentSubagentAvatar,
-  SubagentElapsed,
-  SubagentNotificationLink,
-  V2LifecycleRow,
-  type HandoffTimelineRun,
-} from "./V2LifecycleRow";
-import { SecretRequestCard } from "./SecretRequestCard";
+import { type HandoffTimelineRun } from "./V2LifecycleRow";
 import { TimelineSystemDivider } from "./TimelineSystemDivider";
-import { WorkflowOpeningBlock } from "./WorkflowOpeningBlock";
 
-import { SkillChipIcon } from "./SkillInlineText";
-import * as DateTime from "effect/DateTime";
-import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import { forwardWheelToTimeline } from "./timelineMinimapWheel";
+import { TimelineMinimap } from "./TimelineMinimap";
 import {
-  buildReviewCommentRenderablePatch,
-  formatReviewCommentFence,
-  type ReviewCommentContext,
-} from "../../reviewCommentContext";
+  type TimelineRowSharedState,
+  type TimelineRowActivityState,
+  TimelineRowCtx,
+  TimelineRowActivityCtx,
+  type WorkGroupViewState,
+  type TimelineRow,
+} from "./timelineRowContext";
+import { TimelineRowTimestamp, ActivityShimmerOverlay } from "./TimelineRowParts";
+import {
+  WorkGroupSection,
+  WorkingTimelineRow,
+  ThinkingTimelineRow,
+  LiveWorkEntryTimelineRow,
+  WorkGroupToggleTimelineRow,
+} from "./TimelineWorkGroupRows";
+import { UserMessageRow } from "./TimelineUserMessageRow";
+import {
+  AssistantTimelineRow,
+  AssistantMetaTimelineRow,
+  ProposedPlanTimelineRow,
+  HtmlRenderTimelineRow,
+  McpAppTimelineRow,
+} from "./TimelineAssistantRows";
+import { V2EventTimelineRow } from "./TimelineV2EventRow";
+import { useTimelinePositionRestore } from "./useTimelinePositionRestore";
+import { useThreadFindPositionReader } from "./useThreadFindPositionReader";
+import { ThreadActivityAnnouncer } from "./ThreadActivityAnnouncer";
+import { useStableHandoffRuns, useIncrementalTimelineRows, useStableRows } from "./useTimelineRows";
 
 interface TimelineRowSharedState {
   citationRequest: AssistantCitationTarget | null;
@@ -430,7 +237,6 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END = {
     layout: true,
   },
 } as const satisfies MaintainScrollAtEndOptions;
-const EMPTY_TIMELINE_RUNS: ReadonlyArray<HandoffTimelineRun> = [];
 const EMPTY_RUN_IDS: ReadonlySet<RunId> = new Set();
 const TIMELINE_MAINTAIN_SCROLL_AT_END_SMOOTH = {
   ...TIMELINE_MAINTAIN_SCROLL_AT_END,
@@ -463,17 +269,25 @@ interface MessagesTimelineProps {
   onOpenWorktreeSetupTerminal?: (terminalId: string) => void;
   isPreparingWorktree?: boolean;
   isCompacting?: boolean;
-  awaitingUser?: boolean;
+  awaitingUser?: "approval" | "input" | null;
+  /** Which request is waiting, so a second one of the same kind is announced too. */
+  awaitingRequestId?: string | null;
   footer?: ReactNode;
 
   listRef: React.RefObject<LegendListRef | null>;
   timelineEntries: ReadonlyArray<TimelineEntry>;
   latestRun: TimelineLatestRun | null;
+  /** The run the screen reader announcer follows; see announcedRun. */
+  announcedRun?: { readonly runId: RunId; readonly status: TimelineLatestRun["status"] } | null;
+  /** See isDetailBehindShell. */
+  detailBehindShell?: boolean;
   runningRunId?: RunId | null;
   turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   routeThreadKey: string;
   displayThreadKey?: string;
   paintOnly?: boolean;
+  /** Off where another region already speaks the thread's status, like a subagent's bar. */
+  announceTurnStatus?: boolean;
   onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
   onSubmitWidgetReply?: ((text: string) => Promise<boolean>) | undefined;
   onOpenThread: (threadId: OrchestrationV2TurnItem["threadId"]) => void;
@@ -571,7 +385,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
   onOpenWorktreeSetupTerminal,
   isPreparingWorktree = false,
   isCompacting = false,
-  awaitingUser = false,
+  awaitingUser = null,
+  awaitingRequestId = null,
   listRef,
   timelineEntries,
   findExpanded = false,
@@ -580,11 +395,14 @@ const ConversationTimeline = memo(function ConversationTimeline({
   findNavigationId = 0,
   findPositionReaderRef,
   latestRun,
+  announcedRun = null,
+  detailBehindShell = false,
   runningRunId = null,
   turnDiffSummaries,
   routeThreadKey,
   displayThreadKey,
   paintOnly = false,
+  announceTurnStatus = true,
   onOpenTurnDiff,
   onOpenThread,
   onSubmitWidgetReply,
@@ -813,7 +631,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     });
   }, [latestRun, listIdentityKey]);
 
-  // Imported turns fold under synthetic keys rather than the entries' own run ids.
+  // Imported turns and post-steer work fold under synthetic keys, not the entries' run ids.
   const findFoldRunIds = findActive
     ? timelineTurnFoldRunIdsByEntryId({
         timelineEntries,
@@ -878,145 +696,23 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const runs = useStableHandoffRuns(runsProp);
   const minimapItems = deriveTimelineMinimapItems(rows);
   const minimapRowIndices = minimapItems.map((item) => item.rowIndex);
-  // Preserve initialScrollAtEnd's measured target until the list is reused
-  // for another thread; scrollToEnd would replace it with an estimated offset.
-  const listOpenedOnRef = useRef<{
-    readonly list: LegendListRef;
-    identity: string | null;
-  } | null>(null);
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    const opened = listOpenedOnRef.current;
-    if (!list) return;
-    if (opened?.list !== list) {
-      listOpenedOnRef.current = { list, identity: listIdentityKey };
-    } else if (opened.identity !== listIdentityKey) {
-      opened.identity = null;
-    }
-  });
   const restoreRowIndex =
     restoringThreadPosition && rememberedPosition?.atEnd === false
       ? rows.findIndex((row) => row.id === rememberedPosition.rowId)
       : -1;
   const restoringAlwaysRender =
     restoringThreadPosition && restoreRowIndex >= 0 ? { indices: [restoreRowIndex] } : undefined;
-  useLayoutEffect(() => {
-    if (!restoringThreadPosition || rows.length === 0) return;
-    const list = listRef.current;
-    if (!list) return;
-    if (citationRequest !== null) {
-      // oxlint-disable-next-line react/set-state-in-effect -- The citation scroll owns positioning once the list has mounted.
-      setPositionedThreadKey(listIdentityKey);
-      return;
-    }
-    let cancelled = false;
-    let settleFrame: number | null = null;
-    const viewport: HTMLElement | null = list.getScrollableNode();
-    const cancelRestoration = () => {
-      if (cancelled) return;
-      cancelled = true;
-      if (settleFrame !== null) cancelAnimationFrame(settleFrame);
-      if (viewport) void list.scrollToOffset({ offset: viewport.scrollTop, animated: false });
-      setPositionedThreadKey(listIdentityKey);
-    };
-    const cancelForNavigation = () => {
-      cancelRestoration();
-      onManualNavigation();
-    };
-    const onScrollKey = (event: globalThis.KeyboardEvent) => {
-      if (
-        ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key) &&
-        !(
-          event.target instanceof Element &&
-          event.target.closest("input, textarea, [contenteditable=true]")
-        )
-      )
-        cancelForNavigation();
-    };
-    viewport?.addEventListener("wheel", cancelForNavigation, { passive: true });
-    viewport?.addEventListener("touchmove", cancelForNavigation, { passive: true });
-    viewport?.addEventListener("pointerdown", cancelForNavigation, { passive: true });
-    viewport?.ownerDocument.addEventListener("keydown", onScrollKey);
-    const position = rememberedPosition;
-    const index = position ? rows.findIndex((row) => row.id === position.rowId) : -1;
-    if (position?.atEnd === false) onManualNavigation();
-    if (cancelPositionRestoreRef) cancelPositionRestoreRef.current = cancelRestoration;
-    const scrolling =
-      position?.atEnd === false
-        ? index >= 0
-          ? list.scrollToIndex({
-              index,
-              animated: false,
-              viewPosition: 0,
-              viewOffset: -position.offsetWithinRow,
-            })
-          : list.scrollToOffset({ offset: position.scrollOffset, animated: false })
-        : listOpenedOnRef.current?.identity === listIdentityKey
-          ? undefined
-          : list.scrollToEnd({ animated: false });
-    void Promise.resolve(scrolling).then(() => {
-      if (cancelled) return;
-      if (position?.atEnd !== false || index < 0) {
-        setPositionedThreadKey(listIdentityKey);
-        return;
-      }
-      // Index scrolling starts from estimates. Keep the saved row mounted
-      // until its measured position and the DOM agree for two layout frames.
-      let stableFrames = 0;
-      const reconcile = () => {
-        if (cancelled) return;
-        const state = list.getState();
-        const rowIndex = state.indexByKey(position.rowId);
-        const row = rowIndex === undefined ? undefined : state.elementAtIndex(rowIndex);
-        const element = list.getScrollableNode();
-        if (!row || !element) return;
-        const offset = Math.max(
-          0,
-          Math.min(
-            element.scrollTop +
-              row.getBoundingClientRect().top -
-              element.getBoundingClientRect().top +
-              position.offsetWithinRow,
-            element.scrollHeight - element.clientHeight,
-          ),
-        );
-        if (Math.abs(element.scrollTop - offset) > 1) {
-          stableFrames = 0;
-          void list.scrollToOffset({ offset, animated: false }).then(() => {
-            if (!cancelled) settleFrame = requestAnimationFrame(reconcile);
-          });
-          return;
-        }
-        stableFrames += 1;
-        if (stableFrames >= 2) {
-          setPositionedThreadKey(listIdentityKey);
-        } else {
-          settleFrame = requestAnimationFrame(reconcile);
-        }
-      };
-      settleFrame = requestAnimationFrame(reconcile);
-    });
-    return () => {
-      cancelled = true;
-      if (cancelPositionRestoreRef?.current === cancelRestoration) {
-        cancelPositionRestoreRef.current = null;
-      }
-      if (settleFrame !== null) cancelAnimationFrame(settleFrame);
-      viewport?.removeEventListener("wheel", cancelForNavigation);
-      viewport?.removeEventListener("touchmove", cancelForNavigation);
-      viewport?.removeEventListener("pointerdown", cancelForNavigation);
-      viewport?.ownerDocument.removeEventListener("keydown", onScrollKey);
-    };
-  }, [
+  useTimelinePositionRestore({
+    listRef,
+    listIdentityKey,
+    restoringThreadPosition,
+    rememberedPosition,
+    rows,
     citationRequest,
     cancelPositionRestoreRef,
-    listIdentityKey,
-    listRef,
     onManualNavigation,
-    rememberedPosition,
-    restoringThreadPosition,
-    rows,
-  ]);
+    onPositioned: setPositionedThreadKey,
+  });
 
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
@@ -1343,10 +1039,22 @@ const ConversationTimeline = memo(function ConversationTimeline({
     isRevertingCheckpoint,
     backgroundWorktreeSetup,
     activeTurnInProgress,
-    awaitingUser,
+    awaitingUser: awaitingUser !== null,
     isPreparingWorktree,
     latestRunId: latestRun?.runId ?? null,
   };
+  // Mounted in both the empty and filled timeline so a thread's first turn
+  // starts from a baseline instead of a fresh, silent region.
+  const activityAnnouncer = (
+    <ThreadActivityAnnouncer
+      threadKey={paintOnly || !announceTurnStatus ? null : listIdentityKey}
+      status={awaitingUser ?? (isWorking ? "working" : "idle")}
+      requestId={awaitingRequestId}
+      runId={announcedRun?.runId ?? null}
+      runStatus={announcedRun?.status ?? null}
+      detailBehind={detailBehindShell}
+    />
+  );
   const listHeaderLeadingContent =
     parentThreadLink === null ? (
       topFadeEnabled ? (
@@ -1382,70 +1090,18 @@ const ConversationTimeline = memo(function ConversationTimeline({
     registerTimeline?.(list?.getScrollableNode() ?? null);
   };
 
-  useLayoutEffect(() => {
-    if (!findPositionReaderRef || !timelineViewportElement) return;
-    const read: ThreadFindPositionReader = (query) => {
-      const foldRunIds =
-        findFoldRunIds ??
-        timelineTurnFoldRunIdsByEntryId({
-          timelineEntries,
-          latestRun,
-          runningRunId,
-          isWorking,
-          runlessWorkActive,
-        });
-      const entryById = new Map(timelineEntries.map((entry) => [entry.id, entry]));
-      return readThreadFindPosition(
-        timelineViewportElement,
-        query,
-        (rowId) => {
-          const rowIndex = rows.findIndex((row) => row.id === rowId);
-          for (const row of rows.slice(Math.max(0, rowIndex))) {
-            if (row.kind !== "turn-fold" && row.kind !== "attempt-fold") {
-              const entry = entryById.get(row.kind === "assistant-meta" ? row.message.id : row.id);
-              if (entry && (entry.kind === "message" || entry.kind === "proposed-plan"))
-                return entry.id;
-              continue;
-            }
-            const entry = timelineEntries.find((entry) => {
-              const runId =
-                row.kind === "turn-fold"
-                  ? foldRunIds.get(entry.id)
-                  : entry.kind === "message"
-                    ? entry.message.runId
-                    : entry.kind === "proposed-plan"
-                      ? entry.proposedPlan.runId
-                      : null;
-              return (
-                runId === row.runId &&
-                (entry.kind !== "message" || entry.message.role === "assistant") &&
-                (row.kind !== "attempt-fold" || entry.attempt?.id === row.attemptId)
-              );
-            });
-            if (entry && (entry.kind === "message" || entry.kind === "proposed-plan"))
-              return entry.id;
-          }
-          return undefined;
-        },
-        contentInsetEndAdjustment,
-      );
-    };
-    findPositionReaderRef.current = read;
-    return () => {
-      if (findPositionReaderRef.current === read) findPositionReaderRef.current = null;
-    };
-  }, [
-    contentInsetEndAdjustment,
-    findFoldRunIds,
+  useThreadFindPositionReader({
     findPositionReaderRef,
-    isWorking,
-    latestRun,
-    rows,
-    runlessWorkActive,
-    runningRunId,
-    timelineEntries,
     timelineViewportElement,
-  ]);
+    findFoldRunIds,
+    timelineEntries,
+    latestRun,
+    runningRunId,
+    isWorking,
+    runlessWorkActive,
+    rows,
+    contentInsetEndAdjustment,
+  });
 
   useThreadFindNavigation({
     listReady: findListReady,
@@ -1492,100 +1148,111 @@ const ConversationTimeline = memo(function ConversationTimeline({
     footer === null
   ) {
     if (hideEmptyPlaceholder) {
-      return <div className="h-full min-h-0 bg-background" data-timeline-loading="true" />;
+      return (
+        <>
+          {activityAnnouncer}
+          <div className="h-full min-h-0 bg-background" data-timeline-loading="true" />
+        </>
+      );
     }
     return (
-      <div
-        className="flex h-full items-center justify-center ps-(--chat-lane-inset-start) pe-(--chat-lane-inset-end)"
-        style={{ paddingBottom: emptyPlaceholderInset }}
-      >
-        <p className="text-sm text-muted-foreground/30">
-          Send a message to start the conversation.
-        </p>
-      </div>
+      <>
+        {activityAnnouncer}
+        <div
+          className="flex h-full items-center justify-center ps-(--chat-lane-inset-start) pe-(--chat-lane-inset-end)"
+          style={{ paddingBottom: emptyPlaceholderInset }}
+        >
+          <p className="text-sm text-muted-foreground/30">
+            Send a message to start the conversation.
+          </p>
+        </div>
+      </>
     );
   }
 
   return (
-    <MarkdownFindContext value={findActive}>
-      <TimelineRowActivityCtx value={activityState}>
-        <TooltipScrollDismissArea
-          ref={setTimelineViewportElement}
-          className="relative h-full min-h-0"
-          data-assistant-citation-viewport="true"
-        >
-          {onCiteAssistantText && citationThreadRef ? (
-            <AssistantSelectionToolbar
-              viewport={timelineViewportElement}
-              threadRef={citationThreadRef}
-              onCite={onCiteAssistantText}
+    <>
+      {activityAnnouncer}
+      <MarkdownFindContext value={findActive}>
+        <TimelineRowActivityCtx value={activityState}>
+          <TooltipScrollDismissArea
+            ref={setTimelineViewportElement}
+            className="relative h-full min-h-0"
+            data-assistant-citation-viewport="true"
+          >
+            {onCiteAssistantText && citationThreadRef ? (
+              <AssistantSelectionToolbar
+                viewport={timelineViewportElement}
+                threadRef={citationThreadRef}
+                onCite={onCiteAssistantText}
+              />
+            ) : null}
+            <LegendList<MessagesTimelineRow>
+              ref={setTimelineList}
+              data={rows}
+              extraData={listExtraData}
+              keyExtractor={keyExtractor}
+              getItemType={getItemType}
+              renderItem={renderItem}
+              estimatedItemSize={90}
+              initialScrollAtEnd={
+                !findActive && citationRequest === null && rememberedPosition?.atEnd !== false
+              }
+              // Legend needs a data refresh to mount new pins without a scroll event.
+              dataVersion={readyCitationRequest?.key ?? listIdentityKey}
+              {...(alwaysRender ? { alwaysRender } : {})}
+              onLoad={handleListLoad}
+              {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
+              contentInsetEndAdjustment={anchoredEndSpace ? contentInsetEndAdjustment : 0}
+              maintainScrollAtEnd={
+                citationPositioning ||
+                (restoringThreadPosition && rememberedPosition?.atEnd === false) ||
+                anchoredEndSpace ||
+                !liveFollowEnabled ||
+                fullscreenAppRowId !== null ||
+                disclosureToggleSettling
+                  ? false
+                  : isWorking && !prefersReducedMotion && settlingListIdentity === null
+                    ? TIMELINE_MAINTAIN_SCROLL_AT_END_SMOOTH
+                    : TIMELINE_MAINTAIN_SCROLL_AT_END
+              }
+              maintainVisibleContentPosition={
+                findActive ||
+                citationPositioning ||
+                (restoringThreadPosition && rememberedPosition?.atEnd === false)
+                  ? false
+                  : maintainVisibleContentPosition
+              }
+              maintainScrollAtEndThreshold={1}
+              onScroll={handleScroll}
+              onItemSizeChanged={handleItemSizeChanged}
+              className={cn(
+                "messages-timeline-scroll scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain [overflow-anchor:none]",
+                topFadeEnabled && "topbar-scroll-fade",
+              )}
+              ListHeaderComponent={listHeader}
+              ListFooterComponent={timelineListFooter}
             />
-          ) : null}
-          <LegendList<MessagesTimelineRow>
-            ref={setTimelineList}
-            data={rows}
-            extraData={listExtraData}
-            keyExtractor={keyExtractor}
-            getItemType={getItemType}
-            renderItem={renderItem}
-            estimatedItemSize={90}
-            initialScrollAtEnd={
-              !findActive && citationRequest === null && rememberedPosition?.atEnd !== false
-            }
-            // Legend needs a data refresh to mount new pins without a scroll event.
-            dataVersion={readyCitationRequest?.key ?? listIdentityKey}
-            {...(alwaysRender ? { alwaysRender } : {})}
-            onLoad={handleListLoad}
-            {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
-            contentInsetEndAdjustment={anchoredEndSpace ? contentInsetEndAdjustment : 0}
-            maintainScrollAtEnd={
-              citationPositioning ||
-              (restoringThreadPosition && rememberedPosition?.atEnd === false) ||
-              anchoredEndSpace ||
-              !liveFollowEnabled ||
-              fullscreenAppRowId !== null ||
-              disclosureToggleSettling
-                ? false
-                : isWorking && !prefersReducedMotion && settlingListIdentity === null
-                  ? TIMELINE_MAINTAIN_SCROLL_AT_END_SMOOTH
-                  : TIMELINE_MAINTAIN_SCROLL_AT_END
-            }
-            maintainVisibleContentPosition={
-              findActive ||
-              citationPositioning ||
-              (restoringThreadPosition && rememberedPosition?.atEnd === false)
-                ? false
-                : maintainVisibleContentPosition
-            }
-            maintainScrollAtEndThreshold={1}
-            onScroll={handleScroll}
-            onItemSizeChanged={handleItemSizeChanged}
-            className={cn(
-              "messages-timeline-scroll scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain [overflow-anchor:none]",
-              topFadeEnabled && "topbar-scroll-fade",
-            )}
-            ListHeaderComponent={listHeader}
-            ListFooterComponent={timelineListFooter}
-          />
-          <TimelineMinimap
-            items={minimapItems}
-            hasPersistentGutter={minimapHasPersistentGutter}
-            hitStripWidth={minimapHitStripWidth}
-            currentIndex={minimapCurrentIndex}
-            stripMap={minimapStripMap}
-            onWheel={forwardMinimapWheel}
-            onSelect={(item) => {
-              onManualNavigation();
-              void listRef.current?.scrollToIndex({
-                index: item.rowIndex,
-                animated: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-                viewOffset: 24,
-              });
-            }}
-          />
-        </TooltipScrollDismissArea>
-      </TimelineRowActivityCtx>
-    </MarkdownFindContext>
+            <TimelineMinimap
+              items={minimapItems}
+              hasPersistentGutter={minimapHasPersistentGutter}
+              hitStripWidth={minimapHitStripWidth}
+              currentIndex={minimapCurrentIndex}
+              stripMap={minimapStripMap}
+              onWheel={forwardMinimapWheel}
+              onSelect={(item) => {
+                onManualNavigation();
+                void listRef.current?.scrollToIndex({
+                  index: item.rowIndex,
+                  animated: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+                  viewOffset: 24,
+                });
+              }}
+            />
+          </TooltipScrollDismissArea>
+        </TimelineRowActivityCtx>
+      </MarkdownFindContext>
+    </>
   );
 });
 
@@ -1637,330 +1304,6 @@ function getItemType(item: MessagesTimelineRow) {
   const lengthBucket = Math.max(0, Math.floor(Math.log2(item.message.text.length / 1000)));
   return `message:${item.message.role}:${lengthBucket}`;
 }
-
-function timelineMinimapEventTargetsPreview(target: EventTarget): boolean {
-  return target instanceof Element && target.closest("[data-minimap-preview]") !== null;
-}
-
-// A release outside the window can skip `mouseup`, so the next button-free
-// `mousemove` also counts.
-function onMouseButtonsReleased(onRelease: () => void): () => void {
-  const check = (event: globalThis.MouseEvent) => {
-    if (event.buttons !== 0) return;
-    stop();
-    onRelease();
-  };
-  const stop = () => {
-    window.removeEventListener("mouseup", check);
-    window.removeEventListener("mousemove", check);
-  };
-  window.addEventListener("mouseup", check);
-  window.addEventListener("mousemove", check);
-  return stop;
-}
-
-function TimelineMinimap({
-  hasPersistentGutter,
-  hitStripWidth,
-  currentIndex,
-  items,
-  stripMap,
-  onWheel,
-  onSelect,
-}: {
-  hasPersistentGutter: boolean;
-  hitStripWidth: number;
-  currentIndex: number | null;
-  items: ReadonlyArray<TimelineMinimapItem>;
-  stripMap: Map<string, HTMLSpanElement>;
-  onWheel: (event: WheelEvent) => void;
-  onSelect: (item: TimelineMinimapItem) => void;
-}) {
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const wheelTargetRef = (node: HTMLDivElement | null) => {
-    if (!node) return;
-    node.addEventListener("wheel", onWheel, { passive: false });
-    return () => node.removeEventListener("wheel", onWheel);
-  };
-
-  const pressedOnStripRef = useRef(false);
-  const [passThrough, setPassThrough] = useState(false);
-
-  useEffect(() => {
-    if (!passThrough) return;
-    return onMouseButtonsReleased(() => setPassThrough(false));
-  }, [passThrough]);
-
-  const resolvedActiveIndex =
-    activeIndex !== null && activeIndex < items.length ? activeIndex : null;
-  const activeItem = resolveTimelineMinimapPreview(
-    resolvedActiveIndex === null ? null : (items[resolvedActiveIndex] ?? null),
-  );
-  const navigationInteractive =
-    resolveTimelineMinimapNavigationInteractive(hitStripWidth) && !passThrough;
-  const activeTopPercent =
-    resolvedActiveIndex === null
-      ? 0
-      : resolveTimelineMinimapTopPercent(resolvedActiveIndex, items.length);
-  const activeTooltipTranslate =
-    resolvedActiveIndex === null
-      ? "-50%"
-      : resolvedActiveIndex === 0
-        ? "0%"
-        : resolvedActiveIndex === items.length - 1
-          ? "-100%"
-          : "-50%";
-  const resolvedCurrentIndex =
-    currentIndex !== null && currentIndex >= 0 && currentIndex < items.length ? currentIndex : null;
-  const previousItem =
-    resolvedCurrentIndex === null ? null : (items[resolvedCurrentIndex - 1] ?? null);
-  const nextItem = resolvedCurrentIndex === null ? null : (items[resolvedCurrentIndex + 1] ?? null);
-
-  const resolveActiveIndexFromPointer = (event: MouseEvent<HTMLElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    return resolveTimelineMinimapIndexFromPointer({
-      itemCount: items.length,
-      railTop: rect.top,
-      railHeight: rect.height,
-      pointerY: event.clientY,
-    });
-  };
-
-  const updateActiveIndexFromPointer = (event: MouseEvent<HTMLElement>) => {
-    const nextIndex = resolveActiveIndexFromPointer(event);
-    setActiveIndex(nextIndex);
-  };
-
-  const moveActiveIndex = (delta: number) => {
-    setActiveIndex((current) => {
-      const base = current ?? 0;
-      return Math.max(0, Math.min(items.length - 1, base + delta));
-    });
-  };
-
-  if (items.length < TIMELINE_MINIMAP_MIN_ITEMS) {
-    return null;
-  }
-
-  return (
-    <div
-      className={cn(
-        "group/minimap pointer-events-none absolute inset-y-0 left-0 z-40 hidden w-18 [@media(pointer:fine)]:block",
-        hasPersistentGutter
-          ? "opacity-100"
-          : "opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100",
-      )}
-      data-testid="timeline-minimap"
-      data-persistent-gutter={hasPersistentGutter ? "true" : "false"}
-      ref={wheelTargetRef}
-    >
-      <div className="relative h-full w-full select-none">
-        <div
-          className={cn(
-            "absolute top-1/2 left-3 -translate-y-1/2",
-            hitStripWidth > 0 && !passThrough ? "pointer-events-auto" : "pointer-events-none",
-          )}
-          onMouseDown={() => {
-            if (pressedOnStripRef.current) return;
-            pressedOnStripRef.current = true;
-            onMouseButtonsReleased(() => {
-              pressedOnStripRef.current = false;
-            });
-          }}
-          onMouseMove={(event) => {
-            if (event.buttons !== 0 && !pressedOnStripRef.current) setPassThrough(true);
-          }}
-          style={{
-            height: resolveTimelineMinimapHeightStyle(items.length),
-            width: resolveTimelineMinimapInteractiveWidth(hitStripWidth, activeItem !== null),
-          }}
-        >
-          <TimelineMinimapNavigationButton
-            direction="previous"
-            disabled={previousItem === null}
-            interactive={navigationInteractive}
-            onClick={() => {
-              if (previousItem) onSelect(previousItem);
-            }}
-          />
-          <button
-            aria-label={`Jump to message: ${activeItem?.userText ?? "User message"}`}
-            className="absolute inset-y-0 left-0 w-full cursor-pointer bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-            onBlur={() => setActiveIndex(null)}
-            onClick={(event) => {
-              if (timelineMinimapEventTargetsPreview(event.target)) {
-                return;
-              }
-              const nextIndex = resolveActiveIndexFromPointer(event);
-              const selectedItem = nextIndex === null ? null : (items[nextIndex] ?? null);
-              if (selectedItem) {
-                onSelect(selectedItem);
-              }
-              event.currentTarget.blur();
-            }}
-            onFocus={() => setActiveIndex((current) => current ?? resolvedCurrentIndex ?? 0)}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                moveActiveIndex(1);
-              } else if (event.key === "ArrowUp") {
-                event.preventDefault();
-                moveActiveIndex(-1);
-              } else if (event.key === "Home") {
-                event.preventDefault();
-                setActiveIndex(0);
-              } else if (event.key === "End") {
-                event.preventDefault();
-                setActiveIndex(items.length - 1);
-              } else if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                if (activeItem) {
-                  onSelect(activeItem);
-                }
-              }
-            }}
-            onMouseLeave={() => setActiveIndex(null)}
-            onMouseMove={(event) => {
-              if (event.buttons !== 0 && !pressedOnStripRef.current) return;
-              updateActiveIndexFromPointer(event);
-            }}
-            onMouseDown={(event) => {
-              if (timelineMinimapEventTargetsPreview(event.target)) {
-                return;
-              }
-              event.preventDefault();
-            }}
-            type="button"
-          >
-            <div className="absolute top-0 left-3 h-full w-px bg-border/15" />
-            {items.map((item, index) => {
-              const top = `${resolveTimelineMinimapTopPercent(index, items.length)}%`;
-              const activeDistance =
-                resolvedActiveIndex === null ? null : Math.abs(index - resolvedActiveIndex);
-              return (
-                // Compositor-friendly on purpose: in-view state and the hover
-                // fisheye animate constantly (every scroll tick and streaming
-                // update flips a band of strips), so the strip animates only
-                // transform and opacity.
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "group/strip pointer-events-none absolute left-0 h-0.5 w-6 origin-left -translate-y-1/2 rounded-full transition-transform duration-150",
-                    activeDistance === 0 ? "bg-muted-foreground/75" : "bg-muted-foreground/35",
-                    activeDistance === 0
-                      ? "scale-x-100"
-                      : activeDistance === 1
-                        ? "scale-x-[0.667]"
-                        : activeDistance === 2
-                          ? "scale-x-[0.417]"
-                          : "scale-x-[0.333]",
-                  )}
-                  data-in-view="false"
-                  data-minimap-strip
-                  key={item.id}
-                  ref={(node) => {
-                    if (node) {
-                      stripMap.set(item.id, node);
-                    } else {
-                      stripMap.delete(item.id);
-                    }
-                  }}
-                  style={{ top }}
-                >
-                  <span className="absolute inset-0 rounded-full bg-foreground/90 opacity-0 transition-opacity duration-150 group-data-[in-view=true]/strip:opacity-100" />
-                </span>
-              );
-            })}
-            {activeItem ? (
-              <span
-                className="pointer-events-auto absolute left-8 w-80 cursor-text select-text"
-                data-minimap-preview
-                onMouseMove={(event) => event.stopPropagation()}
-                style={{
-                  top: `${activeTopPercent}%`,
-                  transform: `translateY(${activeTooltipTranslate})`,
-                }}
-              >
-                <span className="dropdown-glass block rounded-xl p-3 text-left text-popover-foreground shadow-xl shadow-black/25">
-                  <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-5">
-                    {activeItem.userText ?? "User message"}
-                  </span>
-                  {activeItem.assistantText ? (
-                    <span
-                      className="mt-1 max-h-[3.75rem] overflow-hidden text-muted-foreground text-sm leading-5"
-                      style={{
-                        display: "-webkit-box",
-                        WebkitBoxOrient: "vertical",
-                        WebkitLineClamp: 3,
-                      }}
-                    >
-                      {activeItem.assistantText}
-                    </span>
-                  ) : null}
-                </span>
-              </span>
-            ) : null}
-          </button>
-          <TimelineMinimapNavigationButton
-            direction="next"
-            disabled={nextItem === null}
-            interactive={navigationInteractive}
-            onClick={() => {
-              if (nextItem) onSelect(nextItem);
-            }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TimelineMinimapNavigationButton({
-  direction,
-  disabled,
-  interactive,
-  onClick,
-}: {
-  direction: "previous" | "next";
-  disabled: boolean;
-  interactive: boolean;
-  onClick: () => void;
-}) {
-  const previous = direction === "previous";
-  const label = previous ? "Previous turn" : "Next turn";
-  const Icon = previous ? ChevronUpIcon : ChevronDownIcon;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            className={cn(
-              "absolute left-1 z-10 inline-flex -translate-x-1/2 opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100",
-              interactive ? "pointer-events-auto" : "pointer-events-none",
-              previous ? "bottom-[calc(100%+2px)]" : "top-[calc(100%+2px)]",
-            )}
-          />
-        }
-      >
-        <Button
-          aria-label={label}
-          disabled={disabled}
-          onClick={onClick}
-          size="icon-micro"
-          type="button"
-          variant="ghost-muted"
-        >
-          <Icon className="size-4 text-foreground/90" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipPopup side={previous ? "top" : "bottom"}>{label}</TooltipPopup>
-    </Tooltip>
-  );
-}
-
-type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
-type TimelineRow = MessagesTimelineRow;
 
 const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
   const isExpandedToolGroup = row.kind === "work" && row.isExpandedToolGroup;
@@ -2102,524 +1445,6 @@ function ContextCompactionTimelineRow({
       </span>
       <span className="h-px flex-1 bg-border/70" />
     </div>
-  );
-}
-
-function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
-  const ctx = use(TimelineRowCtx);
-  // Row updates rebuild attachment objects, so the asset follows only the
-  // fields it reads.
-  const { downloadable, id, mimeType, name } = file;
-  const environmentId = ctx.activeThreadEnvironmentId;
-  const asset =
-    downloadable === false
-      ? null
-      : buildAttachmentVideoAsset(environmentId, { id, mimeType, name });
-  const resource = asset?.resource ?? null;
-  const assetUrl = useAssetUrlState(ctx.activeThreadEnvironmentId, resource);
-  const refreshAssetUrl = useAssetUrlRefresh(ctx.activeThreadEnvironmentId, resource);
-  const src = assetUrl._tag === "Success" ? assetUrl.url : (file.previewUrl ?? null);
-
-  if (asset === null && src === null) {
-    return (
-      <div className="flex aspect-[4/3] w-full items-center justify-center rounded-lg border border-border/80 bg-black px-2 py-3 text-center text-2xs text-white/70">
-        {file.name}
-      </div>
-    );
-  }
-
-  return (
-    <MediaVideoPlayer
-      src={src}
-      sourceFailed={
-        file.previewUrl === undefined && resource !== null && assetUrl._tag === "Failure"
-      }
-      label={file.name}
-      preload="visible"
-      onOpen={() => {
-        const preview = buildAttachmentVideoPreview(ctx.activeThreadEnvironmentId, file);
-        if (preview) ctx.onImageExpand(preview);
-      }}
-      className="block aspect-[4/3] w-full"
-      videoClassName="aspect-auto size-full rounded-lg border border-border/80"
-      stateClassName="aspect-auto min-h-full rounded-lg border border-border/80 bg-black text-white"
-      onRetry={asset ? refreshAssetUrl : undefined}
-      actionsSource={asset ? { kind: "video", name: file.name, src, asset } : undefined}
-    />
-  );
-}
-
-const MESSAGE_HEADING_LEVEL = 3;
-
-function MessageAuthorHeading({ children }: { children: string }) {
-  return <h3 className="sr-only select-none">{children}</h3>;
-}
-
-function UserMessageRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
-  const ctx = use(TimelineRowCtx);
-  return ctx.workflowOpening?.messageId === row.message.id ? (
-    <WorkflowOpeningBlock
-      opening={ctx.workflowOpening}
-      environmentId={ctx.activeThreadEnvironmentId}
-      onOpenThread={(threadId) => ctx.onOpenThread(ThreadId.make(threadId))}
-    />
-  ) : (
-    <UserTimelineRow row={row} />
-  );
-}
-
-function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
-  const ctx = use(TimelineRowCtx);
-  const { onImageExpand, onFileOpen } = ctx;
-  const senderThreadId = row.message.senderThreadId;
-  const resources = selectMessageImageResources(row.message.attachments);
-  const previewUrls = useAssetUrls(ctx.activeThreadEnvironmentId, resources);
-  const [projectPreviews] = useState(createMessageAttachmentPreviewProjector);
-  const previewUrlsById = new Map(
-    resources.flatMap((resource, index) => {
-      const url = previewUrls[index];
-      return url ? [[resource.attachmentId, url] as const] : [];
-    }),
-  );
-  const messageWithPreviews = projectPreviews(row.message, (attachment) =>
-    previewUrlsById.get(attachment.id),
-  );
-  const userImages = (messageWithPreviews.attachments ?? []).filter(isImageAttachment);
-  const userFiles = (row.message.attachments ?? []).filter(isFileAttachment);
-  const userVideos = userFiles.filter(isVideoAttachment);
-  const otherUserFiles = userFiles.filter((file) => !isVideoAttachment(file));
-  const unknownAttachments = (row.message.attachments ?? []).filter(
-    (attachment) => !isImageAttachment(attachment) && !isFileAttachment(attachment),
-  );
-  const userMessage = resolveUserMessagePresentation(row.message);
-  const resolvedContext = resolveUserMessageContext(row.message);
-  const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
-  const revertTurnCount = row.revertTurnCount;
-  const chippedAttachmentIds = new Set(
-    collectComposerContextReferences(resolvedContext.text).flatMap((occurrence) => {
-      const record = asKnownContextRecord(resolvedContext.recordsById.get(occurrence.contextId));
-      return record?.kind === "file" || record?.kind === "image" ? [record.attachmentId] : [];
-    }),
-  );
-  const regularImages = userImages.filter((image) => !image.name.startsWith("preview-annotation-"));
-  const unchippedFiles = otherUserFiles.filter((file) => !chippedAttachmentIds.has(file.id));
-  const annotationRecordIds = resolvedContext.records
-    .filter((record) => record.kind === "preview-annotation")
-    .map((record) => record.contextId);
-  const plainText = replaceComposerContextReferences(
-    resolvedContext.text,
-    (reference) => reference.label,
-  );
-  const promptLink = promptLinkFor(plainText);
-  const contextClipboardFragment =
-    resolvedContext.records.length === 0
-      ? null
-      : encodeComposerContextFragment({
-          version: 1,
-          source: {
-            environmentId: ctx.activeThreadEnvironmentId,
-            ...(ctx.threadRef ? { threadId: ctx.threadRef.threadId } : {}),
-            messageId: row.message.id,
-          },
-          records: resolvedContext.records,
-        });
-  const onBodyCopyCapture = (event: React.ClipboardEvent<HTMLDivElement>) => {
-    if (resolvedContext.records.length === 0 || !event.clipboardData) return;
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed) return;
-    const copiedMarkdown: string[] = [];
-    for (let index = 0; index < selection.rangeCount; index += 1) {
-      const container = document.createElement("div");
-      container.appendChild(selection.getRangeAt(index).cloneContents());
-      // Diagram source is copied text, not authority to export context records.
-      for (const element of container.querySelectorAll(
-        "[data-markdown-copy]:not([data-markdown-mermaid])",
-      )) {
-        copiedMarkdown.push(element.getAttribute("data-markdown-copy") ?? "");
-      }
-    }
-    const fragment = selectedMessageContextFragment({
-      markdown: copiedMarkdown.join("\n"),
-      records: resolvedContext.records,
-      environmentId: ctx.activeThreadEnvironmentId,
-      ...(ctx.threadRef ? { threadId: ctx.threadRef.threadId } : {}),
-      messageId: row.message.id,
-    });
-    if (!fragment) return;
-    // Claim the copy: without preventDefault the browser default overwrites the
-    // custom MIME type. The default content must then be written back explicitly.
-    const payload = chatMarkdownClipboardPayload(selection);
-    event.preventDefault();
-    event.clipboardData.setData("text/plain", payload?.text ?? selection.toString());
-    if (payload) {
-      event.clipboardData.setData(
-        "text/html",
-        encodeComposerContextClipboardHtml(payload.text, fragment, payload.html),
-      );
-    }
-    event.clipboardData.setData(COMPOSER_CONTEXT_CLIPBOARD_MIME, fragment);
-  };
-  const renderContextReference = (reference: ChatMarkdownContextReference) => {
-    const record = asKnownContextRecord(resolvedContext.recordsById.get(reference.contextId));
-    const annotationImage =
-      record?.kind === "preview-annotation"
-        ? resolvePreviewAnnotationImage({
-            record,
-            recordsById: resolvedContext.recordsById,
-            userImages,
-            previewImages,
-            annotationRecordIds,
-          })
-        : null;
-    const attachment =
-      record?.kind === "image"
-        ? (userImages.find((image) => image.id === record.attachmentId) ?? null)
-        : record?.kind === "file"
-          ? (userFiles.find((file) => file.id === record.attachmentId) ?? null)
-          : null;
-    return (
-      <span data-thread-find-ignore>
-        <UserMessageContextReferenceChip
-          reference={reference}
-          record={record}
-          annotationImage={annotationImage}
-          attachment={attachment}
-          onExpandImage={(image) => {
-            const preview = buildExpandedImagePreview(userImages, image.id);
-            if (preview) onImageExpand(preview);
-          }}
-          onOpenFile={onFileOpen}
-          onExpandVideo={(file) => {
-            const preview = buildAttachmentVideoPreview(ctx.activeThreadEnvironmentId, file);
-            if (preview) onImageExpand(preview);
-          }}
-        />
-      </span>
-    );
-  };
-
-  return (
-    <div className="group flex flex-col items-end gap-1">
-      {userMessage.attribution === "automation" ? (
-        <p
-          className="me-1 text-2xs text-muted-foreground/70"
-          data-user-message-attribution="automation"
-        >
-          {userMessage.scheduledTaskId ? (
-            <Link
-              to="/settings/scheduled-tasks"
-              search={{
-                environmentId: ctx.activeThreadEnvironmentId,
-                taskId: userMessage.scheduledTaskId,
-              }}
-              className="rounded-sm hover:text-muted-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring"
-            >
-              Sent by automation
-            </Link>
-          ) : (
-            "Sent by automation"
-          )}
-        </p>
-      ) : userMessage.attribution === "t3code" ? (
-        <p
-          className="me-1 text-2xs text-muted-foreground/70"
-          data-user-message-attribution="t3code"
-        >
-          Sent by T3 Code
-        </p>
-      ) : userMessage.attribution === "agent" ? (
-        <p className="me-1 text-2xs text-muted-foreground/70" data-user-message-attribution="agent">
-          {senderThreadId ? (
-            <InlineButton
-              onClick={() => ctx.onOpenThread(senderThreadId)}
-              tone="muted"
-              aria-label="Open sending thread"
-            >
-              Sent by another agent
-            </InlineButton>
-          ) : (
-            "Sent by another agent"
-          )}
-        </p>
-      ) : null}
-      {row.message.inputIntent === "steer" ||
-      row.message.inputIntent === "promoted_queued_to_steer" ? (
-        <UserMessageIntentMarker intent={row.message.inputIntent} />
-      ) : null}
-      <div className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground">
-        <MessageAuthorHeading>You</MessageAuthorHeading>
-        {(regularImages.length > 0 || userVideos.length > 0) && (
-          <div className="mb-2 grid max-w-[210px] grid-cols-2 gap-2">
-            {regularImages.map((image) => (
-              <div
-                key={image.id}
-                className={cn(
-                  "bg-background/70",
-                  image.source?.kind === "snap-shot" && image.previewUrl
-                    ? cn(SNAP_SHOT_ATTACHMENT_FRAME_CLASS, "col-span-2")
-                    : "aspect-[4/3] overflow-hidden rounded-lg border border-border/80",
-                )}
-              >
-                {image.previewUrl ? (
-                  <button
-                    type="button"
-                    className="block h-full w-full cursor-zoom-in"
-                    aria-label={`Preview ${image.name}`}
-                    onClick={() => {
-                      const preview = buildExpandedImagePreview(regularImages, image.id);
-                      if (!preview) return;
-                      ctx.onImageExpand(preview);
-                    }}
-                  >
-                    <AttachmentImage
-                      name={image.name}
-                      mimeType={image.mimeType}
-                      src={image.previewUrl}
-                      alt={image.name}
-                      decoding="async"
-                      className="block size-full object-cover"
-                    />
-                  </button>
-                ) : (
-                  <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-2xs text-muted-foreground/70">
-                    {image.name}
-                  </div>
-                )}
-                {image.previewUrl && image.source?.kind === "snap-shot" ? (
-                  <SnapShotAttachmentDetails source={image.source} />
-                ) : null}
-              </div>
-            ))}
-            {userVideos.map((file) => (
-              <UserVideoAttachment key={file.id} file={file} />
-            ))}
-          </div>
-        )}
-        {unchippedFiles.length > 0 || unknownAttachments.length > 0 ? (
-          <div className="mb-2 flex flex-col gap-1">
-            {unchippedFiles.map((file) => {
-              const fileIdentity = (
-                <>
-                  <PierreEntryIcon pathValue={file.name} kind="file" theme={ctx.resolvedTheme} />
-                  <span className="min-w-0 flex-1 truncate">{file.name}</span>
-                </>
-              );
-              if (file.downloadable !== false) {
-                return (
-                  <div key={file.id} className="flex min-w-0 items-center gap-1">
-                    <button
-                      type="button"
-                      aria-label={`Preview ${file.name}`}
-                      onClick={() => ctx.onFileOpen(file)}
-                      className="focus-visible:ring-ring/70 flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-1 text-left text-sm hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
-                    >
-                      {fileIdentity}
-                      <EyeIcon className="size-4 shrink-0" />
-                    </button>
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <Button
-                            size="icon-xs"
-                            variant="ghost-muted"
-                            aria-label={`Download ${file.name}`}
-                            onClick={() => ctx.onFileDownload(file)}
-                          />
-                        }
-                      >
-                        <DownloadIcon />
-                      </TooltipTrigger>
-                      <TooltipPopup side="top">Download {file.name}</TooltipPopup>
-                    </Tooltip>
-                  </div>
-                );
-              }
-
-              return (
-                <div key={file.id} className="flex min-w-0 items-center gap-2 py-1 text-sm">
-                  {fileIdentity}
-                </div>
-              );
-            })}
-            {unknownAttachments.map((attachment) => (
-              <div key={attachment.id} className="flex min-w-0 items-center gap-2 py-1 text-sm">
-                <PierreEntryIcon
-                  pathValue={attachment.name}
-                  kind="file"
-                  theme={ctx.resolvedTheme}
-                />
-                <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        <div onCopyCapture={onBodyCopyCapture}>
-          <CollapsibleUserMessageBody
-            text={resolvedContext.text}
-            renderContextReference={renderContextReference}
-            skills={ctx.skills}
-            markdownCwd={ctx.markdownCwd}
-          />
-        </div>
-      </div>
-      {row.projectedItem &&
-      row.projectedItem.item.status !== "completed" &&
-      row.projectedItem.item.status !== "pending" &&
-      row.projectedItem.item.status !== "waiting" ? (
-        <div className="me-1 flex items-center gap-1.5">
-          <span className="rounded-full border border-destructive/25 bg-destructive/8 px-1.5 py-0.5 text-3xs font-medium text-destructive">
-            {row.projectedItem.item.status}
-          </span>
-        </div>
-      ) : null}
-      <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
-        <div className="flex shrink-0 items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-              {formatDayAwareTimestamp(row.message.createdAt, ctx.timestampFormat)}
-            </TooltipTrigger>
-            <TooltipPopup>
-              {formatChatTimestampTooltip(row.message.createdAt, ctx.timestampFormat)}
-            </TooltipPopup>
-          </Tooltip>
-          <div className="flex items-center gap-0.5">
-            {typeof revertTurnCount === "number" && (
-              <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
-            )}
-            {resolvedContext.text && (
-              <MessageCopyButton
-                text={contextClipboardFragment ? resolvedContext.text : plainText}
-                {...(contextClipboardFragment
-                  ? {
-                      extraFlavors: { [COMPOSER_CONTEXT_CLIPBOARD_MIME]: contextClipboardFragment },
-                    }
-                  : {})}
-                variant="ghost"
-              />
-            )}
-            {promptLink !== null && (
-              <MessageCopyButton
-                text={promptLink}
-                label="Copy prompt link"
-                icon={LinkIconNode}
-                variant="ghost"
-              />
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function UserMessageIntentMarker({
-  intent,
-}: {
-  readonly intent: "steer" | "promoted_queued_to_steer";
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <div
-            className="me-1 flex items-center justify-end gap-1 text-xs leading-none text-muted-foreground"
-            data-user-message-intent={intent}
-          />
-        }
-      >
-        <Redo2Icon aria-hidden="true" className="size-3" />
-        Steer
-      </TooltipTrigger>
-      <TooltipPopup side="top">
-        {intent === "promoted_queued_to_steer"
-          ? "Originally queued, then promoted to steer the active turn"
-          : "Steered the active turn"}
-      </TooltipPopup>
-    </Tooltip>
-  );
-}
-
-function resolvePreviewAnnotationImage(input: {
-  record: Extract<KnownComposerContextRecord, { kind: "preview-annotation" }>;
-  recordsById: ReadonlyMap<string, ComposerContextRecord>;
-  userImages: ReadonlyArray<ChatImageAttachment>;
-  previewImages: ReadonlyArray<ChatImageAttachment>;
-  annotationRecordIds: ReadonlyArray<string>;
-}): ChatImageAttachment | null {
-  const screenshotRecord = input.record.screenshotContextId
-    ? asKnownContextRecord(input.recordsById.get(input.record.screenshotContextId))
-    : undefined;
-  return (
-    (screenshotRecord?.kind === "image"
-      ? input.userImages.find((image) => image.id === screenshotRecord.attachmentId)
-      : undefined) ??
-    input.previewImages.find(
-      (image) => image.name === `preview-annotation-${input.record.annotationId}.png`,
-    ) ??
-    input.previewImages[input.annotationRecordIds.indexOf(input.record.contextId)] ??
-    null
-  );
-}
-
-function RevertUserMessageButton({
-  turnCount,
-  messageId,
-}: {
-  turnCount: number;
-  messageId: MessageId;
-}) {
-  const ctx = use(TimelineRowCtx);
-  const activity = use(TimelineRowActivityCtx);
-
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost"
-            disabled={activity.isRevertingCheckpoint || activity.isWorking}
-            onClick={() => ctx.onRevertToTurnCount(turnCount, messageId)}
-            aria-label="Edit from here"
-          />
-        }
-      >
-        <Undo2Icon className="size-3" />
-      </TooltipTrigger>
-      <TooltipPopup side="top">Edit from here</TooltipPopup>
-    </Tooltip>
-  );
-}
-
-function TimelineRowTimestamp({
-  createdAt,
-  timestampFormat,
-  className,
-  alwaysVisible = false,
-}: {
-  createdAt: string;
-  timestampFormat: TimestampFormat;
-  className?: string;
-  alwaysVisible?: boolean;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            className={cn(
-              "pointer-events-none absolute me-1 shrink-0 whitespace-nowrap rounded-md text-muted-foreground text-xs tabular-nums opacity-0 group-hover/timeline-row:pointer-events-auto group-hover/timeline-row:static group-hover/timeline-row:opacity-100 group-focus-within/timeline-row:pointer-events-auto group-focus-within/timeline-row:static group-focus-within/timeline-row:opacity-100",
-              alwaysVisible && "pointer-events-auto static opacity-100",
-              className,
-            )}
-          />
-        }
-      >
-        {formatDayAwareTimestamp(createdAt, timestampFormat)}
-      </TooltipTrigger>
-      <TooltipPopup>{formatChatTimestampTooltip(createdAt, timestampFormat)}</TooltipPopup>
-    </Tooltip>
   );
 }
 

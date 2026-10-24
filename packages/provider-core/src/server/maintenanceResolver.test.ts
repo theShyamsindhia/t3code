@@ -1,6 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import { expect, it } from "@effect/vitest";
-import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeOS from "node:os";
@@ -128,24 +127,6 @@ function stdoutSpawner(
 }
 
 it.layer(NodeServices.layer)("providerMaintenance", (it) => {
-  it.effect("reads cached versions through ProviderLatestVersions", () =>
-    resolveLatestProviderVersion(manualPackageTool).pipe(
-      Effect.provideServiceEffect(
-        ProviderLatestVersions.ProviderLatestVersions,
-        ProviderLatestVersions.make([["@example/package-tool", "9.9.9"]]),
-      ),
-      Effect.provideService(
-        HttpClient.HttpClient,
-        HttpClient.make(() =>
-          Effect.die("cached provider version should not make an HTTP request"),
-        ),
-      ),
-      Effect.map((version) => {
-        expect(version).toBe("9.9.9");
-      }),
-    ),
-  );
-
   it.effect("prefers the installer's own latest version over the npm registry", () =>
     resolveLatestProviderVersion({ ...manualPackageTool, latestVersion: "1.2.0" }).pipe(
       Effect.provide(ProviderLatestVersions.layer),
@@ -184,35 +165,6 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
       }),
     ),
   );
-
-  it("marks providers with unknown current versions as unknown", () => {
-    expect(
-      createProviderVersionAdvisory({
-        driver: driver("packageTool"),
-        currentVersion: null,
-        latestVersion: "9.9.9",
-      }),
-    ).toMatchObject({
-      status: "unknown",
-      currentVersion: null,
-      latestVersion: "9.9.9",
-    });
-  });
-
-  it("marks providers with unknown latest versions as unknown", () => {
-    expect(
-      createProviderVersionAdvisory({
-        driver: driver("packageTool"),
-        currentVersion: "1.0.0",
-        latestVersion: null,
-      }),
-    ).toMatchObject({
-      status: "unknown",
-      currentVersion: "1.0.0",
-      latestVersion: null,
-      message: null,
-    });
-  });
 
   it("pins the advertised stable version in a pnpm-global update command", () => {
     const advisoryFor = (
@@ -417,6 +369,39 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
     }),
   );
 
+  it.effect(
+    "keeps an unrecognized install manual-only when the native updater requires its path",
+    () =>
+      Effect.gen(function* () {
+        const systemPath =
+          "/usr/local/lib/codex/releases/rust-v0.162.1-x86_64-unknown-linux-musl/bin/codex";
+        const capabilities = yield* resolvePackageManagedProviderMaintenance(
+          {
+            provider: driver("codex"),
+            npmPackageName: "@openai/codex",
+            nativeUpdate: {
+              args: ["update"],
+              isCommandPath: isNativeTestCommandPath("/packages/standalone/"),
+              requiresCommandPath: true,
+            },
+          },
+          {
+            binaryPath: "codex",
+            resolvedCommandPath: "/usr/local/bin/codex",
+            realCommandPath: systemPath,
+            env: {},
+            platform: "linux",
+          },
+        ).pipe(
+          Effect.provideService(HostProcess.Platform, "linux"),
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, noSpawn),
+        );
+
+        expect(capabilities.update).toBeNull();
+        expect(capabilities.installPath).toBe(systemPath);
+      }),
+  );
+
   const claudeUpdate = {
     provider: driver("claudeAgent"),
     npmPackageName: "@anthropic-ai/claude-code",
@@ -473,25 +458,6 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
       const capabilities = yield* resolveInstall({ definition: claudeUpdate, ...fixture });
 
       expect(capabilities.update).toBeNull();
-    }),
-  );
-
-  it.effect("hides update actions for a WinGet Claude install", () =>
-    Effect.gen(function* () {
-      const capabilities = yield* resolveInstall({
-        definition: claudeUpdate,
-        resolved: userWinGetLink,
-        real: userWinGetPackage,
-      });
-
-      expect(
-        createProviderVersionAdvisory({
-          driver: driver("claudeAgent"),
-          currentVersion: "2.1.0",
-          latestVersion: "2.2.0",
-          maintenanceCapabilities: capabilities,
-        }),
-      ).toMatchObject({ canUpdate: false, canInstallVersion: false, updateCommand: null });
     }),
   );
 
@@ -838,36 +804,6 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
         expect(capabilities.update).toBeNull();
       });
     },
-  );
-
-  it.effect.skipIf(windowsHost)("runs an explicit native updater outside PATH", () =>
-    Effect.gen(function* () {
-      const tempDir = yield* makeTempDir("t3-native-update");
-      const nativePath = NodePath.join(
-        tempDir,
-        "with spaces",
-        ".local",
-        "bin",
-        "native-package-tool",
-      );
-      NodeFS.mkdirSync(NodePath.dirname(nativePath), { recursive: true });
-      NodeFS.writeFileSync(nativePath, "#!/bin/sh\nprintf '%s' \"$1\"\n");
-      NodeFS.chmodSync(nativePath, 0o755);
-
-      const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
-        nativePackageToolUpdate,
-        { binaryPath: nativePath, env: { PATH: "" } },
-      ).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, noSpawn));
-
-      expect(capabilities.update?.executable).toBe(nativePath);
-      const result = NodeChildProcess.spawnSync(
-        capabilities.update!.executable,
-        capabilities.update!.args,
-        { env: { PATH: "" }, encoding: "utf8" },
-      );
-      expect(result.status).toBe(0);
-      expect(result.stdout).toBe("update");
-    }),
   );
 
   it.effect.skipIf(!symlinksSupported)(
@@ -1431,24 +1367,6 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
         args: ["upgrade", "package-tool"],
         lockKey: "homebrew",
       });
-    }),
-  );
-
-  it.effect("caches resolution until a fresh read is requested", () =>
-    Effect.gen(function* () {
-      let resolutions = 0;
-      const resolve = yield* makeCachedProviderMaintenanceResolution(
-        Effect.sync(() => {
-          resolutions += 1;
-          return manualPackageTool;
-        }),
-      );
-      yield* resolve();
-      yield* resolve();
-      expect(resolutions).toBe(1);
-      yield* resolve({ fresh: true });
-      yield* resolve();
-      expect(resolutions).toBe(2);
     }),
   );
 
