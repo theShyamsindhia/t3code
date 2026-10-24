@@ -127,6 +127,23 @@ describe("resolvePendingUserInputAnswer", () => {
     ).toBe("second");
   });
 
+  it("accepts an explicit edit of a required choice", () => {
+    const edited = setPendingUserInputCustomAnswer(
+      { selectedOptionValues: ["second"] },
+      "Use another result",
+      nativeChoiceQuestion,
+    );
+    expect(edited.selectedOptionValues).toEqual(["second"]);
+    expect(resolvePendingUserInputAnswer(nativeChoiceQuestion, edited)).toBe("Use another result");
+    expect(
+      derivePendingUserInputProgress([nativeChoiceQuestion], { result: edited }, 0),
+    ).toMatchObject({
+      customAnswer: "Use another result",
+      usingCustomAnswer: true,
+      canAdvance: true,
+    });
+  });
+
   it("does not submit labels or unknown values when an option has a value", () => {
     expect(
       resolvePendingUserInputAnswer(nativeChoiceQuestion, {

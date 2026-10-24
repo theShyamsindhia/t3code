@@ -1541,6 +1541,7 @@ export interface ChatComposerProps {
     isLastQuestion: boolean;
     canAdvance: boolean;
     customAnswer: string;
+    usingCustomAnswer: boolean;
     activeQuestion: {
       id: string;
       initialAnswer?: string | undefined;
@@ -2791,7 +2792,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerSuggestionListVisible = composerSuggestionsVisible && composerMenuItems.length > 0;
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const isChoiceOnlyPendingQuestion =
-    activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
+    activePendingProgress?.activeQuestion?.allowCustomAnswer === false &&
+    activePendingProgress.usingCustomAnswer === false;
   const showComposerTopDrawer =
     isComposerApprovalState ||
     pendingUserInputs.length > 0 ||
@@ -3557,7 +3559,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     // snapshot that has aged past its TTL.
     refreshWorkspaceSnapshotOnTyping();
     if (activePendingProgress?.activeQuestion && pendingUserInputs.length > 0) {
-      if (activePendingProgress.activeQuestion.allowCustomAnswer === false) return;
+      if (
+        activePendingProgress.activeQuestion.allowCustomAnswer === false &&
+        activePendingProgress.usingCustomAnswer === false
+      )
+        return;
       setComposerCursor(nextCursor);
       setComposerTrigger(
         cursorAdjacentToMention ? null : detectComposerTrigger(nextPrompt, expandedCursor),
@@ -6512,7 +6518,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     answers={activePendingDraftAnswers}
                     questionIndex={activePendingQuestionIndex}
                     onToggleOption={onSelectActivePendingUserInputOption}
-                    onAdvance={onAdvanceActivePendingUserInput}
+                    onEditOption={(questionId, answer) => {
+                      onChangeActivePendingUserInputCustomAnswer(
+                        questionId,
+                        answer,
+                        answer.length,
+                        answer.length,
+                        false,
+                      );
+                      setComposerCursor(answer.length);
+                      setComposerTrigger(null);
+                      focusComposer();
+                    }}
                     onDismiss={onDismissActivePendingUserInput}
                   />
                 ) : !isComposerCollapsedMobile && showPlanFollowUpPrompt && activeProposedPlan ? (

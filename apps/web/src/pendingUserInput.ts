@@ -28,6 +28,7 @@ export function threadContextsReferencedByAnswer(
 export interface PendingUserInputDraftAnswer {
   selectedOptionValues?: string[];
   customAnswer?: string;
+  customAnswerEditing?: boolean;
   attachmentCount?: number;
   attachmentsBlocked?: boolean;
 }
@@ -70,7 +71,7 @@ export function resolvePendingUserInputAnswer(
 ): string | string[] | null {
   if (draft?.attachmentsBlocked) return null;
   const customAnswer =
-    question.allowCustomAnswer === false
+    question.allowCustomAnswer === false && draft?.customAnswerEditing !== true
       ? null
       : question.initialAnswer !== undefined
         ? (draft?.customAnswer ?? null)
@@ -99,15 +100,18 @@ export function resolvePendingUserInputAnswer(
 export function setPendingUserInputCustomAnswer(
   draft: PendingUserInputDraftAnswer | undefined,
   customAnswer: string,
-  question?: Pick<UserInputQuestion, "initialAnswer">,
+  question?: Pick<UserInputQuestion, "initialAnswer" | "allowCustomAnswer">,
 ): PendingUserInputDraftAnswer {
   const selectedOptionValues =
-    question?.initialAnswer !== undefined || customAnswer.trim().length > 0
-      ? undefined
-      : normalizeSelectedOptionValues(draft?.selectedOptionValues);
+    question?.allowCustomAnswer === false
+      ? normalizeSelectedOptionValues(draft?.selectedOptionValues)
+      : question?.initialAnswer !== undefined || customAnswer.trim().length > 0
+        ? undefined
+        : normalizeSelectedOptionValues(draft?.selectedOptionValues);
 
   return {
     customAnswer,
+    ...(question?.allowCustomAnswer === false ? { customAnswerEditing: true } : {}),
     ...(selectedOptionValues && selectedOptionValues.length > 0 ? { selectedOptionValues } : {}),
   };
 }
@@ -234,7 +238,9 @@ export function derivePendingUserInputProgress(
     ? resolvePendingUserInputAnswer(activeQuestion, activeDraft)
     : null;
   const customAnswer =
-    activeQuestion?.allowCustomAnswer === false ? "" : (activeDraft?.customAnswer ?? "");
+    activeQuestion?.allowCustomAnswer === false && activeDraft?.customAnswerEditing !== true
+      ? ""
+      : (activeDraft?.customAnswer ?? "");
   const answeredQuestionCount = countAnsweredPendingUserInputQuestions(questions, draftAnswers);
   const isLastQuestion =
     questions.length === 0 ? true : normalizedQuestionIndex >= questions.length - 1;

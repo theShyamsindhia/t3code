@@ -1,6 +1,5 @@
 import { type RuntimeRequestId, type ScopedThreadRef } from "@t3tools/contracts";
-import { memo, useEffect, useEffectEvent, useRef, useState } from "react";
-import { useStableCallback } from "~/hooks/useStableCallback";
+import { memo, useEffect, useEffectEvent, useState } from "react";
 import { type PendingUserInput } from "../../session-logic";
 import {
   derivePendingUserInputProgress,
@@ -21,7 +20,7 @@ interface PendingUserInputPanelProps {
   answers: Record<string, PendingUserInputDraftAnswer>;
   questionIndex: number;
   onToggleOption: (questionId: string, optionValue: string) => void;
-  onAdvance: () => void;
+  onEditOption: (questionId: string, answer: string) => void;
   onDismiss: (requestId: RuntimeRequestId) => void;
 }
 
@@ -34,7 +33,7 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
   answers,
   questionIndex,
   onToggleOption,
-  onAdvance,
+  onEditOption,
   onDismiss,
 }: PendingUserInputPanelProps) {
   if (pendingUserInputs.length === 0) return null;
@@ -52,7 +51,7 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
       answers={answers}
       questionIndex={questionIndex}
       onToggleOption={onToggleOption}
-      onAdvance={onAdvance}
+      onEditOption={onEditOption}
       onDismiss={onDismiss}
     />
   );
@@ -67,7 +66,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   answers,
   questionIndex,
   onToggleOption,
-  onAdvance,
+  onEditOption,
   onDismiss,
 }: {
   prompt: PendingUserInput;
@@ -78,54 +77,21 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   answers: Record<string, PendingUserInputDraftAnswer>;
   questionIndex: number;
   onToggleOption: (questionId: string, optionValue: string) => void;
-  onAdvance: () => void;
+  onEditOption: (questionId: string, answer: string) => void;
   onDismiss: (requestId: RuntimeRequestId) => void;
 }) {
   // Message-mode requests remain answerable after their provider turn ends.
   const canRespond = prompt.responseCapability !== "not_resumable";
   const responseDisabled = disabled || isResponding || !canRespond;
-  const autoAdvanceTimerRef = useRef<number | null>(null);
-  // The auto-advance timer fires after the render that armed it.
-  const advance = useStableCallback(onAdvance);
-  const [optimisticSingleSelect, setOptimisticSingleSelect] = useState<{
-    questionId: string;
-    optionValue: string;
-  } | null>(null);
   const [collapsedQuestionId, setCollapsedQuestionId] = useState<string | null>(null);
   // The active question keys the shortcut listener, so it must keep its identity across renders.
   const progress = derivePendingUserInputProgress(prompt.questions, answers, questionIndex);
   const activeQuestion = progress.activeQuestion;
-  const customAnswerActive = progress.customAnswer.trim().length > 0;
   // Read here, before the hooks below, so the compiler can keep `activeQuestion` cached.
-  const draftSelectedOptions = activeQuestion?.options.map(
-    (option) =>
-      !customAnswerActive && progress.selectedOptionValues.includes(option.value ?? option.label),
+  const draftSelectedOptions = activeQuestion?.options.map((option) =>
+    progress.selectedOptionValues.includes(option.value ?? option.label),
   );
   const isCollapsed = collapsedQuestionId !== null && collapsedQuestionId === activeQuestion?.id;
-
-  // The optimistic pick is dropped once the draft confirms it or the question moves on.
-  if (
-    optimisticSingleSelect &&
-    activeQuestion &&
-    !activeQuestion.multiSelect &&
-    (optimisticSingleSelect.questionId !== activeQuestion.id ||
-      (!customAnswerActive &&
-        progress.selectedOptionValues.includes(optimisticSingleSelect.optionValue)))
-  ) {
-    setOptimisticSingleSelect(null);
-  }
-
-  // A delayed answer only advances its own question, while permission remains granted.
-  useEffect(() => {
-    const clearAutoAdvance = () => {
-      if (autoAdvanceTimerRef.current !== null) {
-        window.clearTimeout(autoAdvanceTimerRef.current);
-        autoAdvanceTimerRef.current = null;
-      }
-    };
-    if (disabled || activeQuestion?.id === undefined) clearAutoAdvance();
-    return clearAutoAdvance;
-  }, [activeQuestion?.id, disabled]);
 
   const handleOptionSelection = (questionId: string, optionValue: string) => {
     if (disabled || isResponding) return;
@@ -133,15 +99,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       onToggleOption(questionId, optionValue);
       return;
     }
-    setOptimisticSingleSelect({ questionId, optionValue });
     onToggleOption(questionId, optionValue);
-    if (autoAdvanceTimerRef.current !== null) {
-      window.clearTimeout(autoAdvanceTimerRef.current);
-    }
-    autoAdvanceTimerRef.current = window.setTimeout(() => {
-      autoAdvanceTimerRef.current = null;
-      advance();
-    }, 200);
   };
 
   const selectOptionFromShortcut = useEffectEvent(handleOptionSelection);
@@ -249,11 +207,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
             <div className="mt-2 space-y-0.5">
               {activeQuestion.options.map((option, index) => {
                 const optionValue = option.value ?? option.label;
-                const isOptimisticallySelected =
-                  optimisticSingleSelect?.questionId === activeQuestion.id &&
-                  optimisticSingleSelect.optionValue === optionValue;
-                const isSelected =
-                  isOptimisticallySelected || draftSelectedOptions?.[index] === true;
+                const isSelected = draftSelectedOptions?.[index] === true;
                 const shortcutKey = index < 9 ? index + 1 : null;
                 const className = cn(
                   "group flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/25",
@@ -285,17 +239,28 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                   </>
                 );
                 return (
-                  <button
-                    key={`${activeQuestion.id}:${optionValue}`}
-                    type="button"
-                    disabled={disabled || isResponding}
-                    onClick={() => {
-                      handleOptionSelection(activeQuestion.id, optionValue);
-                    }}
-                    className={className}
-                  >
-                    {content}
-                  </button>
+                  <div key={`${activeQuestion.id}:${optionValue}`} className="space-y-0.5">
+                    <button
+                      type="button"
+                      disabled={disabled || isResponding}
+                      onClick={() => {
+                        handleOptionSelection(activeQuestion.id, optionValue);
+                      }}
+                      className={className}
+                    >
+                      {content}
+                    </button>
+                    {isSelected && !activeQuestion.multiSelect ? (
+                      <button
+                        type="button"
+                        className="ms-2 text-2xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                        disabled={disabled || isResponding}
+                        onClick={() => onEditOption(activeQuestion.id, option.label)}
+                      >
+                        Edit answer
+                      </button>
+                    ) : null}
+                  </div>
                 );
               })}
             </div>
