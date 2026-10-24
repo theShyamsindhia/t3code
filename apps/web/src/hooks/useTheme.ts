@@ -129,7 +129,7 @@ export class ThemeStorageError extends Schema.TaggedError<ThemeStorageError>()(
   }
 }
 
-const isThemeStorageError = Schema.is(ThemeStorageError);
+export const isThemeStorageError = Schema.is(ThemeStorageError);
 
 export class DesktopThemeSyncError extends Schema.TaggedError<DesktopThemeSyncError>()(
   "DesktopThemeSyncError",
@@ -143,7 +143,7 @@ export class DesktopThemeSyncError extends Schema.TaggedError<DesktopThemeSyncEr
   }
 }
 
-const isDesktopThemeSyncError = Schema.is(DesktopThemeSyncError);
+export const isDesktopThemeSyncError = Schema.is(DesktopThemeSyncError);
 
 let listeners: Array<() => void> = [];
 let lastSnapshot: ThemeSnapshot | null = null;
@@ -224,7 +224,7 @@ export function readThemePreference(): Theme {
   return DEFAULT_THEME_SNAPSHOT.theme;
 }
 
-function writeThemePreference(theme: Theme): void {
+export function writeThemePreference(theme: Theme): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(STORAGE_KEY, theme);
@@ -417,7 +417,7 @@ export async function syncDesktopThemePreference(
   }
 }
 
-function syncDesktopTheme(
+export function syncDesktopTheme(
   theme: Theme,
   followSystem?: boolean,
   appearanceMode?: ThemePreferenceMode,

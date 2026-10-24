@@ -25,6 +25,7 @@ import {
   TraitsMenuContent,
   TraitsPicker,
   type PromptUltrathink,
+  readPromptUltrathink,
 } from "./TraitsPicker";
 
 export type ComposerProviderStateInput = {
@@ -56,8 +57,11 @@ type TraitsRenderInput = {
   models: ReadonlyArray<ServerProviderModel>;
   modelOptions: ReadonlyArray<ProviderOptionSelection> | undefined;
   reportedModelSelection?: ModelSelection | null | undefined;
-  promptUltrathink: PromptUltrathink;
-  onPromptEdit: (edit: (prompt: string) => string) => void;
+  promptUltrathink?: PromptUltrathink;
+  onPromptEdit?: (edit: (prompt: string) => string) => void;
+  /** Compatibility with the pre-extraction composer traits API. */
+  prompt?: string;
+  onPromptChange?: (prompt: string) => void;
   planModeEnabled: boolean;
   size?: ComposerControlSize;
   hidden?: boolean;
@@ -233,12 +237,20 @@ function renderTraitsControl(
     reportedModelSelection,
     promptUltrathink,
     onPromptEdit,
+    prompt,
+    onPromptChange,
     planModeEnabled,
     size,
     hidden,
     triggerClassName,
     isComposerOwned,
   } = input;
+  const resolvedPromptUltrathink = promptUltrathink ?? readPromptUltrathink(prompt ?? "");
+  const resolvedOnPromptEdit =
+    onPromptEdit ??
+    (onPromptChange
+      ? (edit: (prompt: string) => string) => onPromptChange(edit(prompt ?? ""))
+      : undefined);
   const hasTarget = threadRef !== undefined || draftId !== undefined;
   const { selections: resolvedModelOptions } = resolveComposerOptionSelections(
     models,
@@ -254,7 +266,7 @@ function renderTraitsControl(
       models,
       model,
       modelOptions: resolvedModelOptions,
-      promptUltrathink,
+      promptUltrathink: resolvedPromptUltrathink,
       planModeEnabled,
     })
   ) {
@@ -270,8 +282,8 @@ function renderTraitsControl(
       model={model}
       modelOptions={resolvedModelOptions}
       reportedModelSelection={reportedModelSelection}
-      promptUltrathink={promptUltrathink}
-      onPromptEdit={onPromptEdit}
+      promptUltrathink={resolvedPromptUltrathink}
+      {...(resolvedOnPromptEdit ? { onPromptEdit: resolvedOnPromptEdit } : {})}
       planModeEnabled={planModeEnabled}
       {...(size !== undefined ? { size } : {})}
       {...(hidden !== undefined ? { hidden } : {})}

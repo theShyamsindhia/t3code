@@ -30,6 +30,7 @@ import {
   deriveTimelineEntriesFromVisibleTurnItemsWithState,
   deriveRevertTurnCountByUserMessageId,
   derivePhase,
+  findLatestProposedPlan,
   isLatestRunSettled,
   selectComposerTasksPlan,
   selectHandoffImageResources,
@@ -200,6 +201,55 @@ describe("V2 session presentation", () => {
     expect(providerErrorPresentation({ ...connectionFailure, status: "cancelled" }).label).toBe(
       "Codex reconnection stopped",
     );
+  });
+
+  it("selects the latest proposed plan for a run", () => {
+    const runId = RunId.make("run-1");
+    const planId = PlanId.make("plan-1");
+    const nodeId = NodeId.make("node-plan");
+    const now = DateTime.makeUnsafe("2026-06-20T00:00:01.000Z");
+    const baseProjection = makeThreadProjectionFixture();
+    const plan = findLatestProposedPlan(
+      {
+        ...baseProjection,
+        plans: [
+          {
+            id: planId,
+            threadId: baseProjection.thread.id,
+            nodeId,
+            kind: "proposed_plan" as const,
+            markdown: "Plan",
+            status: "active" as const,
+            runId,
+          },
+        ],
+        turnItems: [
+          {
+            id: TurnItemId.make("item-plan"),
+            threadId: baseProjection.thread.id,
+            nodeId,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            parentItemId: null,
+            ordinal: 0,
+            status: "completed" as const,
+            title: null,
+            startedAt: now,
+            completedAt: now,
+            updatedAt: now,
+            type: "proposed_plan" as const,
+            planId,
+            markdown: "Plan",
+            streaming: false,
+            runId,
+          },
+        ],
+        updatedAt: now,
+      },
+      runId,
+    );
+    expect(plan?.planMarkdown).toBe("Plan");
   });
 
   it("assigns run rollback to the turn-start message instead of a later steer", () => {
@@ -671,6 +721,47 @@ describe("V2 session presentation", () => {
       { step: "Verify", status: "completed", durationMs: 4_000 },
       { step: "Report", status: "pending" },
     ]);
+  });
+
+  it("keeps failed tool items tool-toned so groups still summarize", () => {
+    const failedCommand = {
+      id: TurnItemId.make("item-failed-command"),
+      threadId: ThreadId.make("thread-1"),
+      runId: RunId.make("run-1"),
+      nodeId: null,
+      providerThreadId: null,
+      providerTurnId: null,
+      nativeItemRef: null,
+      parentItemId: null,
+      ordinal: 0,
+      status: "failed" as const,
+      title: null,
+      startedAt: null,
+      completedAt: null,
+      updatedAt: DateTime.nowUnsafe(),
+      type: "command_execution" as const,
+      input: "ssh host true",
+      output: "connection refused",
+      exitCode: 255,
+    } satisfies OrchestrationV2TurnItem;
+    const entries = deriveTimelineEntriesFromVisibleTurnItems({
+      visibleTurnItems: [
+        {
+          position: 0,
+          visibility: "local" as const,
+          sourceThreadId: ThreadId.make("thread-1"),
+          sourceItemId: failedCommand.id,
+          item: failedCommand,
+        } as never,
+      ],
+      optimisticMessages: [],
+    });
+    const entry = entries[0];
+    expect(entry?.kind).toBe("work");
+    if (entry?.kind === "work") {
+      expect(entry.entry.tone).toBe("tool");
+      expect(entry.entry.toolLifecycleStatus).toBe("failed");
+    }
   });
 
   it("waits for a dispatched turn item before adding queued input to the timeline", () => {
@@ -1717,6 +1808,17 @@ describe("work-log failure policy (#7999/#7893)", () => {
     expect(workEntryIndicatesToolFailure(entry)).toBe(true);
     expect(workEntryDisplayIndicatesToolFailure(entry)).toBe(false);
   });
+
+  it("does not call a clean completed row failed", () => {
+    const entry = toolEntry({ toolLifecycleStatus: "completed", detail: "3 files changed" });
+    expect(workEntryIndicatesToolFailure(entry)).toBe(false);
+    expect(workEntryIndicatesToolSuccess(entry)).toBe(true);
+  });
+
+  it("recovered failure text no longer counts as success", () => {
+    const entry = toolEntry({ toolLifecycleStatus: "completed", detail: "ENOENT: no such file" });
+    expect(workEntryIndicatesToolSuccess(entry)).toBe(false);
+  });
 });
 
 describe("incremental v2 timeline entries", () => {
@@ -1861,6 +1963,54 @@ describe("incremental v2 timeline entries", () => {
     },
   );
 
+  it("updates fallback timestamps when the provider has not supplied a message start time", () => {
+    const fixture = makeStreamingTimelineFixture("Partial");
+    const visibleTurnItems = fixture.visibleTurnItems.map((row) =>
+      row.item.type === "assistant_message" && row.item.streaming
+        ? { ...row, item: { ...row.item, startedAt: null } }
+        : row,
+    );
+    const input = { visibleTurnItems, optimisticMessages: [] };
+    const previous = deriveTimelineEntriesFromVisibleTurnItemsWithState(input);
+    const nextInput = {
+      ...input,
+      visibleTurnItems: visibleTurnItems.map((row) =>
+        row.item.type === "assistant_message" && row.item.streaming
+          ? {
+              ...row,
+              item: {
+                ...row.item,
+                text: "Next token",
+                updatedAt: DateTime.makeUnsafe(fixture.time(8)),
+              },
+            }
+          : row,
+      ),
+    };
+    const next = deriveTimelineEntriesFromVisibleTurnItemsWithState(nextInput, previous);
+    expect(next.entries).toEqual(deriveTimelineEntriesFromVisibleTurnItems(nextInput));
+    expect(next.entries.at(-1)?.createdAt).toBe(fixture.time(8));
+  });
+
+  it("keeps unchanged message previews while tool output rebuilds the work log", () => {
+    const fixture = makeStreamingTimelineFixture("Partial");
+    const input = { visibleTurnItems: fixture.visibleTurnItems, optimisticMessages: [] };
+    const previous = deriveTimelineEntriesFromVisibleTurnItemsWithState(input);
+    const nextInput = {
+      ...input,
+      visibleTurnItems: input.visibleTurnItems.map((row) =>
+        row.item.type === "command_execution"
+          ? { ...row, item: { ...row.item, output: "Additional output" } }
+          : row,
+      ),
+    };
+    const next = deriveTimelineEntriesFromVisibleTurnItemsWithState(nextInput, previous);
+    expect(next.entries).toEqual(deriveTimelineEntriesFromVisibleTurnItems(nextInput));
+    for (const [index, entry] of previous.entries.entries()) {
+      if (entry.kind === "message") expect(next.entries[index]).toBe(entry);
+    }
+  });
+
   it("deduplicates optimistic sends when committed items arrive and retains anchored ordering", () => {
     const fixture = makeStreamingTimelineFixture();
     const input = {
@@ -1978,6 +2128,21 @@ describe("image asset requests", () => {
       { _tag: "attachment", attachmentId: "image" },
       { _tag: "attachment", attachmentId: "crop" },
     ]);
+  });
+
+  it("does not scan history when no handoff is pending", () => {
+    let reads = 0;
+    const messages = new Proxy([message], {
+      get(target, property, receiver) {
+        if (property === "0") reads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const empty = selectHandoffImageResources(messages, {});
+    expect(reads).toBe(0);
+    expect(empty).toHaveLength(0);
+    expect(selectHandoffImageResources(undefined, { missing: ["blob:missing"] })).toBe(empty);
+    expect(selectMessageImageResources(undefined)).toBe(empty);
   });
 
   it("hands signed URLs to a mounted row only after the local preview is released", () => {

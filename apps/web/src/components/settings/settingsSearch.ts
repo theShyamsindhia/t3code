@@ -350,10 +350,10 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "compact-idle-threads",
-    title: "Compact idle threads",
+    title: "Compact idle Claude threads (beta)",
     to: "/settings/general",
     scope: "environment-defaults",
-    searchTerms: ["claude context compaction idle cache tokens usage summary resume"],
+    searchTerms: ["context compaction idle cache tokens usage summary beta experimental"],
   },
   {
     id: "auto-settle-merged-threads",

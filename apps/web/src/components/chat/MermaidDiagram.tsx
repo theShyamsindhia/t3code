@@ -224,6 +224,7 @@ export function MermaidDiagram({
   onExpand,
 }: {
   source: string;
+  theme?: "dark" | "light";
   onExpand: (imageUrl: string) => void;
 }) {
   const [, setAttempt] = useState(0);

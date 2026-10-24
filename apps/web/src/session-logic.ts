@@ -253,7 +253,7 @@ export function derivePendingUserInputs(
 }
 
 export function deriveActivePlanState(
-  projection: ThreadStructure | null,
+  projection: OrchestrationV2ThreadProjection | null,
   latestRunId: RunId | undefined,
 ): ActivePlanState | null {
   if (projection === null) return null;
@@ -275,7 +275,7 @@ export function deriveActivePlanState(
     );
   if (plan === null || plan.steps.length === 0) return null;
   return {
-    createdAt: planItemTime(projection, plan),
+    createdAt: planItemTime(projection, plan.id),
     runId: plan.runId,
     explanation: plan.explanation ?? null,
     steps: plan.steps.map(({ text, status, durationMs }) => ({
@@ -288,7 +288,7 @@ export function deriveActivePlanState(
 
 // Claude's unfinished tasks belong to the provider session, not just the turn.
 export function selectComposerTasksPlan(
-  projection: ThreadStructure | null,
+  projection: OrchestrationV2ThreadProjection | null,
   plan: ActivePlanState | null,
   activeRunId: RunId | null,
   activeRunSettled: boolean,
@@ -317,30 +317,20 @@ export function selectComposerTasksPlan(
   return latestStartedRun?.providerThreadId === planProviderThreadId ? plan : null;
 }
 
-function planItemTime(
-  projection: ThreadStructure,
-  plan: Pick<OrchestrationV2PlanArtifact, "id" | "runId">,
-): string {
+function planItemTime(projection: OrchestrationV2ThreadProjection, planId: PlanId): string {
   const item = projection.turnItems.findLast(
     (candidate) =>
       (candidate.type === "proposed_plan" || candidate.type === "todo_list") &&
-      candidate.planId === plan.id,
+      candidate.planId === planId,
   );
-  if (item?.type === "proposed_plan" || item?.type === "todo_list") {
-    return DateTime.formatIso(item.updatedAt);
-  }
-  // Without a plan item, the plan's run dates it; the thread's own timestamps move while a reply streams.
-  const run = projection.runs.find((candidate) => candidate.id === plan.runId);
-  return DateTime.formatIso(
-    run?.completedAt ?? run?.startedAt ?? run?.requestedAt ?? projection.thread.createdAt,
-  );
+  return DateTime.formatIso(item?.updatedAt ?? projection.updatedAt);
 }
 
 function toLatestProposedPlanState(
-  projection: ThreadStructure,
+  projection: OrchestrationV2ThreadProjection,
   plan: Extract<OrchestrationV2PlanArtifact, { readonly kind: "proposed_plan" }>,
 ): LatestProposedPlanState {
-  const updatedAt = planItemTime(projection, plan);
+  const updatedAt = planItemTime(projection, plan.id);
   return {
     id: plan.id,
     createdAt: updatedAt,
@@ -352,7 +342,7 @@ function toLatestProposedPlanState(
 }
 
 export function findLatestProposedPlan(
-  projection: ThreadStructure | null,
+  projection: OrchestrationV2ThreadProjection | null,
   latestRunId: RunId | string | null | undefined,
 ): LatestProposedPlanState | null {
   if (projection === null) return null;
@@ -361,7 +351,7 @@ export function findLatestProposedPlan(
   const plan = [...(candidates.length > 0 ? candidates : plans)]
     .toSorted(
       (left, right) =>
-        planItemTime(projection, left).localeCompare(planItemTime(projection, right)) ||
+        planItemTime(projection, left.id).localeCompare(planItemTime(projection, right.id)) ||
         left.id.localeCompare(right.id),
     )
     .at(-1);
@@ -999,8 +989,7 @@ function reuseTimelineEntries(
     OrchestrationV2ProjectedTurnItem,
     OrchestrationV2ProjectedTurnItem
   >();
-  for (let index = 0; index < before.visibleTurnItems.length; index += 1) {
-    const previousItem = before.visibleTurnItems[index]!;
+  for (const [index, previousItem] of before.visibleTurnItems.entries()) {
     const item = input.visibleTurnItems[index]!;
     if (item === previousItem) continue;
     if (!isStreamingTurnItemTextUpdate(previousItem, item)) return null;
@@ -1128,7 +1117,7 @@ export function findRevertCheckpoint(
   );
 }
 
-export function derivePhase(runtime: ThreadStructureRuntime | null): SessionPhase {
+export function derivePhase(runtime: ThreadRuntimeSummary | null): SessionPhase {
   if (runtime === null) return "disconnected";
   if (
     runtime.status === "preparing" ||
@@ -1146,7 +1135,7 @@ export function derivePhase(runtime: ThreadStructureRuntime | null): SessionPhas
  */
 export function deriveCanInterruptRunningThread(
   hasActiveThread: boolean,
-  runtime: ThreadStructureRuntime | null,
+  runtime: ThreadRuntimeSummary | null,
 ): boolean {
   return (
     hasActiveThread &&

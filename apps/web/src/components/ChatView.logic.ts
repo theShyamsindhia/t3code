@@ -111,7 +111,7 @@ type ThreadStructureRow = ThreadStructure["visibleTurnItems"][number];
 export const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "t3code:last-invoked-script-by-project";
 export const MAX_HIDDEN_MOUNTED_TERMINAL_THREADS = 10;
 
-const ENVIRONMENT_RECONNECT_WARNING_GRACE_MS = 2_000;
+export const ENVIRONMENT_RECONNECT_WARNING_GRACE_MS = 2_000;
 
 export function agentControlledBrowserCloseConfirmation(
   surfaces: readonly RightPanelSurface[],
@@ -633,16 +633,6 @@ export function resolveComposerInteractionMode(input: {
   };
 }
 
-/** Visual replies are ordinary messages, independent of the optional plan-mode UI. */
-export function resolveFollowUpInteractionMode(input: {
-  source: "plan" | "interaction";
-  interactionMode: ProviderInteractionMode;
-  planModeEnabled: boolean;
-}): ProviderInteractionMode | null {
-  if (!input.planModeEnabled) return input.source === "plan" ? null : "default";
-  return input.interactionMode;
-}
-
 export function getAntigravitySendBlockReason(
   provider:
     | Pick<ServerProvider, "driver" | "installed" | "auth" | "models" | "status">
@@ -818,8 +808,6 @@ export function collectUserMessageBlobPreviewUrls(message: ChatMessage): string[
 }
 
 export { readFileAsDataUrl } from "../lib/imageCompression";
-
-export { resolveSendEnvMode } from "@t3tools/shared/projectSettings";
 
 export function resolveBackgroundDraftWorkspaceOptions(input: {
   envMode: DraftThreadEnvMode;
@@ -1782,3 +1770,36 @@ export function deriveWorkspaceMutationId(
     ? null
     : JSON.stringify([itemId, latestCheckpointCompletedAt]);
 }
+
+export function resolveEffectiveInteractionMode(input: {
+  planModeEnabled: boolean;
+  composerInteractionMode: ProviderInteractionMode | null;
+  threadInteractionMode: ProviderInteractionMode | null | undefined;
+}): ProviderInteractionMode {
+  if (!input.planModeEnabled) return "default";
+  return input.composerInteractionMode ?? input.threadInteractionMode ?? "default";
+}
+
+export function resolveFollowUpInteractionMode(input: {
+  source: "plan" | "interaction";
+  interactionMode: ProviderInteractionMode;
+  planModeEnabled: boolean;
+}): ProviderInteractionMode | null {
+  if (!input.planModeEnabled) return input.source === "plan" ? null : "default";
+  return input.interactionMode;
+}
+
+export function shouldWriteThreadErrorToCurrentServerThread(input: {
+  serverThread: { environmentId: EnvironmentId; id: ThreadId } | null | undefined;
+  routeThreadRef: ScopedThreadRef;
+  targetThreadId: ThreadId;
+}): boolean {
+  return Boolean(
+    input.serverThread &&
+    input.targetThreadId === input.routeThreadRef.threadId &&
+    input.serverThread.environmentId === input.routeThreadRef.environmentId &&
+    input.serverThread.id === input.targetThreadId,
+  );
+}
+
+export { resolveSendEnvMode } from "@t3tools/shared/projectSettings";

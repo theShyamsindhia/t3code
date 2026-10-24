@@ -1,9 +1,12 @@
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { PreviewSessionSnapshot, ScopedThreadRef } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { openTerminalLinkInPreview } from "./openTerminalLinkInPreview";
+import {
+  openTerminalLinkInPreview,
+  TerminalLinkPreviewOpenError,
+} from "./openTerminalLinkInPreview";
 
 vi.mock("~/state/session", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/state/session")>()),
@@ -50,6 +53,15 @@ const hydratedDefaults = {
 const threadRef = {
   environmentId: "local" as ScopedThreadRef["environmentId"],
   threadId: "thread-1" as ScopedThreadRef["threadId"],
+};
+
+const snapshot: PreviewSessionSnapshot = {
+  threadId: threadRef.threadId,
+  tabId: "tab-1",
+  navStatus: { _tag: "Idle" },
+  canGoBack: false,
+  canGoForward: false,
+  updatedAt: "2026-06-20T00:00:00.000Z",
 };
 
 beforeEach(() => {
