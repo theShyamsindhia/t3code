@@ -1,5 +1,6 @@
+import { playwright } from "vite-plus/test/browser-playwright";
 import "vite-plus/test/config";
-import { defaultInclude, defineConfig } from "vite-plus";
+import { defaultExclude, defaultInclude, defineConfig } from "vite-plus";
 
 import { isDesktopRuntimeExternalDependency } from "../../scripts/lib/desktop-external-packages.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
@@ -142,13 +143,40 @@ export default defineConfig({
     },
   ],
   test: {
-    include: [...defaultInclude, "../../native/kde-snap-shot/src/*.test.ts"],
     // The Windows lane runs workspace suites concurrently; filesystem-heavy
     // desktop integration tests can exceed Vitest's 5 second default there.
     testTimeout: 15_000,
-    setupFiles: [
-      "../../packages/shared/src/testing/longTempDir.ts",
-      "../../packages/shared/src/testing/providerEnv.ts",
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "unit",
+          include: [...defaultInclude, "../../native/kde-snap-shot/src/*.test.ts"],
+          exclude: [...defaultExclude, "src/**/*.browser.test.{ts,tsx}"],
+          setupFiles: [
+            "../../packages/shared/src/testing/longTempDir.ts",
+            "../../packages/shared/src/testing/providerEnv.ts",
+          ],
+        },
+      },
+      // Page scripts (preview preloads, injected autofill, panel HTML) need a real DOM.
+      {
+        extends: true,
+        // Discovering a dependency mid-run reloads the page and fails the file being imported.
+        // electron is mocked in these tests but still resolved.
+        optimizeDeps: { include: ["effect/Effect", "electron"] },
+        test: {
+          name: "browser",
+          include: ["src/**/*.browser.test.{ts,tsx}"],
+          browser: {
+            enabled: true,
+            headless: true,
+            provider: playwright(),
+            instances: [{ browser: "chromium" }],
+            screenshotFailures: false,
+          },
+        },
+      },
     ],
   },
 });

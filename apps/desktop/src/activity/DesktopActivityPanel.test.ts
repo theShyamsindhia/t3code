@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { EnvironmentId, ThreadId, type DesktopActivitySnapshot } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -64,11 +63,7 @@ vi.mock("electron", () => ({
   screen: { getDisplayMatching: () => ({ workArea: { x: 0, y: 24, width: 1440, height: 876 } }) },
 }));
 
-import {
-  activityContent,
-  activityPanelBounds,
-  DesktopActivityPanel,
-} from "./DesktopActivityPanel.ts";
+import { activityPanelBounds, DesktopActivityPanel } from "./DesktopActivityPanel.ts";
 
 const thread = {
   environmentId: EnvironmentId.make("remote"),
@@ -94,23 +89,6 @@ beforeEach(() => {
 afterEach(() => panel?.dispose());
 
 describe("desktop activity panel", () => {
-  it("shows untrusted titles as text and preserves the remote destination", () => {
-    const container = document.createElement("div");
-    container.innerHTML = activityContent({
-      ...snapshot,
-      threads: [{ ...thread, title: '<img src=x onerror="bad()">', project: "A & B" }],
-    });
-    expect(container.querySelector("img")).toBeNull();
-    expect(container.querySelector(".title")?.textContent).toBe('<img src=x onerror="bad()">');
-    expect(container.querySelector(".meta")?.textContent).toBe("A & B · Remote Mac");
-    const url = new URL(container.querySelector("a")!.href);
-    expect(url.searchParams.get("environmentId")).toBe("remote");
-    expect(url.searchParams.get("threadId")).toBe("thread");
-    expect(
-      activityContent({ ...snapshot, threads: [], attentionCount: 0, unavailableCount: 1 }),
-    ).toContain("Activity may be incomplete");
-  });
-
   it("stays inside smaller displays and displays to the left of the main screen", () => {
     const workArea = { x: -1280, y: -900, width: 1280, height: 700 };
     for (const x of [-1280, -24]) {

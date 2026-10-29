@@ -1,33 +1,21 @@
-// @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { startLiveEdit } from "./LiveEdit.ts";
 import { createLiveEditHistory, editableTextNode } from "./LiveEditHistory.ts";
 import type { PickedElementPayload } from "@t3tools/contracts";
 
-beforeEach(() => {
-  document.body.innerHTML =
+function inspectedPage(): Disposable {
+  const page = document.createElement("div");
+  page.innerHTML =
     '<button id="save" style="color: red !important">Save</button><div id="panel"><span>Nested text</span></div>';
-  vi.stubGlobal("CSS", {
-    supports: (property: string, value: string) => {
-      const style = document.createElement("div").style;
-      style.setProperty(property, value);
-      return style.getPropertyValue(property) !== "";
-    },
-  });
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe() {}
-      disconnect() {}
-    },
-  );
-});
-afterEach(() => vi.unstubAllGlobals());
+  document.body.append(page);
+  return { [Symbol.dispose]: () => page.remove() };
+}
 const save = () => document.querySelector<HTMLButtonElement>("#save")!;
 const panel = () => document.querySelector<HTMLDivElement>("#panel")!;
 
 describe("live edit history", () => {
   it("restores longhand declarations after editing a shorthand", () => {
+    using _page = inspectedPage();
     save().style.setProperty("padding-left", "13px", "important");
     save().style.setProperty("border-top", "2px dashed red");
     const history = createLiveEditHistory();
@@ -39,6 +27,7 @@ describe("live edit history", () => {
     expect(save().style.borderTop).toBe("2px dashed red");
   });
   it("restores original inline priorities and leaves unrelated styles alone", () => {
+    using _page = inspectedPage();
     const history = createLiveEditHistory();
     history.setStyles(save(), { color: "blue", width: "120px" });
     save().style.height = "50px";
@@ -54,6 +43,7 @@ describe("live edit history", () => {
     expect(history.canRedo).toBe(false);
   });
   it("coalesces a gesture, keeps edits across elements, and clears redo on a new edit", () => {
+    using _page = inspectedPage();
     const history = createLiveEditHistory();
     history.setStyles(save(), { width: "100px" });
     history.setStyles(save(), { width: "110px" });
@@ -67,6 +57,7 @@ describe("live edit history", () => {
     expect(history.canRedo).toBe(false);
   });
   it("undoes an entire resize even when only one dimension changes partway through", () => {
+    using _page = inspectedPage();
     const history = createLiveEditHistory();
     history.setStyles(save(), { width: "100px", height: "50px" });
     history.setStyles(save(), { width: "100px", height: "60px" });
@@ -77,6 +68,7 @@ describe("live edit history", () => {
     expect(history.canUndo).toBe(false);
   });
   it("moves multiple elements as one undoable gesture while preserving their transforms", () => {
+    using _page = inspectedPage();
     save().style.transform = "rotate(10deg)";
     const history = createLiveEditHistory();
     for (const offset of [10, 20, 30])
@@ -95,6 +87,7 @@ describe("live edit history", () => {
     expect(save().style.transform).toBe("rotate(10deg)");
   });
   it("reports the first baseline and latest value without changing undo records", () => {
+    using _page = inspectedPage();
     const history = createLiveEditHistory();
     history.setStyles(save(), { width: "100px" });
     history.checkpoint();
@@ -106,6 +99,7 @@ describe("live edit history", () => {
     expect(history.setStyles(save(), { width: "nonsense" })).toBe(false);
   });
   it("edits text without replacing nodes or removing child components", () => {
+    using _page = inspectedPage();
     const history = createLiveEditHistory();
     const node = save().firstChild;
     history.setText(save(), "Keep");
@@ -118,6 +112,7 @@ describe("live edit history", () => {
     expect(editableTextNode(document.createElement("textarea"))).toBeNull();
   });
   it("does not report detached nodes or overwrite replacement text on reset", () => {
+    using _page = inspectedPage();
     const history = createLiveEditHistory();
     history.setText(save(), "Keep");
     save().textContent = "Re-rendered";
@@ -130,53 +125,64 @@ describe("live edit history", () => {
   });
 });
 
+function startSession(capture?: () => Promise<PickedElementPayload>) {
+  const host = document.createElement("div");
+  document.documentElement.append(host);
+  const attach = vi.fn();
+  const cancel = vi.fn(() => session.dispose());
+  const session = startLiveEdit({
+    host,
+    attach,
+    cancel,
+    captureElement:
+      capture ??
+      (async (element) => ({
+        pageUrl: "https://example.com",
+        pageTitle: "Example",
+        selector: `#${element.id}`,
+        tagName: element.tagName.toLowerCase(),
+        htmlPreview: element.outerHTML,
+        componentName: null,
+        source: null,
+        stack: [],
+        styles: "",
+        pickedAt: "2026-10-08T00:00:00.000Z",
+      })),
+  });
+  const root = host.shadowRoot!;
+  const click = (label: string) =>
+    [...root.querySelectorAll("button")].find((button) => button.textContent === label)!.click();
+  const pointer = (element: EventTarget, type: string, options: MouseEventInit = {}) =>
+    element.dispatchEvent(
+      new MouseEvent(type, { bubbles: true, composed: true, cancelable: true, ...options }),
+    );
+  const select = (element: Element, shiftKey = false) => {
+    pointer(element, "pointerdown", { shiftKey });
+    pointer(element, "pointerup");
+  };
+  const edit = (label: string, value: string) => {
+    const input = root.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
+    input.value = value;
+    input.dispatchEvent(new Event("input"));
+  };
+  return {
+    host,
+    root,
+    attach,
+    cancel,
+    click,
+    select,
+    edit,
+    pointer,
+    dispose: () => session.dispose(),
+    [Symbol.dispose]: () => session.dispose(),
+  };
+}
+
 describe("live edit surface", () => {
-  let session: ReturnType<typeof startLiveEdit>;
-  afterEach(() => session?.dispose());
-  function setup(capture?: () => Promise<PickedElementPayload>) {
-    const host = document.createElement("div");
-    document.documentElement.append(host);
-    const attach = vi.fn();
-    const cancel = vi.fn(() => session.dispose());
-    session = startLiveEdit({
-      host,
-      attach,
-      cancel,
-      captureElement:
-        capture ??
-        (async (element) => ({
-          pageUrl: "https://example.com",
-          pageTitle: "Example",
-          selector: `#${element.id}`,
-          tagName: element.tagName.toLowerCase(),
-          htmlPreview: element.outerHTML,
-          componentName: null,
-          source: null,
-          stack: [],
-          styles: "",
-          pickedAt: "2026-10-08T00:00:00.000Z",
-        })),
-    });
-    const root = host.shadowRoot!;
-    const click = (label: string) =>
-      [...root.querySelectorAll("button")].find((button) => button.textContent === label)!.click();
-    const pointer = (element: EventTarget, type: string, options: MouseEventInit = {}) =>
-      element.dispatchEvent(
-        new MouseEvent(type, { bubbles: true, composed: true, cancelable: true, ...options }),
-      );
-    const select = (element: Element, shiftKey = false) => {
-      pointer(element, "pointerdown", { shiftKey });
-      pointer(element, "pointerup");
-    };
-    const edit = (label: string, value: string) => {
-      const input = root.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
-      input.value = value;
-      input.dispatchEvent(new Event("input"));
-    };
-    return { host, root, attach, cancel, click, select, edit, pointer };
-  }
   it("blocks page actions during selection and permits them in Play", () => {
-    const ui = setup();
+    using _page = inspectedPage();
+    using ui = startSession();
     const action = vi.fn();
     save().addEventListener("click", action);
     ui.select(save());
@@ -194,7 +200,8 @@ describe("live edit surface", () => {
     expect(action).toHaveBeenCalledTimes(2);
   });
   it("shift-selects, drags a group, and undoes the complete movement", () => {
-    const ui = setup();
+    using _page = inspectedPage();
+    using ui = startSession();
     ui.select(save());
     ui.select(panel(), true);
     expect(ui.root.querySelector(".name")?.textContent).toBe("2 elements selected");
@@ -214,7 +221,8 @@ describe("live edit surface", () => {
     expect(ui.root.querySelector(".name")?.textContent).toBe("div#panel");
   });
   it("avoids double movement of nested selections and leaves a click unchanged", () => {
-    const ui = setup();
+    using _page = inspectedPage();
+    using ui = startSession();
     ui.select(panel());
     ui.select(panel().firstElementChild!, true);
     expect(ui.root.querySelector(".name")?.textContent).toBe("span");
@@ -233,9 +241,10 @@ describe("live edit surface", () => {
     ["sw", "80px", "60px", "translate(20px, 0px)"],
     ["se", "120px", "60px", ""],
   ])("resizes from %s and restores the original box", (corner, width, height, transform) => {
+    using _page = inspectedPage();
     save().style.width = "100px";
     save().style.height = "50px";
-    const ui = setup();
+    using ui = startSession();
     ui.select(save());
     const handle = ui.root.querySelector(`[aria-label="Resize ${corner}"]`)!;
     ui.pointer(handle, "pointerdown", { clientX: 50, clientY: 50 });
@@ -250,10 +259,13 @@ describe("live edit surface", () => {
     expect(save().style.transform).toBe("");
   });
   it("drags the inset dot to round corners and undo restores individual radii", () => {
+    using _page = inspectedPage();
     save().style.borderTopLeftRadius = "12px";
     save().style.borderBottomRightRadius = "8px";
-    vi.spyOn(save(), "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 200, 100));
-    const ui = setup();
+    using _rect = vi
+      .spyOn(save(), "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(0, 0, 200, 100));
+    using ui = startSession();
     ui.select(save());
     const dot = ui.root.querySelector('[aria-label="Adjust corner roundness"]')!;
     ui.pointer(dot, "pointerdown");
@@ -266,8 +278,9 @@ describe("live edit surface", () => {
     expect(save().style.borderTopRightRadius).toBe("");
   });
   it("scrubs a numeric value for the selection and coalesces the dial gesture", () => {
+    using _page = inspectedPage();
     save().style.padding = panel().style.padding = "10px";
-    const ui = setup();
+    using ui = startSession();
     ui.select(save());
     ui.select(panel(), true);
     const dial = ui.root.querySelector('[aria-label="Adjust padding"]')!;
@@ -283,9 +296,10 @@ describe("live edit surface", () => {
     expect(panel().style.padding).toBe("10px");
   });
   it("supports dial keyboard adjustments, units, bounds, and fine steps", () => {
+    using _page = inspectedPage();
     save().style.opacity = "0.95";
     save().style.padding = "1rem";
-    const ui = setup();
+    using ui = startSession();
     ui.select(save());
     const opacity = ui.root.querySelector('[aria-label="Adjust opacity"]')!;
     ui.pointer(opacity, "pointerdown");
@@ -305,7 +319,8 @@ describe("live edit surface", () => {
     expect(save().style.padding).toBe("1.1rem");
   });
   it("attaches all edited elements with original values after changing selection", async () => {
-    const ui = setup();
+    using _page = inspectedPage();
+    using ui = startSession();
     ui.select(save());
     ui.edit("Text color", "blue");
     ui.select(panel());
@@ -326,13 +341,14 @@ describe("live edit surface", () => {
       ]),
     );
     expect(ui.host.style.visibility).toBe("hidden");
-    session.dispose();
+    ui.dispose();
     expect(save().style.color).toBe("red");
     expect(panel().style.gap).toBe("");
   });
   it("does not attach a late capture after cancellation", async () => {
+    using _page = inspectedPage();
     let resolveCapture!: (value: PickedElementPayload) => void;
-    const ui = setup(
+    using ui = startSession(
       () =>
         new Promise((resolve) => {
           resolveCapture = resolve;
