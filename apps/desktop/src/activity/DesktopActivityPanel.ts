@@ -169,7 +169,7 @@ export class DesktopActivityPanel {
       items.push({ label: working ? "Working" : "Needs you", enabled: false });
       for (const thread of threads)
         items.push({
-          label: `${thread.title || "Untitled chat"} — ${labels[thread.status]}`,
+          label: `${thread.title || "Untitled chat"} (${labels[thread.status]})`,
           click: () => this.open(thread),
         });
     }

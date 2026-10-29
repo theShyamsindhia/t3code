@@ -1,6 +1,6 @@
 import type { BrowserPasswordList, DesktopBrowserPasswords } from "@t3tools/contracts";
 import { KeyRound } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
@@ -26,22 +26,20 @@ export function PreviewPasswords({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (!open) return;
-    let active = true;
+  // Bumped on every open and close so a list that resolves after the dialog closed is dropped.
+  const loadGeneration = useRef(0);
+  const load = () => {
+    const generation = ++loadGeneration.current;
     void passwords.list(tabId).then(
       (result) => {
-        if (active) setData(result);
+        if (loadGeneration.current === generation) setData(result);
       },
       (cause: unknown) => {
-        if (active)
+        if (loadGeneration.current === generation)
           setError(cause instanceof Error ? cause.message : "Could not load saved logins.");
       },
     );
-    return () => {
-      active = false;
-    };
-  }, [open, passwords, tabId]);
+  };
 
   const run = async (action: () => Promise<string>) => {
     if (busy) return;
@@ -67,6 +65,9 @@ export function PreviewPasswords({
           setData(null);
           setError("");
           setMessage("");
+          load();
+        } else {
+          loadGeneration.current++;
         }
       }}
     >

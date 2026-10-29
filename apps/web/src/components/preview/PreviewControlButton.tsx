@@ -43,7 +43,7 @@ export function PreviewControlButton({
             aria-label={`${status === "Ready" ? "Agent access ready" : `${status} has browser control`}. ${label}`}
             disabled={pending}
             onClick={() => void toggle()}
-            className="flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-muted px-2.5 text-xs text-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            className="flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-muted px-2.5 text-xs text-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:opacity-50"
           />
         }
       >

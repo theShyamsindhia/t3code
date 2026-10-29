@@ -55,7 +55,7 @@ function isSurfaceLauncherKey(key: string): boolean {
   return launcherKeys?.toLowerCase().includes(key.toLowerCase()) ?? false;
 }
 
-export function shouldRedirectInputToComposer(event: Event): boolean {
+function shouldRedirectInputToComposer(event: Event): boolean {
   if (event.defaultPrevented) return false;
   // Never persist or send secret-request typing through the composer.
   if (eventPathContainsSelector(event, SECRET_REQUEST_SELECTOR)) return false;

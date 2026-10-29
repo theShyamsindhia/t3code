@@ -26,16 +26,19 @@ const activityAtom = Atom.make((get) =>
 export function DesktopActivityCoordinator() {
   const snapshot = useAtomValue(activityAtom);
   const navigate = useNavigate();
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- publishes the activity snapshot to the native macOS activity panel and Dock menu
   useEffect(() => {
     const value: DesktopActivitySnapshot = JSON.parse(snapshot);
     void window.desktopBridge?.setActivitySnapshot?.(value).catch(() => undefined);
   }, [snapshot]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens for thread picks from the native activity panel while mounted
   useEffect(() => {
     const unsubscribe = window.desktopBridge?.onActivityOpenThread?.((params) => {
       void navigate({ to: "/$environmentId/$threadId", params });
     });
     return unsubscribe;
   }, [navigate]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears the native activity panel when the app shell unmounts
   useEffect(
     () => () => {
       void window.desktopBridge?.setActivitySnapshot?.(null).catch(() => undefined);

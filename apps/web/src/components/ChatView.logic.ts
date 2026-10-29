@@ -1631,15 +1631,6 @@ export function deriveWorkspaceMutationId(
     : JSON.stringify([itemId, latestCheckpointCompletedAt]);
 }
 
-export function resolveEffectiveInteractionMode(input: {
-  planModeEnabled: boolean;
-  composerInteractionMode: ProviderInteractionMode | null;
-  threadInteractionMode: ProviderInteractionMode | null | undefined;
-}): ProviderInteractionMode {
-  if (!input.planModeEnabled) return "default";
-  return input.composerInteractionMode ?? input.threadInteractionMode ?? "default";
-}
-
 export function resolveFollowUpInteractionMode(input: {
   source: "plan" | "interaction";
   interactionMode: ProviderInteractionMode;
@@ -1647,19 +1638,6 @@ export function resolveFollowUpInteractionMode(input: {
 }): ProviderInteractionMode | null {
   if (!input.planModeEnabled) return input.source === "plan" ? null : "default";
   return input.interactionMode;
-}
-
-export function shouldWriteThreadErrorToCurrentServerThread(input: {
-  serverThread: { environmentId: EnvironmentId; id: ThreadId } | null | undefined;
-  routeThreadRef: ScopedThreadRef;
-  targetThreadId: ThreadId;
-}): boolean {
-  return Boolean(
-    input.serverThread &&
-    input.targetThreadId === input.routeThreadRef.threadId &&
-    input.serverThread.environmentId === input.routeThreadRef.environmentId &&
-    input.serverThread.id === input.targetThreadId,
-  );
 }
 
 export { resolveSendEnvMode } from "@t3tools/shared/projectSettings";
