@@ -1,23 +1,28 @@
 import { PaintbrushIcon } from "lucide-react";
-import type { ChatWidgetPresentation } from "@t3tools/contracts";
+import { chatWidgetPresentation } from "@t3tools/client-runtime/interaction";
+import { isCompleteTurnItemRow } from "@t3tools/client-runtime/state/threads";
+import type { ScopedThreadRef } from "@t3tools/contracts";
+import { useQuietThreadVisibleTurnItems } from "../state/entities";
 import { ChatWidget } from "./chat/ChatWidget";
-
-export interface CanvasWidget {
-  id: string;
-  widget: ChatWidgetPresentation;
-}
 
 export function CanvasPanel({
   threadKey,
-  widgets,
+  threadDetailRef,
   theme,
   onSubmit,
 }: {
   threadKey: string;
-  widgets: readonly CanvasWidget[];
+  threadDetailRef: ScopedThreadRef | null;
   theme: "light" | "dark";
   onSubmit?: ((text: string) => Promise<boolean>) | undefined;
 }) {
+  // Widgets are completed tool calls, which the quiet items keep whole.
+  const rows = useQuietThreadVisibleTurnItems(threadDetailRef);
+  const widgets = rows.flatMap((row) => {
+    if (!isCompleteTurnItemRow(row)) return [];
+    const widget = chatWidgetPresentation(row.item);
+    return widget ? [{ id: `${row.sourceThreadId}:${row.sourceItemId}`, widget }] : [];
+  });
   return (
     <div className="flex min-h-0 flex-1 flex-col" aria-label="Canvas">
       <header className="shrink-0 border-b border-border/60 px-4 py-3">

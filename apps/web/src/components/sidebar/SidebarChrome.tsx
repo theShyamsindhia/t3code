@@ -41,7 +41,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const backdropVariant = resolveSidebarStageBackdropVariant(
     stageLabel,
-    environmentIdentificationMode === "artwork",
+    environmentIdentificationMode,
   );
   const pillLabel =
     environmentIdentificationMode === "pill"
@@ -157,7 +157,7 @@ function SidebarUtilityItem({
   );
 }
 
-export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
+const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const navigate = useNavigate();
   const navigateToMainApp = useNavigateToMainApp();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -213,7 +213,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           {pullRequestsSupported ? (
             <SidebarUtilityItem
               icon={<PullRequestGlyph.pullRequest />}
-              label="Pull Requests"
+              label="Pull requests"
               onClick={handlePullRequestsClick}
             />
           ) : null}
@@ -237,8 +237,10 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
 
 export const SidebarChromeFooter = memo(function SidebarChromeFooter({
   dock = false,
+  showUndoNotice = false,
 }: {
   dock?: boolean;
+  showUndoNotice?: boolean;
 }) {
   const Footer = dock ? "div" : SidebarFooter;
   return (
@@ -248,7 +250,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter({
           dock ? "absolute right-2 bottom-full z-50 flex w-64 flex-col gap-2 pb-2" : "contents"
         }
       >
-        <SidebarThreadUndoNotice />
+        {showUndoNotice ? <SidebarThreadUndoNotice /> : null}
         <SidebarProviderUpdatePill />
         <SidebarUpdateArchitectureWarning />
       </div>

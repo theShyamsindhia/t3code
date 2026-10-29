@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { getPreviewPanelMaxWidth } from "./PreviewPanelShell";
+import { getPreviewPanelMaxWidth } from "~/hooks/usePreviewPanelInlineSize";
 
 describe("getPreviewPanelMaxWidth", () => {
   it("reserves the sibling column minimum beside an open app sidebar", () => {

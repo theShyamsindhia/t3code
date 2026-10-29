@@ -3,12 +3,15 @@ import { ArrowDown, ArrowUp, Ellipsis, GripVertical, Pencil, Trash2, Undo2 } fro
 import {
   createInteractionDraft,
   formatInteractionReply,
+  interactionPresentations,
   moveInteractionItem,
   restoreInteractionDraft,
   type InteractionDraft,
-  type interactionPresentations,
 } from "@t3tools/client-runtime/interaction";
-import type { InteractionPresentation } from "@t3tools/contracts";
+import { isCompleteTurnItemRow } from "@t3tools/client-runtime/state/threads";
+import type { InteractionPresentation, ScopedThreadRef } from "@t3tools/contracts";
+import { useRightPanelStore } from "../rightPanelStore";
+import { useQuietThreadVisibleTurnItems } from "../state/entities";
 import { Button, InlineButton } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
@@ -16,11 +19,48 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/select";
 import "./InteractionPanel.css";
 
+// Presentations are completed tool calls, which the quiet items keep whole, so
+// streamed reply text does not re-render shared-space readers.
+function useThreadInteractionPresentations(threadDetailRef: ScopedThreadRef | null) {
+  const rows = useQuietThreadVisibleTurnItems(threadDetailRef);
+  return interactionPresentations(rows.filter(isCompleteTurnItemRow));
+}
+
+export function OpenSharedSpaceButton({
+  threadDetailRef,
+  threadRef,
+}: {
+  threadDetailRef: ScopedThreadRef | null;
+  threadRef: ScopedThreadRef | null;
+}) {
+  const presentations = useThreadInteractionPresentations(threadDetailRef);
+  if (presentations.length === 0 || threadRef === null) return null;
+  return (
+    <div className="mb-2 flex justify-end">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => useRightPanelStore.getState().open(threadRef, "interaction")}
+      >
+        Open shared space
+      </Button>
+    </div>
+  );
+}
+
 interface InteractionPanelProps {
   threadKey: string;
   presentations: ReturnType<typeof interactionPresentations>;
   disabled: boolean;
   onSubmit: (text: string) => Promise<boolean>;
+}
+
+export function ThreadInteractionPanel({
+  threadDetailRef,
+  ...props
+}: Omit<InteractionPanelProps, "presentations"> & { threadDetailRef: ScopedThreadRef | null }) {
+  const presentations = useThreadInteractionPresentations(threadDetailRef);
+  return <InteractionPanel {...props} presentations={presentations} />;
 }
 
 export function InteractionPanel({
@@ -105,6 +145,7 @@ export function InteractionEditor({
   const response = formatInteractionReply(presentation, draft);
 
   const latestDraft = useRef(draft);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- mirrors the draft for the pagehide flush and writes it to localStorage on a debounce timer
   useEffect(() => {
     latestDraft.current = draft;
     const timer = window.setTimeout(() => {
@@ -117,6 +158,7 @@ export function InteractionEditor({
     return () => window.clearTimeout(timer);
   }, [draft, storageKey]);
   // Leaving the panel flushes the latest draft without writing on every keystroke.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- flushes the latest draft to localStorage on pagehide and unmount
   useEffect(() => {
     const flush = () => {
       try {

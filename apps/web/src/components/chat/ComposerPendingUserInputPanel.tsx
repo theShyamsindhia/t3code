@@ -1,12 +1,14 @@
 import { type RuntimeRequestId, type ScopedThreadRef } from "@t3tools/contracts";
-import { memo, useEffect, useEffectEvent, useState } from "react";
+import { memo, use, useEffect, useEffectEvent, useState } from "react";
+import { BackgroundThreadContext } from "./backgroundThread";
 import { type PendingUserInput } from "../../session-logic";
 import {
   derivePendingUserInputProgress,
   type PendingUserInputDraftAnswer,
 } from "../../pendingUserInput";
-import { CheckIcon } from "lucide-react";
+import { CheckboxMark } from "../ui/checkbox";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
+import { Kbd } from "../ui/kbd";
 import { cn } from "~/lib/utils";
 import { ComposerBanner } from "./ComposerBanner";
 import ChatMarkdown from "../ChatMarkdown";
@@ -84,10 +86,10 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   const canRespond = prompt.responseCapability !== "not_resumable";
   const responseDisabled = disabled || isResponding || !canRespond;
   const [collapsedQuestionId, setCollapsedQuestionId] = useState<string | null>(null);
-  // The active question keys the shortcut listener, so it must keep its identity across renders.
+  // Keep question identity stable for its shortcut listener.
   const progress = derivePendingUserInputProgress(prompt.questions, answers, questionIndex);
   const activeQuestion = progress.activeQuestion;
-  // Read here, before the hooks below, so the compiler can keep `activeQuestion` cached.
+  // Read before later hooks to preserve the question's compiler cache.
   const draftSelectedOptions = activeQuestion?.options.map((option) =>
     progress.selectedOptionValues.includes(option.value ?? option.label),
   );
@@ -95,17 +97,15 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
 
   const handleOptionSelection = (questionId: string, optionValue: string) => {
     if (disabled || isResponding) return;
-    if (activeQuestion?.multiSelect) {
-      onToggleOption(questionId, optionValue);
-      return;
-    }
     onToggleOption(questionId, optionValue);
   };
 
   const selectOptionFromShortcut = useEffectEvent(handleOptionSelection);
+  const backgroundThread = use(BackgroundThreadContext);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes a document keydown listener for digit shortcuts while a question is answerable
   useEffect(() => {
-    if (!activeQuestion || responseDisabled || isCollapsed) return;
+    if (!activeQuestion || responseDisabled || isCollapsed || backgroundThread) return;
     const handler = (event: globalThis.KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target;
@@ -129,7 +129,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [activeQuestion, isCollapsed, responseDisabled]);
+  }, [activeQuestion, backgroundThread, isCollapsed, responseDisabled]);
 
   if (!activeQuestion) {
     return null;
@@ -143,28 +143,29 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       }}
     >
       <CollapsibleTrigger
-        // Top inset roughly matching the text's side inset from the card edge.
-        render={<ComposerBanner.Row className="pt-2" render={<button type="button" />} />}
+        render={<ComposerBanner.Row render={<button type="button" />} />}
         title={
           isCollapsed ? "Show the question and its options" : "Hide the question and its options"
         }
         data-pending-user-input-toggle={isCollapsed ? "collapsed" : "expanded"}
+        className="px-4 pt-1.5"
       >
         <ComposerBanner.Content>
-          <span className="shrink-0 ps-2.5 font-medium text-muted-foreground">
-            {activeQuestion.header}
-          </span>
+          <span className="shrink-0 text-muted-foreground">{activeQuestion.header}</span>
           {isCollapsed ? (
-            <span className="min-w-0 flex-1 truncate text-secondary-label">
-              {activeQuestion.question}
-            </span>
+            <>
+              <ComposerBanner.Separator />
+              <span className="min-w-0 flex-1 truncate text-secondary-label">
+                {activeQuestion.question}
+              </span>
+            </>
           ) : null}
         </ComposerBanner.Content>
-        <ComposerBanner.Actions>
+        <ComposerBanner.Actions className="gap-0">
           {prompt.questions.length > 1 ? (
-            <span className="text-3xs font-medium text-muted-foreground tabular-nums">
+            <ComposerBanner.Count>
               {questionIndex + 1}/{prompt.questions.length}
-            </span>
+            </ComposerBanner.Count>
           ) : null}
           <ComposerBanner.ToggleIcon expanded={!isCollapsed} />
           {prompt.dismissible ? (
@@ -191,57 +192,52 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       </CollapsibleTrigger>
       <CollapsiblePanel>
         <ComposerBanner.Scroll>
-          {/* No header icon; the header, question, and hint share the options' text inset (ps-2.5). */}
-          <ComposerBanner.Body className="ps-2 pe-1 pb-1 wrap-anywhere sm:ps-1.5">
+          <ComposerBanner.Body className="ps-6 pe-4 pb-1 wrap-anywhere sm:ps-5.5">
             <ChatMarkdown
               text={activeQuestion.question}
               cwd={cwd}
               threadRef={threadRef}
-              className="ps-2.5 text-foreground/85"
+              className="pt-2 text-foreground/85"
             />
-            {activeQuestion.multiSelect ? (
-              <p className="mt-1 ps-2.5 text-secondary-label text-xs">
-                Select one or more options.
-              </p>
-            ) : null}
-            <div className="mt-2 space-y-0.5">
+            {/* Rows span the header row's width so the radios align with the question text and the shortcut column sits under the dismiss button. */}
+            <div className="-ms-2 mt-1.5 sm:-ms-1.5">
               {activeQuestion.options.map((option, index) => {
                 const optionValue = option.value ?? option.label;
                 const isSelected = draftSelectedOptions?.[index] === true;
-                const shortcutKey = index < 9 ? index + 1 : null;
                 const className = cn(
-                  "group flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/25",
-                  isSelected
-                    ? "bg-muted/55 text-foreground"
-                    : "bg-transparent text-foreground/85 hover:bg-muted/30",
+                  "group flex w-full items-start gap-2.5 rounded-md bg-transparent py-1.5 ps-2 text-left sm:ps-1.5 outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/25",
+                  isSelected ? "text-foreground" : "text-foreground/70 hover:bg-muted/30",
                   (disabled || isResponding) && "opacity-50 cursor-not-allowed",
                   !disabled && !isResponding && "cursor-pointer",
                 );
+                // The h-5 slots match the label's line box, so the indicator and shortcut stay on its first line.
                 const content = (
                   <>
+                    <span className="pointer-events-none flex h-5 shrink-0 items-center">
+                      {activeQuestion.multiSelect ? (
+                        <CheckboxMark checked={isSelected} />
+                      ) : (
+                        <OptionRadio checked={isSelected} />
+                      )}
+                    </span>
                     <div className="min-w-0 flex-1 flex flex-col gap-0.5">
                       <span className="text-sm font-medium">{option.label}</span>
                       {option.description && option.description !== option.label ? (
                         <span className="text-secondary-label text-2xs">{option.description}</span>
                       ) : null}
                     </div>
-                    {isSelected ? (
-                      <CheckIcon className="mt-0.5 size-3.5 shrink-0 text-primary" />
-                    ) : shortcutKey !== null ? (
-                      <kbd
-                        className={cn(
-                          "flex size-5 shrink-0 items-center justify-center text-3xs font-medium text-muted-foreground tabular-nums",
-                        )}
-                      >
-                        {shortcutKey}
-                      </kbd>
+                    {index < 9 ? (
+                      <span className="flex h-5 w-7 shrink-0 items-center justify-center sm:w-6">
+                        <Kbd>{index + 1}</Kbd>
+                      </span>
                     ) : null}
                   </>
                 );
                 return (
-                  <div key={`${activeQuestion.id}:${optionValue}`} className="space-y-0.5">
+                  <div key={`${activeQuestion.id}:${optionValue}`}>
                     <button
                       type="button"
+                      aria-pressed={isSelected}
                       disabled={disabled || isResponding}
                       onClick={() => {
                         handleOptionSelection(activeQuestion.id, optionValue);
@@ -250,10 +246,11 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                     >
                       {content}
                     </button>
+                    {/* Inset to the label column, past the radio and its gap. */}
                     {isSelected && !activeQuestion.multiSelect ? (
                       <button
                         type="button"
-                        className="ms-2 text-2xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                        className="ms-9 mb-1 text-2xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline sm:ms-8"
                         disabled={disabled || isResponding}
                         onClick={() => onEditOption(activeQuestion.id, option.label)}
                       >
@@ -270,3 +267,21 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     </Collapsible>
   );
 });
+
+// Drawn with ui/radio-group's look instead of using its Radio: Radio only checks inside a
+// RadioGroup, whose arrow keys would change the picked answer.
+function OptionRadio({ checked }: { checked: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "relative inline-flex size-4.5 shrink-0 items-center justify-center rounded-full border border-input bg-background not-dark:bg-clip-padding sm:size-4 dark:bg-input/32",
+        checked ? "shadow-none" : "shadow-xs/5",
+      )}
+    >
+      {checked ? (
+        <span className="-inset-px absolute flex items-center justify-center rounded-full bg-primary before:size-2 before:rounded-full before:bg-primary-foreground sm:before:size-1.5" />
+      ) : null}
+    </span>
+  );
+}

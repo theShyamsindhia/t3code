@@ -12,6 +12,7 @@ const BROWSER_IMPORT_SOURCE_IDS = [
   "aside",
   "helium",
   "firefox",
+  "zen",
   "safari",
 ] as const;
 

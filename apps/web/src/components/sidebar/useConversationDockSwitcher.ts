@@ -8,6 +8,7 @@ export function useConversationDockSwitcher<T extends { key: string }>(input: {
   onSelect: (entry: T) => void;
 }) {
   const latest = useRef(input);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- publishes the latest entries and handlers to the window key listeners below
   useLayoutEffect(() => {
     latest.current = input;
   }, [input]);
@@ -18,6 +19,7 @@ export function useConversationDockSwitcher<T extends { key: string }>(input: {
   } | null>(null);
   const choiceRef = useRef(choice);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window and desktop-menu listeners that drive the Control+Tab dock switcher while mounted
   useEffect(() => {
     const update = (value: typeof choice) => {
       choiceRef.current = value;

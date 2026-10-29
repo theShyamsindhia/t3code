@@ -20,8 +20,10 @@ import {
   type DraftSessionState,
 } from "../../composerDraftStore";
 import { draftPenClassName, draftSurfaceClassName } from "./SidebarThreadRow";
+import { ConversationDockDraftPill } from "./ConversationDockPill";
 
 const SidebarDraftRow = memo(function SidebarDraftRow(props: {
+  dock: boolean;
   draftId: DraftId;
   composer: ComposerThreadDraftState;
   project: ProjectFaviconProject | null;
@@ -78,11 +80,28 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
     event.stopPropagation();
     onDiscard(draftId);
   };
+  if (props.dock) {
+    return (
+      <ConversationDockDraftPill
+        draftId={draftId}
+        preview={preview}
+        label={accessibility.label}
+        ariaCurrent={accessibility.current}
+        isActive={props.isActive}
+        project={props.project}
+        onActivate={handleActivate}
+        onKeyDown={handleKeyDown}
+        onContextMenu={handleContextMenu}
+        onDiscard={handleDiscard}
+      />
+    );
+  }
   return (
     <li className="list-none py-0.5">
       <div
-        role="button"
-        tabIndex={0}
+        role="treeitem"
+        tabIndex={-1}
+        data-sidebar-row={`draft:${draftId}`}
         aria-label={accessibility.label}
         aria-current={accessibility.current}
         data-testid="sidebar-draft-row"
@@ -138,6 +157,7 @@ interface SidebarDraftRowData {
 }
 
 export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
+  dock: boolean;
   projectByKey: ReadonlyMap<string, EnvironmentProject>;
   projectDisplayNameByKey: ReadonlyMap<string, string>;
   scopedProjectKeys: ReadonlySet<string> | null;
@@ -200,6 +220,7 @@ export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
         const projectKey = `${session.environmentId}:${session.projectId}`;
         return (
           <SidebarDraftRow
+            dock={props.dock}
             key={draftId}
             draftId={draftId}
             composer={composer}
@@ -212,11 +233,13 @@ export const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
           />
         );
       })}
-      <li
-        aria-hidden
-        data-testid="sidebar-draft-divider"
-        className="mx-2.5 my-1.5 h-px list-none bg-sidebar-border/60"
-      />
+      {props.dock ? null : (
+        <li
+          aria-hidden
+          data-testid="sidebar-draft-divider"
+          className="mx-2.5 my-1.5 h-px list-none bg-sidebar-border/60"
+        />
+      )}
     </>
   );
 });

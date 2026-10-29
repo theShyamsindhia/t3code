@@ -5,6 +5,7 @@ import {
   ThreadId,
   type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
+import { EMPTY_SHELL_STATE } from "@t3tools/client-runtime/state/shell";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import { describe, expect, it } from "vite-plus/test";
@@ -23,6 +24,7 @@ const running = {
   activeRunId: run,
 };
 const shell = (threads: readonly OrchestrationV2ThreadShell[] = [running]) => ({
+  ...EMPTY_SHELL_STATE,
   status: "live" as const,
   snapshot: Option.some({
     schemaVersion: 1 as const,

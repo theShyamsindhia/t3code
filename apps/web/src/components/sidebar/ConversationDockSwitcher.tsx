@@ -52,6 +52,7 @@ export function ConversationDockSwitcher(props: {
   const key = entry?.key;
   const { listRef } = props;
   const [anchor, setAnchor] = useState<{ key: string; row: HTMLElement } | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- lifts the chosen pill DOM node into the top layer and lowers it again when the choice moves
   useLayoutEffect(() => {
     if (!key) return;
     const row = Array.from(

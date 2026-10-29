@@ -23,63 +23,59 @@ export function shouldUseCompactComposerFooter(
   return width !== null && width < breakpoint;
 }
 
-export function shouldUseRestingComposerLayout(input: {
-  isExistingThread: boolean;
-  isMobileViewport: boolean;
-  isScrollCollapsed: boolean;
-  hasExpandedChrome: boolean;
-  hasMultilinePrompt: boolean;
-  timelineOverflows: boolean;
-}): boolean {
-  return (
-    input.isExistingThread &&
-    !input.isMobileViewport &&
-    input.timelineOverflows &&
-    input.isScrollCollapsed &&
-    !input.hasMultilinePrompt &&
-    !input.hasExpandedChrome
-  );
-}
-
 /**
- * How much taller the empty expanded composer is than its resting row on
- * desktop widths, from the layout classes in ChatComposer: the body loses
- * 8px of top padding, the prompt clamps from min-h-17.5 (70px) to 32px, and
- * the 48px footer leaves flow.
+ * Timing for a resting-transition height tween. A mid-flight retarget to the same destination
+ * keeps the original start height and clock; recreating it instead leaves each new animation
+ * pending on its first keyframe, so the card freezes and then snaps. A new destination
+ * continues from the rendered height for the remaining time, started at once.
  */
-const COMPOSER_RESTING_EXPANSION_MIN_PX = 94;
-
-/**
- * Reserving only the resting height lets a scroll to the end land flush against the short
- * composer, and the expansion that follows then covers the last rows because the timeline never
- * moves for footer growth.
- */
-export function resolveComposerTimelineInset(input: {
-  currentInset: number;
-  overlayHeight: number;
-  isResting: boolean;
-  restingOnlyHeight?: number;
-  expandedNoticesHeight?: number;
-}): number {
-  // Expanded notices temporarily cover the timeline. Remove their growth before
-  // rounding so fractional measurements reserve exactly the collapsed height.
-  const overlayHeight = Math.ceil(input.overlayHeight - (input.expandedNoticesHeight ?? 0));
-  return input.isResting
-    ? Math.max(
-        input.currentInset,
-        overlayHeight +
-          (input.currentInset === 0
-            ? COMPOSER_RESTING_EXPANSION_MIN_PX - (input.restingOnlyHeight ?? 0)
-            : 0),
-      )
-    : overlayHeight;
-}
-
-export function overlayComposerIsResting(input: {
-  composerMounted: boolean;
-  composerReportedResting: boolean;
-}): boolean {
-  return input.composerMounted && input.composerReportedResting;
+export function resolveComposerRestingTweenTiming(input: {
+  stateChanged: boolean;
+  defaultDurationMs: number;
+  nextHeight: number;
+  settledHeight: number | null;
+  interrupted: {
+    renderedHeight: number;
+    startTime: number | null;
+    currentTime: number | null;
+    durationMs: number | null;
+    fromHeight: number | null;
+    targetHeight: number | null;
+  } | null;
+}): {
+  fromHeight: number | null;
+  durationMs: number;
+  remainingMs: number;
+  startTime: number | "now" | null;
+} {
+  const { interrupted } = input;
+  const fresh = {
+    durationMs: input.defaultDurationMs,
+    remainingMs: input.defaultDurationMs,
+    startTime: null,
+  };
+  if (!interrupted) return { fromHeight: input.settledHeight, ...fresh };
+  if (input.stateChanged || interrupted.durationMs === null || interrupted.currentTime === null) {
+    return { fromHeight: interrupted.renderedHeight, ...fresh };
+  }
+  const remainingMs = Math.max(1, interrupted.durationMs - interrupted.currentTime);
+  const sameDestination =
+    interrupted.targetHeight !== null &&
+    Math.abs(interrupted.targetHeight - input.nextHeight) < 0.5;
+  if (sameDestination && interrupted.startTime !== null && interrupted.fromHeight !== null) {
+    return {
+      fromHeight: interrupted.fromHeight,
+      durationMs: interrupted.durationMs,
+      remainingMs,
+      startTime: interrupted.startTime,
+    };
+  }
+  return {
+    fromHeight: interrupted.renderedHeight,
+    durationMs: remainingMs,
+    remainingMs,
+    startTime: "now",
+  };
 }
 
 export function shouldAnimateComposerRestingTransition(input: {
@@ -134,12 +130,8 @@ function restingComposerControlsWidth(
   );
 }
 
-/**
- * The context strip reserves this much for the composer before deciding whether its own labels
- * may expand. Judging against the currently visible controls instead lets the strip expand into
- * space the composer just gave up, which shrinks the host, hides the controls again, and
- * repeats.
- */
+/** Reserve natural composer width to prevent strip labels from repeatedly expanding into space vacated by
+ * hidden controls. */
 export function resolveRestingComposerControlsNaturalWidth(
   input: RestingComposerControlsMeasurement,
 ): number {
@@ -169,9 +161,8 @@ export function resolveRestingComposerControlsLayout(
       fixedWidth,
       Math.min(candidate, iconSteps),
     );
-  // Promotions need a pixel of slack: recovering a flexible picker's natural
-  // width can jitter by a fraction of a pixel across renders. Demotions are
-  // immediate so a threshold cannot clip or flip React between layouts.
+  // Use 1px slack for natural-width jitter on promotion; demote immediately to avoid clipping or layout
+  // flapping.
   while (
     step < iconSteps + blockWidths.length &&
     widthAtStep(step) > hostWidth - (step < previousStep ? RESTING_CONTROLS_SLACK_PX : 0)

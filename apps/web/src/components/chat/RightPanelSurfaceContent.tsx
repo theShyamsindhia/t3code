@@ -17,6 +17,8 @@ import {
   PersistentThreadTerminalPanel,
   type PersistentThreadTerminalPanelProps,
 } from "../PersistentThreadTerminals";
+import { CanvasPanel } from "../CanvasPanel";
+import { ThreadInteractionPanel } from "../InteractionPanel";
 import { pullRequestPanelContext } from "../pullRequest/pullRequestDetail.logic";
 import { PullRequestDetailPanel } from "../pullRequest/PullRequestDetailPanel";
 import { PullRequestDetailGhost } from "../pullRequest/PullRequestGhosts";
@@ -32,23 +34,30 @@ const DevicePanel = lazy(() =>
 );
 const FilePreviewPanel = lazy(() => import("../files/FilePreviewPanel"));
 
-export type RightPanelTerminalProps = Omit<
+type RightPanelTerminalProps = Omit<
   PersistentThreadTerminalPanelProps,
   "visible" | "threadRef" | "surface"
 >;
 
-export interface RightPanelPullRequestProps {
+interface RightPanelPullRequestProps {
   readonly capabilityKnown: boolean;
   readonly supported: boolean;
   readonly projectId: ProjectId | null;
   readonly pullRequests: ReadonlyArray<ThreadPullRequestLink>;
   readonly linkedPullRequest: ThreadLinkedPullRequest | null;
   readonly branchPullRequest: ThreadLinkedPullRequest | null | undefined;
-  /** Back to the pull request list; absent when there is no list to go back to. */
   readonly onBack: (() => void) | undefined;
 }
 
-export interface RightPanelFileProps {
+interface RightPanelSharedSpaceProps {
+  /** Null until the thread's detail may load; see resolveThreadDetailRef. */
+  readonly threadDetailRef: ScopedThreadRef | null;
+  readonly theme: "light" | "dark";
+  readonly replyDisabled: boolean;
+  readonly onSubmitReply: (text: string) => Promise<boolean>;
+}
+
+interface RightPanelFileProps {
   readonly projectName: string | null;
   readonly workspaceRoot: string | undefined;
   readonly availableEditors: ReadonlyArray<EditorId>;
@@ -57,7 +66,6 @@ export interface RightPanelFileProps {
   readonly onPendingChange: (relativePath: string, pending: boolean) => void;
 }
 
-/** The body of the thread's right panel for the surface it is showing. */
 export function RightPanelSurfaceContent(props: {
   readonly surface: RightPanelSurface | null;
   readonly activeSurfaceId: string | null;
@@ -77,10 +85,37 @@ export function RightPanelSurfaceContent(props: {
   readonly terminal: RightPanelTerminalProps;
   readonly pullRequest: RightPanelPullRequestProps;
   readonly files: RightPanelFileProps;
+  readonly sharedSpace: RightPanelSharedSpaceProps;
 }) {
   const { surface, threadRef, visible } = props;
   if (surface === null) return null;
   switch (surface.kind) {
+    case "canvas": {
+      const sharedSpace = props.sharedSpace;
+      const threadKey = scopedThreadKey(threadRef);
+      return (
+        <CanvasPanel
+          key={threadKey}
+          threadKey={threadKey}
+          threadDetailRef={sharedSpace.threadDetailRef}
+          theme={sharedSpace.theme}
+          onSubmit={sharedSpace.replyDisabled ? undefined : sharedSpace.onSubmitReply}
+        />
+      );
+    }
+    case "interaction": {
+      const sharedSpace = props.sharedSpace;
+      const threadKey = scopedThreadKey(threadRef);
+      return (
+        <ThreadInteractionPanel
+          key={threadKey}
+          threadKey={threadKey}
+          threadDetailRef={sharedSpace.threadDetailRef}
+          disabled={sharedSpace.replyDisabled}
+          onSubmit={sharedSpace.onSubmitReply}
+        />
+      );
+    }
     case "preview":
       return (
         <Suspense fallback={null}>

@@ -1,3 +1,5 @@
+import { observeResize } from "~/lib/observeResize";
+
 const raisedPills = new WeakMap<HTMLElement, () => void>();
 
 /** Lift the actual row out of the scroller's clip, keeping its place in the dock. */
@@ -65,13 +67,12 @@ export function raiseConversationDockPill(row: HTMLElement) {
     }
   };
   raisedPills.set(row, restore);
-  const observer = new ResizeObserver(position);
-  observer.observe(slot);
+  const stopObserving = observeResize(slot, position);
   window.addEventListener("resize", position);
   window.addEventListener("scroll", position, true);
 
   return () => {
-    observer.disconnect();
+    stopObserving();
     window.removeEventListener("resize", position);
     window.removeEventListener("scroll", position, true);
     if (!animation || !row.isConnected) {

@@ -37,24 +37,29 @@ export class ElectronTheme extends Context.Service<
 let requestedVibrancy = false;
 let requestedGlassStyle: DesktopGlassStyle = "regular";
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = ElectronTheme.of({
   glassStyle: Effect.sync(() => requestedGlassStyle),
   shouldUseDarkColors: Effect.sync(() => Electron.nativeTheme.shouldUseDarkColors),
   shouldUseVibrancy: Effect.sync(
     () => requestedVibrancy && !Electron.nativeTheme.prefersReducedTransparency,
   ),
-  setSource: (theme, vibrancy = false, glassStyle = "regular") =>
-    Effect.try({
+  setSource: Effect.fn("ElectronTheme.setSource")(function (
+    theme,
+    vibrancy = false,
+    glassStyle: DesktopGlassStyle = "regular",
+  ) {
+    return Effect.try({
       try: () => {
         Electron.nativeTheme.themeSource = theme;
         requestedVibrancy = vibrancy;
         requestedGlassStyle = glassStyle;
       },
       catch: (cause) => new ElectronThemeSetSourceError({ source: theme, cause }),
-    }),
-  onUpdated: (listener) =>
-    Effect.acquireRelease(
+    });
+  }),
+  onUpdated: Effect.fn("ElectronTheme.onUpdated")(function (listener) {
+    return Effect.acquireRelease(
       Effect.suspend(() => {
         Electron.nativeTheme.on("updated", listener);
         return Effect.void;
@@ -64,7 +69,8 @@ export const make = ElectronTheme.of({
           Electron.nativeTheme.removeListener("updated", listener);
           return Effect.void;
         }),
-    ),
+    );
+  }),
 });
 
 export const layer = Layer.succeed(ElectronTheme, make);

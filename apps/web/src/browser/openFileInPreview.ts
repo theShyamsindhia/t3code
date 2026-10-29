@@ -32,11 +32,7 @@ import { previewRuntimeTabId } from "./previewRuntimeTabId";
 import { isLocalServerUrl } from "./browserLinkTarget";
 import { resolveLocalServerUrl } from "./browserTargetResolver";
 
-import {
-  browserDefaultOpenProfileId,
-  browserDefaultOpenViewport,
-  resolveBrowserDefaults,
-} from "./browserDefaults";
+import { resolveBrowserDefaults } from "./browserDefaults";
 
 export const isBrowserPreviewFile = (path: string): boolean =>
   /\.(?:html?|pdf)$/i.test(path.split(/[?#]/, 1)[0] ?? "");
@@ -110,9 +106,10 @@ async function openUrlInPreviewOnce<E>(
   if (defaults instanceof BrowserSettingsReadError) {
     return AsyncResult.failure(Cause.fail(defaults));
   }
-  const profileId = input.profileId ?? browserDefaultOpenProfileId(defaults);
+  const profileId = input.profileId ?? defaults.profileId;
   const runtime = previewRuntimeFor(input.threadRef.environmentId);
   const previousActiveTabId = readThreadPreviewState(input.threadRef).activeTabId;
+  // The server changes the active tab, not panel selection; selection changes come from the user.
   const selectedSurface = () =>
     selectSelectedRightPanelSurface(useRightPanelStore.getState().byThreadKey, input.threadRef)
       ?.id ?? null;
@@ -162,7 +159,7 @@ async function openUrlInPreviewOnce<E>(
     input: {
       threadId: input.threadRef.threadId,
       url,
-      viewport: browserDefaultOpenViewport(defaults),
+      viewport: defaults.viewport,
       profileId,
       ...(runtime === undefined ? {} : { runtime }),
     },
@@ -170,8 +167,7 @@ async function openUrlInPreviewOnce<E>(
   return mapAtomCommandResult(result, (snapshot) => {
     if (input.background) {
       updatePreviewServerSnapshot(input.threadRef, snapshot);
-      // The server's "opened" event activates the new tab; hand focus back,
-      // unless the user picked a tab, this one included, while the open was in flight.
+      // Restore focus unless the user picked a tab while opening this one.
       if (
         previousActiveTabId &&
         readThreadPreviewState(input.threadRef).activeTabId === snapshot.tabId &&

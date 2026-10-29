@@ -56,19 +56,18 @@ export const installDesktopActivity = Effect.fn("desktop.ipc.installDesktopActiv
       channel: SET_ACTIVITY_SNAPSHOT_CHANNEL,
       payload: Schema.NullOr(DesktopActivitySnapshot),
       result: Schema.Void,
-      handler: (snapshot, event) =>
-        Effect.gen(function* () {
-          const main = yield* windows.currentMainOrFirst;
-          if (Option.isNone(main) || main.value.webContents.id !== event?.sender.id) return;
-          if (owner !== main.value) {
-            detach();
-            owner = main.value;
-            owner.once("closed", clear);
-            owner.webContents.on("render-process-gone", clear);
-            owner.webContents.on("did-start-navigation", navigation);
-          }
-          activity.update(snapshot);
-        }),
+      handler: Effect.fn("desktop.ipc.activity.setSnapshot")(function* (snapshot, event) {
+        const main = yield* windows.currentMainOrFirst;
+        if (Option.isNone(main) || main.value.webContents.id !== event?.sender.id) return;
+        if (owner !== main.value) {
+          detach();
+          owner = main.value;
+          owner.once("closed", clear);
+          owner.webContents.on("render-process-gone", clear);
+          owner.webContents.on("did-start-navigation", navigation);
+        }
+        activity.update(snapshot);
+      }),
     }),
   );
   yield* app.on("before-quit", clear);

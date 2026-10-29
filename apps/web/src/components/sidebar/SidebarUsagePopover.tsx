@@ -20,6 +20,7 @@ export function SidebarUsagePopover() {
   const [open, setOpen] = useState(false);
   const { setOpen: setSidebarOpen } = useSidebar();
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the usage popover bus so the palette and Usage shortcut open this popover
   useEffect(
     () =>
       onOpenUsagePopover(() => {
@@ -90,6 +91,7 @@ function UsagePopoverContent({ onClose }: { readonly onClose: () => void }) {
     }
   };
   const autoRefresh = useEffectEvent(() => void refresh(true));
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- asks providers for fresh usage limits when the set of connected environments changes
   useEffect(() => {
     if (connectedKey) autoRefresh();
   }, [connectedKey]);

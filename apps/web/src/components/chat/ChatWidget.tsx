@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import type { ChatWidgetPresentation } from "@t3tools/contracts";
 import { Ellipsis } from "lucide-react";
 import { Button, InlineButton } from "../ui/button";
@@ -49,9 +49,11 @@ export function ChatWidget({
   const [error, setError] = useState(false);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const replyRef = useRef(reply);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- mirrors the reply into a ref the pagehide flush reads
   useEffect(() => {
     replyRef.current = reply;
   }, [reply]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- writes the reply to localStorage on a debounce timer
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       try {
@@ -62,6 +64,7 @@ export function ChatWidget({
     }, 300);
     return () => window.clearTimeout(timeout);
   }, [reply, storageKey]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- flushes the latest reply to localStorage on pagehide and unmount
   useEffect(() => {
     const save = () => {
       try {
@@ -76,6 +79,7 @@ export function ChatWidget({
       save();
     };
   }, [storageKey]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens for replies the sandboxed widget frame stages
   useEffect(() => {
     const receive = (event: MessageEvent<unknown>) => {
       if (!frameRef.current || event.source !== frameRef.current.contentWindow) return;
@@ -213,10 +217,7 @@ function WidgetFrame({
 }) {
   // Freeze the initial reply until reopened/restarted; editing must not reload the widget.
   const [initialReply] = useState(initialResponse);
-  const document = useMemo(
-    () => chatWidgetDocument(widget, theme, initialReply),
-    [widget, theme, initialReply],
-  );
+  const document = chatWidgetDocument(widget, theme, initialReply);
   return (
     <iframe
       ref={frameRef}

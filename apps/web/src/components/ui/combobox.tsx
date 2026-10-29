@@ -1,5 +1,3 @@
-"use client";
-
 import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox";
 import { ChevronsUpDownIcon, SearchIcon, XIcon } from "lucide-react";
 import * as React from "react";
@@ -113,28 +111,27 @@ function ComboboxInput({
 }
 
 function ComboboxSearchInput({
-  containerClassName,
-  inputContainerClassName,
-  searchIconClassName,
+  variant = "underline",
   ...props
 }: React.ComponentProps<typeof ComboboxInput> & {
-  containerClassName?: string;
-  inputContainerClassName?: string;
-  searchIconClassName?: string;
+  variant?: "underline" | "boxed";
 }) {
+  const boxed = variant === "boxed";
   return (
-    <div className={cn("min-w-0 shrink-0 px-3 pt-2.5", containerClassName)}>
+    <div className={cn("min-w-0 shrink-0 px-3", boxed ? "pt-3 pb-1.5" : "pt-2.5")}>
       <div
         className={cn(
-          "relative -translate-y-px border-b border-border/70 pb-1.5 transition-colors focus-within:border-ring",
-          inputContainerClassName,
+          "relative -translate-y-px pb-1.5 transition-colors",
+          boxed
+            ? "rounded-md border border-foreground/[0.12] bg-foreground/[0.045] px-2 focus-within:border-primary/60"
+            : "border-b border-border/70 focus-within:border-ring",
         )}
       >
         <SearchIcon
           aria-hidden="true"
           className={cn(
-            "pointer-events-none absolute top-1.5 left-0 size-4 shrink-0 text-muted-foreground/55",
-            searchIconClassName,
+            "pointer-events-none absolute top-1.5 size-4 shrink-0",
+            boxed ? "left-2 text-muted-foreground/50" : "left-0 text-muted-foreground/55",
           )}
         />
         <ComboboxInput
@@ -217,7 +214,7 @@ function ComboboxItem({
   return (
     <ComboboxPrimitive.Item
       className={cn(
-        "flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center rounded-sm px-2 py-1 text-base outline-none not-data-disabled:hover:bg-accent data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-selected:bg-foreground/[0.08] data-selected:text-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground [&[data-highlighted][data-selected]]:bg-accent [&[data-highlighted][data-selected]]:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        "flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center rounded-sm px-2 py-1 text-base outline-none not-data-disabled:hover:bg-foreground/[0.09] data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-selected:bg-foreground/[0.06] data-selected:text-foreground data-highlighted:bg-foreground/[0.09] data-highlighted:text-accent-foreground [&[data-highlighted][data-selected]]:bg-foreground/[0.09] [&[data-highlighted][data-selected]]:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         className,
       )}
       data-slot="combobox-item"
@@ -258,10 +255,7 @@ function ComboboxList({ className, ...props }: ComboboxPrimitive.List.Props) {
   );
 }
 
-/**
- * A variant of `ComboboxList` without `ScrollArea`, for use when
- * an external virtualizer (e.g. LegendList) owns the scroll container.
- */
+/** Omits ScrollArea when an external virtualizer owns scrolling. */
 function ComboboxListVirtualized({ className, ...props }: ComboboxPrimitive.List.Props) {
   return (
     <ComboboxPrimitive.List

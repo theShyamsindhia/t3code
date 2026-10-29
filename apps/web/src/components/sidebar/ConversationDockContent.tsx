@@ -2,14 +2,16 @@ import { AlarmClockIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type ComponentProps, type ReactNode } from "react";
 import { SidebarHeaderIconButton } from "./SidebarThreadHeader";
 
+export type ConversationDockView = "working" | "settled" | "snoozed";
+
 export function ConversationDockViews({
   value,
   onChange,
   settledCount,
   snoozedCount,
 }: {
-  value: "working" | "settled" | "snoozed";
-  onChange: (value: "working" | "settled" | "snoozed") => void;
+  value: ConversationDockView;
+  onChange: (value: ConversationDockView) => void;
   settledCount: number;
   snoozedCount: number;
 }) {
@@ -47,10 +49,12 @@ export function ConversationDockContent({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const positions = useRef(new Map<string, number>());
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- restores the strip scroller's DOM scroll position for each view
   useLayoutEffect(() => {
     const node = scrollRef.current;
     if (node) node.scrollLeft = positions.current.get(viewKey) ?? 0;
   }, [viewKey]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- non-passive wheel listener that turns vertical wheel input into horizontal strip scrolling
   useEffect(() => {
     const node = scrollRef.current;
     if (!node) return;

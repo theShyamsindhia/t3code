@@ -20,8 +20,8 @@ import { BrowserSettingsReadError, openUrlInPreview } from "./openFileInPreview"
 const NO_MODIFIER = { metaKey: false, ctrlKey: false } as const;
 
 /**
- * Local server failures and failed settings reads reject without opening a
- * browser. The promise also rejects if the system-browser fallback fails.
+ * Rejects without opening a browser when settings fail to read or a local server
+ * fails to open in the Workbench, or if the system-browser fallback fails.
  */
 export function useOpenLink(threadRef: ScopedThreadRef | null | undefined): (
   url: string,

@@ -1,5 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+// The palette store follows published environment themes through app state, whose module graph
+// needs React and the real desktop bridge. These tests stub both, so keep that graph out.
+vi.mock("../state/server", async () => {
+  const { Atom } = await import("effect/reactivity");
+  return { primaryServerEnvironmentThemesAtom: Atom.make([]) };
+});
+vi.mock("../rpc/atomRegistry", async () => {
+  const { AtomRegistry } = await import("effect/reactivity");
+  return { appAtomRegistry: AtomRegistry.make(), subscribeAtomChanges: () => () => undefined };
+});
+
 function createStorage(overrides: Partial<Storage> = {}): Storage {
   const store = new Map<string, string>();
   return {

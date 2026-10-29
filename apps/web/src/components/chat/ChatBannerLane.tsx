@@ -48,6 +48,7 @@ export function ChatBannerLane(props: {
       <ThreadErrorBanner
         error={threadError}
         errorClass={threadErrorClass}
+        errorCode={threadErrorCode}
         onDismiss={() => {
           setThreadError(threadId, null);
           dismissThreadErrorBannerForSession(threadErrorBannerKey);

@@ -37,6 +37,7 @@ import { stackedThreadToast, toastManager } from "../ui/toast";
 import {
   formatOutgoingPrompt,
   type makeThreadErrorSetter,
+  resolveFollowUpInteractionMode,
   waitForStartedServerThread,
 } from "../ChatView.logic";
 import { draftSendState } from "./chatViewSend";
@@ -53,7 +54,6 @@ interface PlanSendBase {
   readonly activeProposedPlan: LatestProposedPlanState | null;
   readonly isServerThread: boolean;
   readonly isSendBusy: boolean;
-  readonly isConnecting: boolean;
   readonly composerRef: ComposerHandleRef;
   readonly beginLocalDispatch: LocalDispatchState["beginLocalDispatch"];
   readonly resetLocalDispatch: LocalDispatchState["resetLocalDispatch"];
@@ -76,7 +76,8 @@ interface PlanFollowUpSendInput extends PlanSendBase {
 
 /**
  * Answers a proposed plan on this thread: refine it in plan mode, or implement it here
- * (which links the turn to the plan). Resolves whether the turn started.
+ * (which links the turn to the plan). Shared-space and widget replies use the same path
+ * without the plan link. Resolves whether the turn started.
  */
 export function usePlanFollowUpSend(input: PlanFollowUpSendInput) {
   const {
@@ -86,7 +87,6 @@ export function usePlanFollowUpSend(input: PlanFollowUpSendInput) {
     activeProposedPlan,
     isServerThread,
     isSendBusy,
-    isConnecting,
     composerRef,
     beginLocalDispatch,
     resetLocalDispatch,
@@ -108,18 +108,19 @@ export function usePlanFollowUpSend(input: PlanFollowUpSendInput) {
   return async function submitPlanFollowUp({
     text,
     context,
-    interactionMode: nextInteractionMode,
+    interactionMode: requestedInteractionMode,
+    source = "plan",
   }: {
     text: string;
     context?: ReturnType<typeof buildMessageContext>;
     interactionMode: "default" | "plan";
+    source?: "plan" | "interaction";
   }) {
     if (
       !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
       !activeThread ||
       !isServerThread ||
       isSendBusy ||
-      isConnecting ||
       sendInFlightRef.current
     ) {
       return false;
@@ -131,9 +132,13 @@ export function usePlanFollowUpSend(input: PlanFollowUpSendInput) {
     }
 
     const sendCtx = composerRef.current?.getSendContext();
-    if (!sendCtx?.providerAvailable || !sendCtx.interactionModeEnabled) {
-      return false;
-    }
+    if (!sendCtx?.providerAvailable) return false;
+    const nextInteractionMode = resolveFollowUpInteractionMode({
+      source,
+      interactionMode: requestedInteractionMode,
+      planModeEnabled: sendCtx.interactionModeEnabled,
+    });
+    if (nextInteractionMode === null) return false;
 
     const threadIdForSend = activeThread.id;
     const messageIdForSend = newMessageId();
@@ -200,7 +205,7 @@ export function usePlanFollowUpSend(input: PlanFollowUpSendInput) {
           titleSeed: activeThread.title,
           runtimeMode,
           interactionMode: nextInteractionMode,
-          ...(nextInteractionMode === "default" && activeProposedPlan
+          ...(source === "plan" && nextInteractionMode === "default" && activeProposedPlan
             ? {
                 sourceProposedPlan: {
                   threadId: activeThread.id,
@@ -227,7 +232,7 @@ export function usePlanFollowUpSend(input: PlanFollowUpSendInput) {
       const error = squashAtomCommandFailure(failure);
       setThreadError(
         threadIdForSend,
-        error instanceof Error ? error.message : "Failed to send plan follow-up.",
+        error instanceof Error ? error.message : "Failed to send follow-up.",
       );
     }
     sendInFlightRef.current = false;
@@ -255,7 +260,6 @@ export function useImplementPlanInNewThread(input: ImplementPlanInNewThreadInput
     activeProposedPlan,
     isServerThread,
     isSendBusy,
-    isConnecting,
     composerRef,
     beginLocalDispatch,
     resetLocalDispatch,
@@ -279,7 +283,6 @@ export function useImplementPlanInNewThread(input: ImplementPlanInNewThreadInput
       !activeProposedPlan ||
       !isServerThread ||
       isSendBusy ||
-      isConnecting ||
       activeEnvironmentUnavailable ||
       sendInFlightRef.current
     ) {

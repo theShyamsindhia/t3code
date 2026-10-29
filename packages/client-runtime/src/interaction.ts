@@ -5,7 +5,7 @@ import {
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { resolveT3McpToolSummaryAction } from "@t3tools/shared/t3McpToolPresentation";
+import { resolveT3McpSummaryAction } from "@t3tools/shared/t3McpToolPresentation";
 import { t3ToolResultIndicatesFailure } from "./t3ToolSummary.ts";
 
 const decode = Schema.decodeUnknownOption(InteractionPresentation);
@@ -16,7 +16,7 @@ export function chatWidgetPresentation(item: OrchestrationV2ProjectedTurnItem["i
   if (
     item.type !== "dynamic_tool" ||
     item.status !== "completed" ||
-    resolveT3McpToolSummaryAction(item.toolName ?? "") !== "widget-present" ||
+    resolveT3McpSummaryAction(item.toolName, item.input) !== "widget-present" ||
     t3ToolResultIndicatesFailure(item.output)
   )
     return null;
@@ -37,7 +37,7 @@ export function interactionPresentations(rows: ReadonlyArray<OrchestrationV2Proj
     if (
       item.type !== "dynamic_tool" ||
       item.status !== "completed" ||
-      resolveT3McpToolSummaryAction(item.toolName ?? "") !== "interaction-present" ||
+      resolveT3McpSummaryAction(item.toolName, item.input) !== "interaction-present" ||
       t3ToolResultIndicatesFailure(item.output)
     )
       return [];

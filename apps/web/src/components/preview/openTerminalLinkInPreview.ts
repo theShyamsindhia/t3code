@@ -15,8 +15,8 @@ import {
   openUrlInPreview,
   type OpenPreviewMutation,
 } from "~/browser/openFileInPreview";
+import { isPreviewAvailableFor } from "~/browser/previewRuntime";
 import { recordVisitForThread } from "~/browserHistoryStore";
-import { isPreviewSupportedInRuntime } from "~/previewStateStore";
 
 const terminalLinkErrorContext = {
   environmentId: Schema.String,
@@ -49,7 +49,11 @@ interface OpenTerminalLinkInPreviewInput<E> {
 export async function openTerminalLinkInPreview<E>(
   input: OpenTerminalLinkInPreviewInput<E>,
 ): Promise<void> {
-  if (input.forceBrowser || !isPreviewSupportedInRuntime() || !input.threadRef.threadId) {
+  if (
+    input.forceBrowser ||
+    !input.threadRef.threadId ||
+    !isPreviewAvailableFor(input.threadRef.environmentId)
+  ) {
     input.fallbackToBrowser();
     return;
   }

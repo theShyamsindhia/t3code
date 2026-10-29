@@ -11,7 +11,9 @@ import {
   ProviderInstanceId,
   ThreadId,
   TurnItemId,
+  type OrchestrationV2DomainEvent,
   type OrchestrationV2ThreadProjection,
+  type OrchestrationV2ThreadStreamItem,
   OrchestrationV2TurnItem,
   OrchestrationV2TurnItemJson,
 } from "@t3tools/contracts";
@@ -19,7 +21,9 @@ import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 
+import { coalesceLiveUpdatedEvents } from "./ThreadLiveEventCoalescer.ts";
 import {
+  makeLiveBodyDeduper,
   projectTurnItemForWire,
   projectTurnItemForDetail,
   projectDomainEventForWire,
@@ -28,6 +32,7 @@ import { threadShellFromProjection } from "./ProjectionStore.ts";
 import { MAX_TOOL_OUTPUT_IMAGES, toolOutputImages } from "@t3tools/shared/toolOutput";
 
 const isInteractionPresentation = Schema.is(InteractionPresentation);
+const isChatWidgetPresentation = Schema.is(ChatWidgetPresentation);
 const decodeTurnItem = Schema.decodeUnknownSync(OrchestrationV2TurnItem);
 const encodeTurnItemJson = Schema.encodeSync(OrchestrationV2TurnItemJson);
 const decodeTurnItemJson = Schema.decodeUnknownSync(OrchestrationV2TurnItemJson);
@@ -274,6 +279,15 @@ describe("orchestration V2 wire projection", () => {
     expect(projected).not.toHaveProperty("newStr");
     expect(projected).toMatchObject({ fileName: "src/main.ts", additions: 3, deletions: 1 });
     expect(item.diffStr).toBe("+new code");
+    expect(projectTurnItemForDetail(item)).toMatchObject({ diffStr: "+new code" });
+    expect(projectTurnItemForDetail(item)).not.toHaveProperty("oldStr");
+    expect(projectTurnItemForDetail(item)).not.toHaveProperty("newStr");
+    const { diffStr: _diff, ...contentOnly } = item;
+    expect(projectTurnItemForDetail(contentOnly)).toMatchObject({
+      oldStr: "old code",
+      newStr: "new code",
+    });
+    expect(projectTurnItemForWire(contentOnly)).not.toHaveProperty("newStr");
     const failed = projectTurnItemForWire({
       ...item,
       status: "failed",
@@ -336,7 +350,7 @@ it("retains valid shared spaces through JSON-string and Cursor argument envelope
 
 it("retains bounded widget documents through provider envelopes and wire serialization", () => {
   const input = { title: "Widget", description: "Try it", html: "\\".repeat(2900), height: 240 };
-  expect(Schema.is(ChatWidgetPresentation)(input)).toBe(true);
+  expect(isChatWidgetPresentation(input)).toBe(true);
   for (const value of [
     input,
     JSON.stringify(input),
@@ -352,4 +366,75 @@ it("retains bounded widget documents through provider envelopes and wire seriali
     );
     expect(decoded.type === "dynamic_tool" ? decoded.input : null).toEqual(value);
   }
+});
+
+describe("live body deduper", () => {
+  const at = base.updatedAt;
+  const messageId = MessageId.make("message-live");
+  const event = (
+    sequence: number,
+    rest: Pick<OrchestrationV2DomainEvent, "type" | "payload">,
+  ): Extract<OrchestrationV2ThreadStreamItem, { kind: "event" }> => ({
+    kind: "event",
+    sequence,
+    event: {
+      id: EventId.make(`event-${sequence}`),
+      threadId: base.threadId,
+      occurredAt: at,
+      ...rest,
+    } as OrchestrationV2DomainEvent,
+  });
+  const message = (sequence: number, text: string) =>
+    event(sequence, {
+      type: "message.updated",
+      payload: {
+        id: messageId,
+        threadId: base.threadId,
+        runId: null,
+        nodeId: null,
+        role: "assistant",
+        text,
+        attachments: [],
+        streaming: true,
+        createdBy: "agent",
+        creationSource: "provider",
+        createdAt: at,
+        updatedAt: at,
+      },
+    });
+  const reply = (sequence: number, text: string) =>
+    event(sequence, {
+      type: "turn-item.updated",
+      payload: {
+        ...base,
+        status: "running",
+        type: "assistant_message",
+        messageId,
+        text,
+        streaming: true,
+      },
+    });
+  const payloadOf = (item: OrchestrationV2ThreadStreamItem) =>
+    item.kind === "event" ? item.event.payload : undefined;
+
+  it("blanks a reply that repeats the message delivered before it, after coalescing", () => {
+    const delivered = coalesceLiveUpdatedEvents([
+      message(1, "a"),
+      reply(2, "a"),
+      message(3, "ab"),
+      reply(4, "ab"),
+    ]).map(makeLiveBodyDeduper());
+
+    expect(
+      delivered.map((item) => [item.kind === "event" && item.sequence, payloadOf(item)]),
+    ).toEqual([
+      [3, message(3, "ab").event.payload],
+      [4, { ...reply(4, "ab").event.payload, text: "", textOmitted: true }],
+    ]);
+  });
+
+  it("ships a reply whole when its message arrives after it", () => {
+    const first = reply(1, "a");
+    expect([first, message(2, "a")].map(makeLiveBodyDeduper())[0]).toBe(first);
+  });
 });

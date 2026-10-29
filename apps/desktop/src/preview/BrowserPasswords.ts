@@ -259,10 +259,14 @@ const make = Effect.gen(function* () {
   const service = BrowserPasswords.of({
     list,
     importFile,
-    remove: (tabId, id) => changeLogin(tabId, id),
-    setAgentAccess: (tabId, id, allowed) => changeLogin(tabId, id, allowed),
-    fill: (tabId, id) => useLogin(tabId, false, id),
-    signIn: (tabId, username, epoch) => useLogin(tabId, true, undefined, username, epoch),
+    remove: Effect.fn("BrowserPasswords.remove")((tabId, id) => changeLogin(tabId, id)),
+    setAgentAccess: Effect.fn("BrowserPasswords.setAgentAccess")((tabId, id, allowed) =>
+      changeLogin(tabId, id, allowed),
+    ),
+    fill: Effect.fn("BrowserPasswords.fill")((tabId, id) => useLogin(tabId, false, id)),
+    signIn: Effect.fn("BrowserPasswords.signIn")((tabId, username, epoch) =>
+      useLogin(tabId, true, undefined, username, epoch),
+    ),
   });
   if (Option.isSome(browserHost))
     yield* browserHost.value.registerPasswordSignIn(({ tabId, username }) =>

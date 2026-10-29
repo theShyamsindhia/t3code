@@ -5,7 +5,7 @@ import {
   WS_METHODS,
 } from "@t3tools/contracts";
 import { createEnvironmentRpcCommand } from "@t3tools/client-runtime/state/runtime";
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { Modal, Pressable, ScrollView, View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
 import { connectionAtomRuntime } from "../../connection/runtime";
@@ -24,37 +24,41 @@ type Scan = {
   error: string | null;
 };
 
-export function ExternalSessionsSheet(props: {
-  environments: readonly { environmentId: EnvironmentId; label: string }[];
-  onClose: () => void;
-}) {
+/** Sync is a user action, so the scan starts in `open`, never in an effect. */
+export function useExternalSessionsSheet(
+  environments: readonly { environmentId: EnvironmentId; label: string }[],
+) {
   const manage = useAtomCommand(externalSessions, { reportFailure: false });
+  const [visible, setVisible] = useState(false);
   const [scans, setScans] = useState<Scan[]>([]);
-  const [busy, setBusy] = useState(true);
-  const [environments] = useState(props.environments);
-  useEffect(() => {
-    let cancelled = false;
-    void Promise.all(
+  const [busy, setBusy] = useState(false);
+  const generation = useRef(0);
+  const open = async () => {
+    const request = ++generation.current;
+    setVisible(true);
+    setBusy(true);
+    setScans([]);
+    const results = await Promise.all(
       environments.map(async (environment): Promise<Scan> => {
         const result = await manage({ environmentId: environment.environmentId, input: {} });
         const candidates = result._tag === "Success" ? result.value.candidates : [];
         return {
-          ...environment,
+          environmentId: environment.environmentId,
+          label: environment.label,
           candidates,
           selected: candidates.filter((c) => c.tracked).map((c) => c.threadId),
           error: result._tag === "Success" ? null : "Could not scan. Reopen Sync to try again.",
         };
       }),
-    ).then((results) => {
-      if (!cancelled) {
-        setScans(results);
-        setBusy(false);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [environments, manage]);
+    );
+    if (request !== generation.current) return;
+    setScans(results);
+    setBusy(false);
+  };
+  const close = () => {
+    generation.current += 1;
+    setVisible(false);
+  };
   const save = async () => {
     setBusy(true);
     let failed = false;
@@ -76,16 +80,16 @@ export function ExternalSessionsSheet(props: {
       }
     }
     setBusy(false);
-    if (!failed) props.onClose();
+    if (!failed) close();
   };
   const count = scans.reduce((total, scan) => total + scan.selected.length, 0);
-  return (
+  const sheet = visible ? (
     <Modal
       visible
       transparent
       animationType="fade"
       onRequestClose={() => {
-        if (!busy || scans.length === 0) props.onClose();
+        if (!busy || scans.length === 0) close();
       }}
     >
       <View className="flex-1 items-center justify-center bg-backdrop px-6">
@@ -153,7 +157,7 @@ export function ExternalSessionsSheet(props: {
             ))}
           </ScrollView>
           <View className="flex-row justify-end gap-3">
-            <Button label="Cancel" disabled={busy && scans.length > 0} onPress={props.onClose} />
+            <Button label="Cancel" disabled={busy && scans.length > 0} onPress={close} />
             <Button
               tone="primary"
               label={busy && scans.length > 0 ? "Saving…" : `Track selected (${count})`}
@@ -164,5 +168,6 @@ export function ExternalSessionsSheet(props: {
         </View>
       </View>
     </Modal>
-  );
+  ) : null;
+  return { open: () => void open(), sheet };
 }

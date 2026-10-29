@@ -36,6 +36,8 @@ export function buildDesktopActivitySnapshot(
         continue;
       const thread = presentThreadShell(environmentId, raw);
       let status = resolveSidebarThreadStatus(thread);
+      // The panel has no guest-request row; a waiting guest needs the owner like a question does.
+      if (status === "request") status = "input";
       if (status === "ready" && thread.latestRun?.status === "failed") status = "failed";
       if (status === "ready") continue;
       if (thread.settledOverride === "settled" && status !== "working" && status !== "waiting")
