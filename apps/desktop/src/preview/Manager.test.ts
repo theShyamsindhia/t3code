@@ -2406,6 +2406,7 @@ describe("PreviewManager", () => {
         expect(webviewSend).toHaveBeenCalledWith(
           "preview:start-pick",
           expect.any(Object),
+          false,
           "live-edit",
         );
 

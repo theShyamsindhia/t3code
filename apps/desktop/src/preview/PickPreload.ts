@@ -1520,12 +1520,20 @@ function startLiveEditSession(): void {
 
 ipcRenderer.on(
   START_PICK_CHANNEL,
-  (_event, theme: DesktopPreviewAnnotationTheme | undefined, mode: unknown) => {
+  (
+    _event,
+    theme: DesktopPreviewAnnotationTheme | undefined,
+    sendEnabled?: boolean,
+    mode?: unknown,
+  ) => {
     if (theme) annotationTheme = theme;
     if (mode === "live-edit") startLiveEditSession();
-    else startAnnotation(false);
+    else startAnnotation(sendEnabled === true);
   },
 );
+ipcRenderer.on(ANNOTATION_SEND_ENABLED_CHANNEL, (_event, enabled: boolean) => {
+  activeSession?.setSendEnabled(enabled === true);
+});
 ipcRenderer.on(ANNOTATION_THEME_CHANNEL, (_event, theme: DesktopPreviewAnnotationTheme) => {
   annotationTheme = theme;
   recordingCursor?.setTheme(theme);
