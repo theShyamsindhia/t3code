@@ -26,7 +26,11 @@ import {
   setActivePreviewTab,
   updatePreviewServerSnapshot,
 } from "~/previewStateStore";
-import { selectSelectedRightPanelSurface, useRightPanelStore } from "~/rightPanelStore";
+import {
+  rightPanelHostRef,
+  selectSelectedRightPanelSurface,
+  useRightPanelStore,
+} from "~/rightPanelStore";
 import { previewBridge } from "~/components/preview/previewBridge";
 import { previewRuntimeTabId } from "./previewRuntimeTabId";
 import { isLocalServerUrl } from "./browserLinkTarget";
@@ -70,10 +74,12 @@ const pendingLocalPreviews = new Map<string, Promise<void>>();
 export async function openUrlInPreview<E>(
   input: OpenUrlInPreviewInput<E>,
 ): Promise<AtomCommandResult<void, E | BrowserSettingsReadError>> {
-  if (!isLocalServerUrl(input.url)) return openUrlInPreviewOnce(input, false);
-  const key = scopedThreadKey(input.threadRef);
+  // Read before any await: a side chat pane that unmounts meanwhile drops its host mapping.
+  const threadRef = rightPanelHostRef(input.threadRef);
+  if (!isLocalServerUrl(input.url)) return openUrlInPreviewOnce({ ...input, threadRef }, false);
+  const key = scopedThreadKey(threadRef);
   while (pendingLocalPreviews.has(key)) await pendingLocalPreviews.get(key);
-  const opening = openUrlInPreviewOnce(input, true);
+  const opening = openUrlInPreviewOnce({ ...input, threadRef }, true);
   pendingLocalPreviews.set(
     key,
     opening.then(
@@ -88,16 +94,18 @@ export async function openUrlInPreview<E>(
   }
 }
 
+/** `input.threadRef` is already the thread that hosts the panel. */
 async function openUrlInPreviewOnce<E>(
   input: OpenUrlInPreviewInput<E>,
   localServer: boolean,
 ): Promise<AtomCommandResult<void, E | BrowserSettingsReadError>> {
-  const panelRevision = useRightPanelStore.getState().getUserActionRevision(input.threadRef);
+  const { threadRef } = input;
+  const panelRevision = useRightPanelStore.getState().getUserActionRevision(threadRef);
   const showTab = (tabId: string) => {
     const panel = useRightPanelStore.getState();
     // A slow open must not replace a surface the user selected while waiting.
-    if (!input.background && panel.getUserActionRevision(input.threadRef) === panelRevision) {
-      panel.openBrowser(input.threadRef, tabId);
+    if (!input.background && panel.getUserActionRevision(threadRef) === panelRevision) {
+      panel.openBrowser(threadRef, tabId);
     }
   };
   const defaults = await resolveBrowserDefaults().catch(
@@ -107,22 +115,22 @@ async function openUrlInPreviewOnce<E>(
     return AsyncResult.failure(Cause.fail(defaults));
   }
   const profileId = input.profileId ?? defaults.profileId;
-  const runtime = previewRuntimeFor(input.threadRef.environmentId);
-  const previousActiveTabId = readThreadPreviewState(input.threadRef).activeTabId;
+  const runtime = previewRuntimeFor(threadRef.environmentId);
+  const previousActiveTabId = readThreadPreviewState(threadRef).activeTabId;
   // The server changes the active tab, not panel selection; selection changes come from the user.
   const selectedSurface = () =>
-    selectSelectedRightPanelSurface(useRightPanelStore.getState().byThreadKey, input.threadRef)
-      ?.id ?? null;
+    selectSelectedRightPanelSurface(useRightPanelStore.getState().byThreadKey, threadRef)?.id ??
+    null;
   const surfaceBeforeOpen = selectedSurface();
   let url = input.url;
   try {
     if (localServer && runtime !== "server")
-      url = resolveLocalServerUrl(input.threadRef.environmentId, input.url);
+      url = resolveLocalServerUrl(threadRef.environmentId, input.url);
   } catch (cause) {
     return AsyncResult.failure(Cause.die(cause));
   }
   if (localServer && previewBridge && runtime !== "server") {
-    const state = readThreadPreviewState(input.threadRef);
+    const state = readThreadPreviewState(threadRef);
     const target = new URL(url);
     const existing = [state.snapshot, ...Object.values(state.sessions)].find(
       (session) =>
@@ -132,7 +140,7 @@ async function openUrlInPreviewOnce<E>(
         new URL(session.navStatus.url).origin === target.origin,
     );
     if (existing && existing.navStatus._tag !== "Idle") {
-      const runtimeTabId = previewRuntimeTabId(input.threadRef, state.serverEpoch, existing.tabId);
+      const runtimeTabId = previewRuntimeTabId(threadRef, state.serverEpoch, existing.tabId);
       // A server's root link brings back the page being tested. A deep link
       // explicitly requests navigation; failed pages can retry in the same tab.
       const isRoot =
@@ -155,9 +163,9 @@ async function openUrlInPreviewOnce<E>(
     }
   }
   const result = await input.openPreview({
-    environmentId: input.threadRef.environmentId,
+    environmentId: threadRef.environmentId,
     input: {
-      threadId: input.threadRef.threadId,
+      threadId: threadRef.threadId,
       url,
       viewport: defaults.viewport,
       profileId,
@@ -165,20 +173,20 @@ async function openUrlInPreviewOnce<E>(
     },
   });
   return mapAtomCommandResult(result, (snapshot) => {
+    rememberPreviewUrl(threadRef, url);
     if (input.background) {
-      updatePreviewServerSnapshot(input.threadRef, snapshot);
+      updatePreviewServerSnapshot(threadRef, snapshot);
       // Restore focus unless the user picked a tab while opening this one.
       if (
         previousActiveTabId &&
-        readThreadPreviewState(input.threadRef).activeTabId === snapshot.tabId &&
+        readThreadPreviewState(threadRef).activeTabId === snapshot.tabId &&
         selectedSurface() === surfaceBeforeOpen
       ) {
-        setActivePreviewTab(input.threadRef, previousActiveTabId);
+        setActivePreviewTab(threadRef, previousActiveTabId);
       }
       return;
     }
-    applyPreviewServerSnapshot(input.threadRef, snapshot);
-    rememberPreviewUrl(input.threadRef, url);
+    applyPreviewServerSnapshot(threadRef, snapshot);
     showTab(snapshot.tabId);
   });
 }
@@ -208,6 +216,7 @@ export async function openFileInPreview<AssetError, PreviewError>(input: {
       ),
     );
   }
+  const hostRef = rightPanelHostRef(input.threadRef);
   const insideWorkspace =
     mediaFileReference(input.filePath, input.workspaceRoot).relativePath !== undefined;
   const assetResult = await input.createAssetUrl({
@@ -231,7 +240,7 @@ export async function openFileInPreview<AssetError, PreviewError>(input: {
   }
   // Documents served by the local T3 server are independent tabs, not dev apps.
   return openUrlInPreviewOnce(
-    { threadRef: input.threadRef, url: assetUrl, openPreview: input.openPreview },
+    { threadRef: hostRef, url: assetUrl, openPreview: input.openPreview },
     false,
   );
 }

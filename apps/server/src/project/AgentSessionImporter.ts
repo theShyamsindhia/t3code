@@ -6,6 +6,7 @@ import {
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
+  isRuntimeModeAbove,
   AgentSessionImportProjectChangedError,
   AgentSessionImportProjectNotFoundError,
   AgentSessionImportSource,
@@ -26,7 +27,8 @@ import {
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -39,6 +41,7 @@ import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ProviderSessionRuntime from "../persistence/ProviderSessionRuntime.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as AgentSessionScanner from "./AgentSessionScanner.ts";
 import * as ProjectService from "./ProjectService.ts";
 
@@ -170,14 +173,16 @@ export function messageEvents(input: {
 }
 
 const make = Effect.gen(function* () {
-  const crypto = yield* Crypto.Crypto;
-  const randomUuidV4 = crypto.randomUUIDv4().pipe(Effect.orDie);
+  const random = yield* SecureRandom.SecureRandom;
+  const randomUuidV4 = random.uuidV4();
   const scanner = yield* AgentSessionScanner.AgentSessionScanner;
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const projects = yield* ProjectService.ProjectService;
   const eventSink = yield* EventSink.EventSinkV2;
   const idAllocator = yield* IdAllocator.IdAllocatorV2;
   const runtimes = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+  const settingsService = yield* ServerSettings.ServerSettingsService;
+  const ceiling = settingsService.managedPolicy?.limits?.maxRuntimeMode;
   const importRecentAgentThreads = Effect.fn("importRecentAgentThreadsV2")(function* (
     input: AgentSessionImportInput,
   ) {
@@ -216,6 +221,21 @@ const make = Effect.gen(function* () {
       }
       yield* scanner.scan;
     }
+    // Imports run in full access, except under a policy ceiling: then in the project's default,
+    // which the policy keeps under it, so imported threads never sit above the ceiling.
+    const runtimeMode =
+      ceiling === undefined
+        ? DEFAULT_RUNTIME_MODE
+        : yield* settingsService.getSettings.pipe(
+            Effect.mapError(
+              (cause) => new AgentSessionScanError({ operation: "read-settings", cause }),
+            ),
+            Effect.map((settings) => {
+              const mode = resolveProjectSettings(settings, input.projectId, project).settings
+                .defaultRuntimeMode;
+              return isRuntimeModeAbove(mode, ceiling) ? ceiling : mode;
+            }),
+          );
     const runtimeRows = yield* runtimes
       .list()
       .pipe(
@@ -286,19 +306,22 @@ const make = Effect.gen(function* () {
             });
           }
           const driver = ProviderDriverKind.make(thread.source);
+          // Pi resumes by session file path; its session UUID only names the thread.
+          const nativeThreadId =
+            thread.source === "pi" ? source.filePath : thread.providerSessionId;
           const persistRuntime = runtimes.upsert(
             {
               threadId,
               providerName: driver,
               providerInstanceId: thread.providerInstanceId,
               adapterKey: driver,
-              runtimeMode: DEFAULT_RUNTIME_MODE,
+              runtimeMode,
               status: "stopped",
               lastSeenAt: thread.updatedAt,
               resumeCursor:
-                thread.source === "codex"
-                  ? { threadId: thread.providerSessionId }
-                  : { threadId, resume: thread.providerSessionId },
+                thread.source === "claudeAgent"
+                  ? { threadId, resume: thread.providerSessionId }
+                  : { threadId: nativeThreadId },
               runtimePayload: { cwd: project.workspaceRoot },
             },
             { onConflict: "ignore" },
@@ -324,7 +347,7 @@ const make = Effect.gen(function* () {
           const providerThreadId = idAllocator.derive.providerThread({
             driver,
             providerInstanceId: thread.providerInstanceId,
-            nativeThreadId: thread.providerSessionId,
+            nativeThreadId,
           });
           const createdAt = dateTime(thread.createdAt);
           const updatedAt = dateTime(thread.updatedAt);
@@ -336,7 +359,7 @@ const make = Effect.gen(function* () {
             title: thread.title.trim() === "" ? "Untitled thread" : thread.title,
             providerInstanceId: thread.providerInstanceId,
             modelSelection: { instanceId: thread.providerInstanceId, model },
-            runtimeMode: DEFAULT_RUNTIME_MODE,
+            runtimeMode,
             interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
             branch: null,
             worktreePath: null,
@@ -373,7 +396,7 @@ const make = Effect.gen(function* () {
             ownerNodeId: null,
             nativeThreadRef: {
               driver,
-              nativeId: thread.providerSessionId,
+              nativeId: nativeThreadId,
               strength: "strong",
             },
             nativeConversationHeadRef: null,
@@ -398,6 +421,34 @@ const make = Effect.gen(function* () {
                 occurredAt: createdAt,
                 payload: appThread,
               },
+              ...(thread.omittedMessageCount > 0
+                ? [
+                    {
+                      id: EventId.make(`${IMPORT_EVENT_PREFIX}:history-truncated:${threadId}`),
+                      type: "turn-item.updated" as const,
+                      threadId,
+                      occurredAt: createdAt,
+                      payload: {
+                        id: TurnItemId.make(`${IMPORT_EVENT_PREFIX}:history-truncated:${threadId}`),
+                        threadId,
+                        runId: null,
+                        nodeId: null,
+                        providerThreadId: null,
+                        providerTurnId: null,
+                        nativeItemRef: null,
+                        parentItemId: null,
+                        ordinal: 0,
+                        status: "completed" as const,
+                        title: null,
+                        startedAt: createdAt,
+                        completedAt: createdAt,
+                        updatedAt: createdAt,
+                        type: "system_notice" as const,
+                        message: `${thread.omittedMessageCount} earlier ${thread.omittedMessageCount === 1 ? "message was" : "messages were"} not imported. This thread keeps the first user message and the most recent history. The original session transcript is unchanged.`,
+                      },
+                    },
+                  ]
+                : []),
               ...thread.messages.flatMap((message, index) =>
                 messageEvents({ threadId, index, message }),
               ),

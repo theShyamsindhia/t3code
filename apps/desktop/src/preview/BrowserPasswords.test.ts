@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off - Encrypts an isolated fixture with a native cipher.
 import * as NodeCrypto from "node:crypto";
+import * as NodeCryptoLayer from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -100,7 +101,10 @@ const fixture = Effect.gen(function* () {
 });
 
 const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-  effect.pipe(Effect.provide(NodeServices.layer), Effect.scoped);
+  effect.pipe(
+    Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer)),
+    Effect.scoped,
+  );
 
 describe("encrypted browser passwords", () => {
   it.effect("stores ciphertext and returns only metadata; import resets agent permission", () =>

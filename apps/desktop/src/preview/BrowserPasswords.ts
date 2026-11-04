@@ -4,7 +4,7 @@ import type {
   BrowserSignInResult,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -57,7 +57,7 @@ const make = Effect.gen(function* () {
   const dialog = yield* ElectronDialog.ElectronDialog;
   const manager = yield* PreviewManager.PreviewManager;
   const browserHost = yield* Effect.serviceOption(DesktopBrowserHost.DesktopBrowserHost);
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const lock = yield* Semaphore.make(1);
   const directory = environment.path.join(environment.stateDir, "browser-passwords");
   const file = environment.path.join(directory, "vault.bin");
@@ -110,10 +110,7 @@ const make = Effect.gen(function* () {
         yield* encryptionReady;
         const encrypted = yield* storage.encryptString(encodeVault({ version: 1, logins }));
         yield* fs.makeDirectory(directory, { recursive: true, mode: 0o700 });
-        const temporary = environment.path.join(
-          directory,
-          `${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}.tmp`,
-        );
+        const temporary = environment.path.join(directory, `${yield* random.uuidV4()}.tmp`);
         yield* fs
           .writeFile(temporary, encrypted, { mode: 0o600, flag: "wx" })
           .pipe(
@@ -187,7 +184,7 @@ const make = Effect.gen(function* () {
           const previous = logins[index];
           const login = {
             ...item,
-            id: previous?.id ?? (yield* crypto.randomUUIDv4().pipe(Effect.orDie)),
+            id: previous?.id ?? (yield* random.uuidV4()),
             partition: context.partition,
             allowAgent: false,
           };

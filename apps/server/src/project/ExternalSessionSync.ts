@@ -1,4 +1,3 @@
-import * as Hex from "effect/encoding/Hex";
 import {
   CommandId,
   ProjectId,
@@ -20,7 +19,8 @@ import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import * as Semaphore from "effect/Semaphore";
 import { ServerSettingsService } from "../serverSettings.ts";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -49,8 +49,9 @@ const decodeResumeCursor = Schema.decodeUnknownOption(
 
 /** One bounded sweep; the cache belongs to this server, never to a browser connection. */
 export const make = Effect.gen(function* () {
-  const crypto = yield* Crypto.Crypto;
-  const randomUuidV4 = crypto.randomUUIDv4().pipe(Effect.orDie);
+  const random = yield* SecureRandom.SecureRandom;
+  const digests = yield* Digest.Digest;
+  const randomUuidV4 = random.uuidV4();
   const settings = yield* ServerSettingsService;
   const lock = yield* Semaphore.make(1);
   const scanner = yield* AgentSessionScanner.AgentSessionScanner;
@@ -98,7 +99,7 @@ export const make = Effect.gen(function* () {
           id:
             candidate.projectId ??
             ProjectId.make(
-              `external-project:${yield* crypto.digest("SHA-256", new TextEncoder().encode(candidate.path)).pipe(Effect.map(Hex.encode), Effect.orDie)}`,
+              `external-project:${yield* digests.digestHex(Digest.sha256, new TextEncoder().encode(candidate.path))}`,
             ),
           title: candidate.title,
           workspaceRoot: candidate.path,

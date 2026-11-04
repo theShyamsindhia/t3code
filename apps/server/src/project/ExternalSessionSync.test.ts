@@ -1,4 +1,5 @@
 import { expect, it } from "@effect/vitest";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   EventId,
@@ -50,12 +51,16 @@ const initialTranscript: AgentSessionScanner.AgentSessionThread = {
     { role: "user", text: "hello", createdAt: at },
     { role: "assistant", text: "hi", createdAt: at },
   ],
+  omittedMessageCount: 0,
 };
 const testLayer = Layer.mergeAll(
   ProjectionStore.layer,
   ProviderSessionRuntime.layer,
   ServerSettingsService.layerTest({ externalSessionThreadIds: [] }),
-).pipe(Layer.provide(Sqlite.layerMemory), Layer.provideMerge(NodeServices.layer));
+).pipe(
+  Layer.provide(Sqlite.layerMemory),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+);
 
 const fixture = Effect.gen(function* () {
   const store = yield* ProjectionStore.ProjectionStoreV2;

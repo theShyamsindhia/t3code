@@ -31,6 +31,8 @@ async function renderLauncher(
       pullRequestsAvailable
       deviceAvailable
       canvasAvailable
+      sideChatAvailable={false}
+      sideChatDisabledReason={null}
       {...overrides}
     />,
   );

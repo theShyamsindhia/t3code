@@ -3,6 +3,7 @@ import { readPastedComposerContext } from "../composerInlineTokenPaste";
 import { useEffect } from "react";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { getTerminalFocusOwner } from "../../lib/terminalFocus";
+import { isInSideChatPane } from "../../lib/sideChatPane";
 import type { ThreadId } from "@t3tools/contracts";
 import type { ComposerHandleRef } from "../../composerHandleContext";
 /**
@@ -16,8 +17,9 @@ export function usePasteToFocusComposer(
 ) {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- attaches a window paste capture listener that routes stray pastes into the composer
   useEffect(() => {
+    if (!activeThreadId) return;
     const handler = (event: ClipboardEvent) => {
-      if (!activeThreadId || isCommandPaletteOpen()) return;
+      if (isCommandPaletteOpen() || isInSideChatPane(event.target)) return;
       if (getTerminalFocusOwner() !== null) return;
       if (composerRef.current?.isModelPickerOpen()) return;
       const text = pasteTextToFocusComposer(event);
